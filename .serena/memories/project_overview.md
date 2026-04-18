@@ -1,0 +1,1 @@
+Transformer Asset Management System: a Vite + React app for managing transformer assets, oil test records, document uploads, and trending, backed by Supabase. Main UI entry is App.jsx; core feature areas live in components/ and data access lives in lib/.

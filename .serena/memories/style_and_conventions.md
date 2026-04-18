@@ -1,0 +1,1 @@
+Codebase conventions: React components are primarily function components in JSX/TSX. Existing project code often uses single quotes and Tailwind utility classes backed by CSS variables from App.css (`--card`, `--foreground`, `--primary`, etc.). Shared UI primitives are in components/ui. Data models from Supabase services are transformed to camelCase before entering the UI.

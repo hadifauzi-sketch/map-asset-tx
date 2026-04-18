@@ -1,0 +1,1 @@
+When finishing a code change, at minimum run `npm run build` because there is no separate lint/test script configured. If the change affects the interactive UI, also start `npm run dev` and verify the relevant screen or modal manually in the browser.
