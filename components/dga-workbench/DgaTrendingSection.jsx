@@ -33,6 +33,7 @@ const CHART_HEIGHT = 360;
 const CHART_MARGIN = { top: 20, right: 18, bottom: 54, left: 70 };
 const PLOT_WIDTH = CHART_WIDTH - CHART_MARGIN.left - CHART_MARGIN.right;
 const PLOT_HEIGHT = CHART_HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom;
+const TREND_TABLE_PAGE_SIZE = 6;
 
 function ChemicalFormula({ formula = "" }) {
   const tokens = String(formula).split(/(\d+)/).filter(Boolean);
@@ -471,6 +472,7 @@ export default function DgaTrendingSection({ samples = [], oilType = "mineral", 
     Object.fromEntries(TREND_SERIES.map((series) => [series.key, true])),
   );
   const [selectedRowKey, setSelectedRowKey] = useState(null);
+  const [tablePage, setTablePage] = useState(1);
 
   const trendRows = useMemo(() => buildTrendRows(samples, oilType), [oilType, samples]);
   const visibleTrendSeries = useMemo(
@@ -489,6 +491,19 @@ export default function DgaTrendingSection({ samples = [], oilType = "mineral", 
   const selectedRowIndex = useMemo(
     () => trendRows.findIndex((row) => row.rowKey === selectedRowKey),
     [selectedRowKey, trendRows],
+  );
+  const tableRows = useMemo(() => [...trendRows].reverse(), [trendRows]);
+  const totalTablePages = useMemo(
+    () => Math.max(1, Math.ceil(tableRows.length / TREND_TABLE_PAGE_SIZE)),
+    [tableRows.length],
+  );
+  const tableStartIndex = useMemo(
+    () => (tablePage - 1) * TREND_TABLE_PAGE_SIZE,
+    [tablePage],
+  );
+  const pagedTrendRows = useMemo(
+    () => tableRows.slice(tableStartIndex, tableStartIndex + TREND_TABLE_PAGE_SIZE),
+    [tableRows, tableStartIndex],
   );
 
   const chartMax = useMemo(() => {
@@ -514,6 +529,28 @@ export default function DgaTrendingSection({ samples = [], oilType = "mineral", 
       setSelectedRowKey(null);
     }
   }, [selectedRowKey, trendRows]);
+
+  useEffect(() => {
+    if (tablePage > totalTablePages) {
+      setTablePage(totalTablePages);
+    }
+  }, [tablePage, totalTablePages]);
+
+  useEffect(() => {
+    if (!selectedRowKey) {
+      return;
+    }
+
+    const selectedIndex = tableRows.findIndex((row) => row.rowKey === selectedRowKey);
+    if (selectedIndex < 0) {
+      return;
+    }
+
+    const nextPage = Math.floor(selectedIndex / TREND_TABLE_PAGE_SIZE) + 1;
+    if (nextPage !== tablePage) {
+      setTablePage(nextPage);
+    }
+  }, [selectedRowKey, tablePage, tableRows]);
 
   const chartPointsBySeries = useMemo(() => {
     const denominator = Math.max(1, trendRows.length - 1);
@@ -868,14 +905,17 @@ export default function DgaTrendingSection({ samples = [], oilType = "mineral", 
                   </tr>
                 </thead>
                 <tbody>
-                  {[...trendRows].reverse().map((row, index) => (
+                  {pagedTrendRows.map((row, index) => {
+                    const absoluteIndex = tableStartIndex + index;
+
+                    return (
                     <tr key={`trend-row-${row.id}-${row.date}`}>
                       <td
                         className="sticky left-0 z-10 border-b border-[#e5e9ed] px-3 py-3 align-top"
                         style={{
                           ...getRowCellStyle(
                             row.rowKey === selectedRowKey,
-                            index % 2 === 0 ? palette.tableRowEvenBg : palette.tableRowOddBg,
+                            absoluteIndex % 2 === 0 ? palette.tableRowEvenBg : palette.tableRowOddBg,
                             palette,
                             true,
                           ),
@@ -900,7 +940,7 @@ export default function DgaTrendingSection({ samples = [], oilType = "mineral", 
                           style={{
                             ...getRowCellStyle(
                               row.rowKey === selectedRowKey,
-                              index % 2 === 0 ? palette.tableRowEvenBg : palette.tableRowOddBg,
+                              absoluteIndex % 2 === 0 ? palette.tableRowEvenBg : palette.tableRowOddBg,
                               palette,
                             ),
                             borderColor: palette.tableRowBorder,
@@ -921,7 +961,7 @@ export default function DgaTrendingSection({ samples = [], oilType = "mineral", 
                           style={{
                             ...getRowCellStyle(
                               row.rowKey === selectedRowKey,
-                              index % 2 === 0 ? palette.tableRowEvenBg : palette.tableRowOddBg,
+                              absoluteIndex % 2 === 0 ? palette.tableRowEvenBg : palette.tableRowOddBg,
                               palette,
                             ),
                             borderColor: palette.tableRowBorder,
@@ -931,9 +971,66 @@ export default function DgaTrendingSection({ samples = [], oilType = "mineral", 
                         </td>
                       ))}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
+            </div>
+
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3"
+              style={{ borderColor: palette.sectionBorder }}
+            >
+              <p className="text-xs font-medium" style={{ color: palette.axisText }}>
+                Showing {tableRows.length ? tableStartIndex + 1 : 0}-{tableStartIndex + pagedTrendRows.length} of {tableRows.length} samples
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTablePage((current) => Math.max(1, current - 1))}
+                  disabled={tablePage <= 1}
+                  className="rounded-md border px-2.5 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{
+                    borderColor: palette.sectionBorder,
+                    color: palette.numberText,
+                    backgroundColor: palette.tableRowEvenBg,
+                  }}
+                >
+                  Prev
+                </button>
+                {Array.from({ length: totalTablePages }, (_, index) => index + 1).map((pageNumber) => {
+                  const isActive = pageNumber === tablePage;
+
+                  return (
+                    <button
+                      key={`trend-page-${pageNumber}`}
+                      type="button"
+                      onClick={() => setTablePage(pageNumber)}
+                      className="min-w-[30px] rounded-md border px-2.5 py-1 text-xs font-semibold transition"
+                      style={{
+                        borderColor: isActive ? palette.selectedLine : palette.sectionBorder,
+                        color: isActive ? palette.selectedLabelText : palette.numberText,
+                        backgroundColor: isActive ? palette.selectedLabelBg : palette.tableRowEvenBg,
+                      }}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setTablePage((current) => Math.min(totalTablePages, current + 1))}
+                  disabled={tablePage >= totalTablePages}
+                  className="rounded-md border px-2.5 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{
+                    borderColor: palette.sectionBorder,
+                    color: palette.numberText,
+                    backgroundColor: palette.tableRowEvenBg,
+                  }}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </div>

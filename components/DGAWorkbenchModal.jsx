@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AnalysisBoard from './dga-workbench/AnalysisBoard';
 import { OIL_OPTIONS, getStandardOptionsForOilType } from '../lib/dga/appConfig';
 import { FAULT_METADATA, analyzeSample, createEmptySample } from '../lib/dga/diagnostics';
+import { transformerService } from '../lib/transformerService';
+import { normaliseTestTypeForStorage } from '../lib/testTypeUtils';
 
 const METHOD_OPTIONS = [
   { value: 'triangle', label: 'Duval', sides: 3 },
@@ -114,7 +116,7 @@ function mapOilTestToSample(test, transformer) {
     o2: toSampleValue(test.o2),
     n2: toSampleValue(test.n2),
     transformerAge: getTransformerAge(transformer?.yearBuilt, test.testDate),
-    testType: test.testType || 'Routine',
+    testType: normaliseTestTypeForStorage(test.testType),
   };
 }
 
@@ -124,6 +126,31 @@ function formatMetricValue(value, suffix = '') {
   }
 
   return `${value}${suffix}`.trim();
+}
+
+function resolveOilType(value) {
+  return OIL_OPTIONS.some((option) => option.value === value) ? value : 'mineral';
+}
+
+function resolveMethodView(value) {
+  return METHOD_OPTIONS.some((option) => option.value === value) ? value : 'triangle';
+}
+
+function resolveGasLimitStandard(value, oilType) {
+  const options = getStandardOptionsForOilType(oilType);
+  if (options.some((option) => option.value === value)) {
+    return value;
+  }
+  return options[0]?.value ?? 'IEEE_2019';
+}
+
+function getInitialPreferences(transformer) {
+  const nextOilType = resolveOilType(transformer?.oilType);
+  return {
+    oilType: nextOilType,
+    gasLimitStandard: resolveGasLimitStandard(transformer?.gasLimitStandard, nextOilType),
+    methodView: resolveMethodView(transformer?.methodView),
+  };
 }
 
 function formatFaultZoneLabel(zone) {
@@ -203,14 +230,19 @@ export default function DGAWorkbenchModal({
   transformer,
   oilTests = [],
   selectedTestId = null,
+  onPreferencesSaved = null,
 }) {
+  const initialPreferences = getInitialPreferences(transformer);
   const [theme, setTheme] = useState(getCurrentTheme);
-  const [oilType, setOilType] = useState('mineral');
-  const [gasLimitStandard, setGasLimitStandard] = useState('IEEE_2019');
-  const [methodView, setMethodView] = useState('triangle');
+  const [oilType, setOilType] = useState(initialPreferences.oilType);
+  const [gasLimitStandard, setGasLimitStandard] = useState(initialPreferences.gasLimitStandard);
+  const [methodView, setMethodView] = useState(initialPreferences.methodView);
   const [selectedSampleId, setSelectedSampleId] = useState(selectedTestId);
   const [hoveredSample, setHoveredSample] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const [preferencesError, setPreferencesError] = useState('');
+  const savedPreferencesRef = useRef(initialPreferences);
 
   const showTooltip = (event, sample) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -227,10 +259,92 @@ export default function DGAWorkbenchModal({
   }, [selectedTestId]);
 
   useEffect(() => {
+    const nextPreferences = getInitialPreferences(transformer);
+    savedPreferencesRef.current = nextPreferences;
+    setOilType(nextPreferences.oilType);
+    setGasLimitStandard(nextPreferences.gasLimitStandard);
+    setMethodView(nextPreferences.methodView);
+    setPreferencesError('');
+  }, [transformer?.id, transformer?.oilType, transformer?.gasLimitStandard, transformer?.methodView]);
+
+  useEffect(() => {
     if (!standardOptions.some((option) => option.value === gasLimitStandard)) {
       setGasLimitStandard(standardOptions[0]?.value ?? 'IEEE_2019');
     }
   }, [gasLimitStandard, standardOptions]);
+
+  useEffect(() => {
+    if (!transformer?.id) {
+      return undefined;
+    }
+
+    if (!standardOptions.some((option) => option.value === gasLimitStandard)) {
+      return undefined;
+    }
+
+    const previous = savedPreferencesRef.current;
+    const unchanged =
+      previous.oilType === oilType &&
+      previous.gasLimitStandard === gasLimitStandard &&
+      previous.methodView === methodView;
+
+    if (unchanged) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const nextPreferences = {
+      oilType,
+      gasLimitStandard,
+      methodView,
+    };
+
+    const persistPreferences = async () => {
+      setIsSavingPreferences(true);
+      setPreferencesError('');
+      try {
+        await transformerService.updateDgaPreferences(transformer.id, nextPreferences);
+        if (cancelled) {
+          return;
+        }
+        savedPreferencesRef.current = nextPreferences;
+        if (typeof onPreferencesSaved === 'function') {
+          onPreferencesSaved(nextPreferences);
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        const rawMessage = String(error?.message || '');
+        const missingColumns =
+          rawMessage.includes('dga_oil_type') ||
+          rawMessage.includes('dga_gas_limit_standard') ||
+          rawMessage.includes('dga_method_view');
+        setPreferencesError(
+          missingColumns
+            ? 'Supabase column missing. Add dga_oil_type, dga_gas_limit_standard, and dga_method_view to transformers.'
+            : 'Unable to save DGA preferences.'
+        );
+      } finally {
+        if (!cancelled) {
+          setIsSavingPreferences(false);
+        }
+      }
+    };
+
+    persistPreferences();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    gasLimitStandard,
+    methodView,
+    oilType,
+    onPreferencesSaved,
+    standardOptions,
+    transformer?.id,
+  ]);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -395,6 +509,16 @@ export default function DGAWorkbenchModal({
               </select>
             </label>
           </div>
+        </div>
+
+        <div className="mt-3 text-xs text-[var(--muted)]">
+          {preferencesError ? (
+            <span className="text-[var(--danger-strong)]">{preferencesError}</span>
+          ) : isSavingPreferences ? (
+            <span>Saving workspace preferences to Supabase...</span>
+          ) : (
+            <span>Workspace preferences are saved per transformer.</span>
+          )}
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

@@ -4,13 +4,52 @@ import { useDropzone } from 'react-dropzone';
 import DocumentImportReviewModal from './DocumentImportReviewModal';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 import { documentService } from '../lib/documentService';
 import { extractDgaImportFromFile } from '../lib/dga-import/dgaFileImport';
 import { oilTestService } from '../lib/oilTestService';
+import { normaliseTestTypeForStorage } from '../lib/testTypeUtils';
 import { cn } from '../lib/utils';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const DGA_FIELDS = ['h2', 'ch4', 'c2h6', 'c2h4', 'c2h2', 'co', 'co2', 'o2', 'n2'];
+const ADDITIONAL_IMPORT_FIELDS = [
+  'breakdown',
+  'waterContent',
+  'acidity',
+  'interfacialTension',
+  'color',
+  'flashPoint',
+  'inhibitor',
+  'copperCorrosive',
+  'density',
+  'dbds',
+  'viscosity40',
+  'methanol',
+  'pcb',
+  'powerFactor',
+  'resistivity',
+  'specificGravity',
+  'passivator',
+  'fol2',
+  'hmf5',
+  'fal2',
+  'acf2',
+  'mef5',
+  'copperCu',
+  'ironFe',
+  'aluminumAl',
+  'estimatedDpFuran',
+  'estimatedDpMethanol',
+];
+const IMPORT_FIELDS = [...DGA_FIELDS, ...ADDITIONAL_IMPORT_FIELDS];
 const TDCG_FIELDS = ['h2', 'ch4', 'c2h2', 'c2h4', 'c2h6', 'co'];
 const STORAGE_ACCEPT = {
   'application/pdf': ['.pdf'],
@@ -119,13 +158,13 @@ function calculateTdcg(row) {
 }
 
 function hasImportedValues(row) {
-  return DGA_FIELDS.some((key) => String(row?.[key] ?? '').trim() !== '');
+  return IMPORT_FIELDS.some((key) => String(row?.[key] ?? '').trim() !== '');
 }
 
 function normaliseImportedOilTest(row) {
   const payload = {
     testDate: row.testDate,
-    testType: row.testType || 'Routine',
+    testType: normaliseTestTypeForStorage(row.testType),
     notes: row.notes?.trim() || null,
     tdcg: calculateTdcg(row),
   };
@@ -134,7 +173,33 @@ function normaliseImportedOilTest(row) {
     payload[field] = String(row?.[field] ?? '').trim();
   });
 
+  ADDITIONAL_IMPORT_FIELDS.forEach((field) => {
+    payload[field] = String(row?.[field] ?? '').trim();
+  });
+
   return payload;
+}
+
+function normaliseComparableValue(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  return String(value).trim();
+}
+
+function isSameOilTestPayload(existingTest, incomingPayload) {
+  if (!existingTest || !incomingPayload) {
+    return false;
+  }
+
+  const fieldsToCompare = ['testDate', 'testType', 'notes', 'tdcg', ...IMPORT_FIELDS];
+
+  return fieldsToCompare.every((field) => {
+    const existingValue = existingTest[field];
+    const incomingValue = incomingPayload[field];
+    return normaliseComparableValue(existingValue) === normaliseComparableValue(incomingValue);
+  });
 }
 
 function getFeedbackClasses(type) {
@@ -153,16 +218,24 @@ function DocumentSection({
   transformerId,
   transformerName,
   documents,
+  oilTests = [],
   onUpdate,
   onUpdateOilTests,
+  activeCompartment = 'Maintank',
+  onAssignDocumentCompartment,
+  onAssignOilTestCompartment,
+  availableCompartments = [],
+  getCompartmentForDocument,
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isReadingImport, setIsReadingImport] = useState(false);
   const [isSubmittingImport, setIsSubmittingImport] = useState(false);
+  const [isDeletingDocument, setIsDeletingDocument] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [importSession, setImportSession] = useState(null);
+  const [pendingDeleteDocument, setPendingDeleteDocument] = useState(null);
 
-  const isBusy = isUploading || isReadingImport || isSubmittingImport;
+  const isBusy = isUploading || isReadingImport || isSubmittingImport || isDeletingDocument;
   const hasDocuments = documents.length > 0;
 
   const refreshDocuments = useCallback(async () => {
@@ -186,19 +259,27 @@ function DocumentSection({
       setIsUploading(true);
 
       try {
-        await documentService.uploadMultiple(transformerId, files);
+        const uploadedDocuments = await documentService.uploadMultiple(transformerId, files);
+
+        if (uploadedDocuments?.length && onAssignDocumentCompartment) {
+          onAssignDocumentCompartment(
+            uploadedDocuments.map((doc) => doc.id).filter(Boolean),
+            activeCompartment
+          );
+        }
+
         await refreshDocuments();
         setFeedback({ type: 'success', text: successMessage });
-        return true;
+        return uploadedDocuments;
       } catch (error) {
         console.error('Error uploading files:', error);
         setFeedback({ type: 'error', text: 'Failed to upload the selected files. Please try again.' });
-        return false;
+        return null;
       } finally {
         setIsUploading(false);
       }
     },
-    [refreshDocuments, transformerId]
+    [activeCompartment, onAssignDocumentCompartment, refreshDocuments, transformerId]
   );
 
   const handleSelectedFiles = useCallback(
@@ -297,24 +378,46 @@ function DocumentSection({
     onDrop: handleDrop,
   });
 
-  const handleDeleteDocument = async (doc) => {
-    if (!window.confirm(`Delete ${doc.fileName || doc.name}?`)) {
+  const handleRequestDeleteDocument = (doc) => {
+    if (!doc) {
       return;
     }
 
+    setPendingDeleteDocument(doc);
+  };
+
+  const closeDeleteDialog = () => {
+    if (isDeletingDocument) {
+      return;
+    }
+
+    setPendingDeleteDocument(null);
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!pendingDeleteDocument?.id || isDeletingDocument) {
+      return;
+    }
+
+    const docToDelete = pendingDeleteDocument;
+    setIsDeletingDocument(true);
+
     try {
-      await documentService.delete(doc.id, doc.storagePath);
+      await documentService.delete(docToDelete.id, docToDelete.storagePath);
       await refreshDocuments();
       setFeedback({
         type: 'success',
-        text: `${doc.fileName || doc.name} deleted from Documents.`,
+        text: `${docToDelete.fileName || docToDelete.name} deleted from Documents.`,
       });
+      setPendingDeleteDocument(null);
     } catch (error) {
       console.error('Error deleting document:', error);
       setFeedback({
         type: 'error',
         text: 'Failed to delete the selected document.',
       });
+    } finally {
+      setIsDeletingDocument(false);
     }
   };
 
@@ -359,12 +462,12 @@ function DocumentSection({
     setIsSubmittingImport(true);
 
     try {
-      const wasStored = await uploadFilesAsDocuments(
+      const storedDocuments = await uploadFilesAsDocuments(
         [importSession.file],
         `${importSession.file.name} stored in Documents.`
       );
 
-      if (wasStored) {
+      if (storedDocuments?.length) {
         setImportSession(null);
       }
     } finally {
@@ -381,44 +484,99 @@ function DocumentSection({
       .filter((row) => row.testDate && hasImportedValues(row))
       .map(normaliseImportedOilTest);
 
-    if (validRows.length === 0) {
+    const rowsByDate = validRows.reduce((map, row) => {
+      if (row.testDate) {
+        map.set(row.testDate, row);
+      }
+      return map;
+    }, new Map());
+    const dedupedRows = Array.from(rowsByDate.values());
+
+    if (dedupedRows.length === 0) {
       setFeedback({
         type: 'error',
-        text: 'Add at least one sample with a test date and DGA values before submitting.',
+          text: 'Add at least one sample with a test date and imported values before submitting.',
       });
       return;
     }
 
     setIsSubmittingImport(true);
     let createdCount = 0;
+    let updatedCount = 0;
+    let unchangedCount = 0;
     let documentStored = false;
 
     try {
-      await documentService.upload(transformerId, importSession.file);
+      const storedDocument = await documentService.upload(transformerId, importSession.file);
+      if (storedDocument?.id && onAssignDocumentCompartment) {
+        onAssignDocumentCompartment(storedDocument.id, activeCompartment);
+      }
       documentStored = true;
 
-      for (const row of validRows) {
-        await oilTestService.create(transformerId, row);
+      const existingByDate = new Map();
+      oilTests.forEach((test) => {
+        if (!test?.testDate || existingByDate.has(test.testDate)) {
+          return;
+        }
+        existingByDate.set(test.testDate, test);
+      });
+
+      const createdTestIds = [];
+      for (const row of dedupedRows) {
+        const existingTest = existingByDate.get(row.testDate);
+
+        if (existingTest?.id) {
+          if (isSameOilTestPayload(existingTest, row)) {
+            unchangedCount += 1;
+            continue;
+          }
+
+          await oilTestService.update(existingTest.id, row);
+          updatedCount += 1;
+          existingByDate.set(row.testDate, { ...existingTest, ...row });
+          continue;
+        }
+
+        const createdTest = await oilTestService.create(transformerId, row);
+        if (createdTest?.id) {
+          createdTestIds.push(createdTest.id);
+          existingByDate.set(row.testDate, createdTest);
+        }
         createdCount += 1;
       }
 
+      if (createdTestIds.length > 0 && onAssignOilTestCompartment) {
+        onAssignOilTestCompartment(createdTestIds, activeCompartment);
+      }
+
       await Promise.all([refreshDocuments(), refreshOilTests()]);
+      const summaryParts = [];
+      if (createdCount > 0) {
+        summaryParts.push(`${createdCount} created`);
+      }
+      if (updatedCount > 0) {
+        summaryParts.push(`${updatedCount} updated`);
+      }
+      if (unchangedCount > 0) {
+        summaryParts.push(`${unchangedCount} unchanged`);
+      }
+
       setFeedback({
         type: 'success',
-        text:
-          createdCount > 1
-            ? `${createdCount} oil-test records created and the lab report was stored.`
-            : 'Oil-test record created and the lab report was stored.',
+        text: summaryParts.length > 0
+          ? `Oil-test records synced (${summaryParts.join(', ')}) and the lab report was stored.`
+          : 'Lab report was stored.',
       });
       setImportSession(null);
     } catch (error) {
       console.error('Error submitting imported oil tests:', error);
       await Promise.allSettled([refreshDocuments(), refreshOilTests()]);
+      const touchedCount = createdCount + updatedCount;
       setFeedback({
         type: 'error',
         text:
-          documentStored || createdCount > 0
-            ? `The report was stored and ${createdCount} oil-test record${createdCount === 1 ? '' : 's'} were created before the import stopped.`
+          documentStored || touchedCount > 0 || unchangedCount > 0
+            ? `The report was stored and ${createdCount} created / ${updatedCount} updated / ${unchangedCount} unchanged before the import stopped.`
             : 'Failed to submit the imported report. Please try again.',
       });
     } finally {
@@ -427,7 +585,7 @@ function DocumentSection({
   };
 
   const dropzoneLabel = isReadingImport
-    ? 'Reading DGA values from the file...'
+    ? 'Reading lab values from the file...'
     : isUploading
       ? 'Uploading documents...'
       : isDragReject
@@ -447,14 +605,19 @@ function DocumentSection({
   return (
     <div className="document-section">
       <div className="section-header">
-        <h3>Documents & Reports</h3>
+        <div className="flex items-center gap-2">
+          <h3>Documents & Reports</h3>
+          <span className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-2 py-1 text-xs font-medium text-[var(--muted)]">
+            {activeCompartment}
+          </span>
+        </div>
         <Button onClick={open} disabled={isBusy}>
           {actionButtonLabel}
         </Button>
       </div>
 
       <div className="upload-info">
-        <p>Store lab reports in Documents, or let the app read DGA values before sending them into Oil Tests.</p>
+        <p>Store lab reports in Documents, or let the app read DGA and key oil-test values before sending them into Oil Tests.</p>
         <p>Supported formats: PDF, Word, Excel, Images (JPG, PNG, WEBP, BMP). Maximum file size: 10MB per file.</p>
       </div>
 
@@ -496,7 +659,7 @@ function DocumentSection({
             <div>
               <p className="text-base font-semibold text-[var(--foreground)]">{dropzoneLabel}</p>
               <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                Upload a single PDF, Excel file, or screenshot image to review the extracted DGA results
+                Upload a single PDF, Excel file, or screenshot image to review extracted lab results
                 first. Multiple files are stored in Documents only.
               </p>
             </div>
@@ -540,10 +703,25 @@ function DocumentSection({
               </div>
 
               <div className="doc-actions">
+                {availableCompartments.length > 0 ? (
+                  <select
+                    value={getCompartmentForDocument ? getCompartmentForDocument(doc) : activeCompartment}
+                    onChange={(event) => onAssignDocumentCompartment?.(doc.id, event.target.value)}
+                    className="rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-1 text-xs text-[var(--foreground)]"
+                    title="Move to compartment"
+                  >
+                    {availableCompartments.map((compartmentName) => (
+                      <option key={compartmentName} value={compartmentName}>
+                        {compartmentName}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 <button
                   className="doc-btn view-btn"
                   onClick={() => handleViewDocument(doc)}
                   title="View document"
+                  disabled={isBusy}
                 >
                   <svg className="doc-icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -554,6 +732,7 @@ function DocumentSection({
                   className="doc-btn download-btn"
                   onClick={() => handleDownloadDocument(doc)}
                   title="Download document"
+                  disabled={isBusy}
                 >
                   <svg className="doc-icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -561,8 +740,9 @@ function DocumentSection({
                 </button>
                 <button
                   className="doc-btn delete-btn"
-                  onClick={() => handleDeleteDocument(doc)}
+                  onClick={() => handleRequestDeleteDocument(doc)}
                   title="Delete document"
+                  disabled={isBusy}
                 >
                   <svg className="doc-icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -585,6 +765,44 @@ function DocumentSection({
         onStoreOnly={handleStoreOnly}
         onSubmit={handleSubmitImportedRows}
       />
+
+      <Dialog
+        open={Boolean(pendingDeleteDocument)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeDeleteDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-[460px]" showClose={!isDeletingDocument}>
+          <DialogHeader>
+            <DialogTitle>Delete document?</DialogTitle>
+            <DialogDescription className="leading-6">
+              {pendingDeleteDocument?.fileName || pendingDeleteDocument?.name ? (
+                <>
+                  This will permanently remove{' '}
+                  <span className="font-semibold text-[var(--foreground)]">
+                    {pendingDeleteDocument.fileName || pendingDeleteDocument.name}
+                  </span>{' '}
+                  from Documents.
+                </>
+              ) : (
+                'This will permanently remove the selected document from Documents.'
+              )}{' '}
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeletingDocument}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteDocument} disabled={isDeletingDocument}>
+              {isDeletingDocument ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -11,6 +11,11 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
       click() {
         onSelect?.(transformer);
       },
+      popupclose() {
+        if (isSelected) {
+          onSelect?.(null);
+        }
+      },
       dragend() {
         const marker = markerRef.current;
         if (!marker) {
@@ -20,7 +25,7 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
         onDragEnd(transformer.id, [nextPosition.lat, nextPosition.lng]);
       },
     }),
-    [onDragEnd, onSelect, transformer]
+    [isSelected, onDragEnd, onSelect, transformer]
   );
 
   useEffect(() => {
@@ -58,7 +63,7 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
           <p className="hover-tooltip-site">{transformer.siteName || 'Unknown site'}</p>
         </div>
       </Tooltip>
-      <Popup className="transformer-popup" maxWidth={360}>
+      <Popup className="transformer-popup" maxWidth={360} autoPan={false} closeOnClick={false}>
         <div className="popup-content">
           <div className="popup-header">
             <div>

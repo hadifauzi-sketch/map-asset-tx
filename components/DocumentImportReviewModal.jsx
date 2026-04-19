@@ -12,6 +12,7 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
+import { TEST_TYPE_OPTIONS } from '../lib/testTypeUtils';
 
 const DEFAULT_TEST_TYPE = 'Routine';
 const DGA_FIELDS = [
@@ -25,6 +26,36 @@ const DGA_FIELDS = [
   { key: 'o2', label: 'O2' },
   { key: 'n2', label: 'N2' },
 ];
+const ADDITIONAL_FIELDS = [
+  { key: 'breakdown', label: 'BDV', placeholder: 'kV' },
+  { key: 'waterContent', label: 'Moisture', placeholder: 'ppm' },
+  { key: 'acidity', label: 'Acidity', placeholder: 'mgKOH/g' },
+  { key: 'interfacialTension', label: 'IFT', placeholder: 'mN/m' },
+  { key: 'color', label: 'Color', placeholder: 'ASTM', inputMode: 'text' },
+  { key: 'flashPoint', label: 'Flash Point', placeholder: 'deg C' },
+  { key: 'inhibitor', label: 'Inhibitor', placeholder: '%' },
+  { key: 'copperCorrosive', label: 'Copper Corrosive IEC', placeholder: 'e.g. 1a', inputMode: 'text' },
+  { key: 'density', label: 'Density', placeholder: 'kg/m3' },
+  { key: 'dbds', label: 'DBDS', placeholder: 'mg/kg' },
+  { key: 'viscosity40', label: 'Viscosity @40C', placeholder: 'cSt' },
+  { key: 'methanol', label: 'Methanol', placeholder: 'ppm' },
+  { key: 'pcb', label: 'PCB', placeholder: 'ppm' },
+  { key: 'powerFactor', label: 'Power Factor', placeholder: 'ratio' },
+  { key: 'resistivity', label: 'Resistivity', placeholder: 'GOhm-m' },
+  { key: 'specificGravity', label: 'Specific Gravity', placeholder: 'value' },
+  { key: 'passivator', label: 'Passivator', placeholder: 'ppm' },
+  { key: 'fol2', label: '2-FOL', placeholder: 'ppb' },
+  { key: 'hmf5', label: '5-HMF', placeholder: 'ppb' },
+  { key: 'fal2', label: '2-FAL', placeholder: 'ppb' },
+  { key: 'acf2', label: '2-ACF', placeholder: 'ppb' },
+  { key: 'mef5', label: '5-MEF', placeholder: 'ppb' },
+  { key: 'copperCu', label: 'Copper (Cu)', placeholder: 'ppm' },
+  { key: 'ironFe', label: 'Iron (Fe)', placeholder: 'ppm' },
+  { key: 'aluminumAl', label: 'Aluminum (Al)', placeholder: 'ppm' },
+  { key: 'estimatedDpFuran', label: 'DP from Furan', placeholder: 'value' },
+  { key: 'estimatedDpMethanol', label: 'DP from Methanol', placeholder: 'value' },
+];
+const IMPORT_FIELDS = [...DGA_FIELDS, ...ADDITIONAL_FIELDS];
 const TDCG_FIELDS = ['h2', 'ch4', 'c2h2', 'c2h4', 'c2h6', 'co'];
 const SELECT_CLASS_NAME =
   'flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:opacity-50';
@@ -64,7 +95,7 @@ function buildDraftRows(importResult, file) {
       notes: buildImportNotes(file, importResult),
     };
 
-    DGA_FIELDS.forEach(({ key }) => {
+    IMPORT_FIELDS.forEach(({ key }) => {
       row[key] = sample[key] ?? '';
     });
 
@@ -72,8 +103,8 @@ function buildDraftRows(importResult, file) {
   });
 }
 
-function hasAnyGasValue(row) {
-  return DGA_FIELDS.some(({ key }) => String(row?.[key] ?? '').trim() !== '');
+function hasAnyImportedValue(row) {
+  return IMPORT_FIELDS.some(({ key }) => String(row?.[key] ?? '').trim() !== '');
 }
 
 function calculateTdcg(row) {
@@ -129,7 +160,7 @@ function DocumentImportReviewModal({
   }, [file, importResult, open]);
 
   const validDraftCount = useMemo(
-    () => draftRows.filter((row) => row.testDate && hasAnyGasValue(row)).length,
+    () => draftRows.filter((row) => row.testDate && hasAnyImportedValue(row)).length,
     [draftRows]
   );
 
@@ -255,9 +286,11 @@ function DocumentImportReviewModal({
                               onChange={(event) => handleRowChange(rowIndex, 'testType', event.target.value)}
                               disabled={isSubmitting}
                             >
-                              <option value="Routine">Routine</option>
-                              <option value="Special">Special</option>
-                              <option value="Emergency">Emergency</option>
+                              {TEST_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
                             </select>
                           </div>
 
@@ -269,6 +302,20 @@ function DocumentImportReviewModal({
                               <Input
                                 inputMode="decimal"
                                 placeholder="ppm"
+                                value={row[field.key]}
+                                onChange={(event) => handleRowChange(rowIndex, field.key, event.target.value)}
+                                disabled={isSubmitting}
+                              />
+                            </div>
+                          ))}
+                          {ADDITIONAL_FIELDS.map((field) => (
+                            <div key={`${row.localId}-${field.key}`} className="space-y-1.5">
+                              <label className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                                {field.label}
+                              </label>
+                              <Input
+                                inputMode={field.inputMode || 'decimal'}
+                                placeholder={field.placeholder}
                                 value={row[field.key]}
                                 onChange={(event) => handleRowChange(rowIndex, field.key, event.target.value)}
                                 disabled={isSubmitting}
@@ -300,7 +347,7 @@ function DocumentImportReviewModal({
             </div>
           ) : (
             <div className="rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card-muted)] px-4 py-10 text-center text-sm text-[var(--muted)]">
-              The file can still be stored as a lab document even though no DGA data is ready to import.
+              The file can still be stored as a lab document even though no importable lab data is ready.
             </div>
           )}
         </div>

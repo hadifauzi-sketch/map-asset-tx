@@ -5,8 +5,13 @@
       "mcp__serena__initial_instructions",
       "mcp__serena__read_memory",
       "Read(//f/Project Lab/DGA Calculator new/**)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "mcp__serena__list_memories",
+      "mcp__serena__search_for_pattern",
+      "mcp__serena__get_symbols_overview"
     ]
   },
-  "enabledMcpjsonServers": ["serena"]
+  "enabledMcpjsonServers": [
+    "serena"
+  ]
 }

@@ -257,7 +257,7 @@ const FullHistoryTable = ({ data }) => {
 };
 
 // --- MAIN COMPONENT ---
-export default function DataTrending({ oilTests, transformer }) {
+export default function DataTrending({ oilTests, transformer, compartmentLabel = '' }) {
   const chartData = useMemo(() => mapOilTestsToChartData(oilTests), [oilTests]);
 
   if (!oilTests || oilTests.length === 0) {
@@ -291,6 +291,7 @@ export default function DataTrending({ oilTests, transformer }) {
           <div className="trending-asset-right">
             <span className="trending-asset-tag">Maker: {transformer.maker || '-'}</span>
             <span className="trending-asset-tag">Year: {transformer.yearBuilt || '-'}</span>
+            {compartmentLabel ? <span className="trending-asset-tag">Compartment: {compartmentLabel}</span> : null}
             <span className="trending-asset-tag">{chartData.length} Samples</span>
           </div>
         </div>

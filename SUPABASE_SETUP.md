@@ -223,6 +223,17 @@ ADD COLUMN IF NOT EXISTS state TEXT;
 CREATE INDEX IF NOT EXISTS idx_transformers_state ON transformers(state);
 ```
 
+## DGA Workspace Preference Migration
+
+If you want to persist each transformer's DGA workspace selections (insulating liquid, gas limit standard, and method view), run this once:
+
+```sql
+ALTER TABLE transformers
+ADD COLUMN IF NOT EXISTS dga_oil_type TEXT,
+ADD COLUMN IF NOT EXISTS dga_gas_limit_standard TEXT,
+ADD COLUMN IF NOT EXISTS dga_method_view TEXT;
+```
+
 ## 🔒 Security Notes (Production)
 
 For production use, you should:

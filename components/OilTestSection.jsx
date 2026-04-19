@@ -1,6 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { oilTestService } from '../lib/oilTestService';
 import DGAWorkbenchModal from './DGAWorkbenchModal';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { normaliseTestTypeForStorage, TEST_TYPE_OPTIONS } from '../lib/testTypeUtils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+
+const DELETE_ALL_CONFIRM_PHRASE = 'DELETE ALL';
 
 // DP estimation formulas
 function calculateDpFromFuran(fal2) {
@@ -104,12 +117,25 @@ function getResultValue(value) {
   return hasResultValue(value) ? String(value) : '-';
 }
 
-function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
+function OilTestSection({
+  transformerId,
+  oilTests,
+  onUpdate,
+  transformer,
+  activeCompartment = 'Maintank',
+  onAssignCompartment,
+}) {
   const [isAddingTest, setIsAddingTest] = useState(false);
   const [editingTest, setEditingTest] = useState(null);
   const [expandedTests, setExpandedTests] = useState({});
   const [viewingTest, setViewingTest] = useState(null);
   const [dgaTest, setDgaTest] = useState(null);
+  const [dgaPreferencesOverride, setDgaPreferencesOverride] = useState(null);
+  const [pendingDeleteTest, setPendingDeleteTest] = useState(null);
+  const [isDeletingTest, setIsDeletingTest] = useState(false);
+  const [pendingDeleteAllTestIds, setPendingDeleteAllTestIds] = useState([]);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
+  const [isDeletingAllTests, setIsDeletingAllTests] = useState(false);
   const [formData, setFormData] = useState({
     testDate: new Date().toISOString().split('T')[0],
     testType: 'Routine',
@@ -157,6 +183,21 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
     estimatedDpMethanol: '',
     notes: '',
   });
+
+  useEffect(() => {
+    setDgaPreferencesOverride(null);
+  }, [transformer?.id]);
+
+  const transformerForWorkbench = useMemo(() => {
+    if (!transformer || !dgaPreferencesOverride) {
+      return transformer;
+    }
+
+    return {
+      ...transformer,
+      ...dgaPreferencesOverride,
+    };
+  }, [dgaPreferencesOverride, transformer]);
 
   // Auto-calculate TDCG and DP estimates when relevant fields change
   const computedTdcg = useMemo(() => calculateTdcg(formData), [formData.h2, formData.ch4, formData.c2h2, formData.c2h4, formData.c2h6, formData.co]);
@@ -213,7 +254,10 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
   const handleEditTest = (test) => {
     setEditingTest(test);
     setIsAddingTest(true);
-    setFormData(test);
+    setFormData({
+      ...test,
+      testType: normaliseTestTypeForStorage(test?.testType),
+    });
   };
 
   const handleChange = (e) => {
@@ -236,12 +280,20 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
     };
     
     try {
+      let changedTestId = null;
+
       if (editingTest && editingTest.id) {
         // Update existing test in Supabase
         await oilTestService.update(editingTest.id, submitData);
+        changedTestId = editingTest.id;
       } else {
         // Create new test in Supabase
-        await oilTestService.create(transformerId, submitData);
+        const createdTest = await oilTestService.create(transformerId, submitData);
+        changedTestId = createdTest?.id || null;
+      }
+
+      if (changedTestId && onAssignCompartment) {
+        onAssignCompartment(changedTestId, activeCompartment);
       }
       
       // Reload tests from database
@@ -256,18 +308,82 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
     }
   };
 
-  const handleDeleteTest = async (testId) => {
-    if (window.confirm('Are you sure you want to delete this oil test record?')) {
-      try {
-        await oilTestService.delete(testId);
-        
-        // Reload tests from database
-        const updatedTests = await oilTestService.getByTransformerId(transformerId);
-        onUpdate(transformerId, updatedTests);
-      } catch (error) {
-        console.error('Error deleting oil test:', error);
-        alert('Failed to delete oil test. Please try again.');
-      }
+  const handleRequestDeleteTest = (test) => {
+    if (!test) {
+      return;
+    }
+
+    setPendingDeleteTest(test);
+  };
+
+  const closeDeleteTestDialog = () => {
+    if (isDeletingTest) {
+      return;
+    }
+
+    setPendingDeleteTest(null);
+  };
+
+  const handleDeleteTest = async () => {
+    if (!pendingDeleteTest?.id || isDeletingTest) {
+      return;
+    }
+
+    setIsDeletingTest(true);
+
+    try {
+      await oilTestService.delete(pendingDeleteTest.id);
+
+      // Reload tests from database
+      const updatedTests = await oilTestService.getByTransformerId(transformerId);
+      onUpdate(transformerId, updatedTests);
+      setPendingDeleteTest(null);
+    } catch (error) {
+      console.error('Error deleting oil test:', error);
+      alert('Failed to delete oil test. Please try again.');
+    } finally {
+      setIsDeletingTest(false);
+    }
+  };
+
+  const handleRequestDeleteAllTests = () => {
+    if (isDeletingAllTests || isDeletingTest || oilTests.length === 0) {
+      return;
+    }
+
+    const testIds = oilTests.map((test) => test?.id).filter((id) => id !== null && id !== undefined);
+    setPendingDeleteAllTestIds(testIds);
+    setDeleteAllConfirmText('');
+  };
+
+  const closeDeleteAllDialog = (forceClose = false) => {
+    if (isDeletingAllTests && !forceClose) {
+      return;
+    }
+
+    setPendingDeleteAllTestIds([]);
+    setDeleteAllConfirmText('');
+  };
+
+  const handleDeleteAllTests = async () => {
+    const isConfirmed = deleteAllConfirmText.trim() === DELETE_ALL_CONFIRM_PHRASE;
+
+    if (!isConfirmed || pendingDeleteAllTestIds.length === 0 || isDeletingAllTests) {
+      return;
+    }
+
+    setIsDeletingAllTests(true);
+
+    try {
+      await oilTestService.deleteMany(pendingDeleteAllTestIds);
+      const updatedTests = await oilTestService.getByTransformerId(transformerId);
+      onUpdate(transformerId, updatedTests);
+      closeDeleteAllDialog(true);
+    } catch (error) {
+      console.error('Error deleting all oil tests:', error);
+      alert('Failed to delete all oil test records. Please try again.');
+    } finally {
+      setIsDeletingAllTests(false);
     }
   };
 
@@ -476,8 +592,8 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
       </div>
 
       <div className="result-section">
-        <h4>Notes</h4>
-        <p className="test-notes">{test.notes || 'No notes'}</p>
+        <h4>Assessment</h4>
+        <p className="test-notes">{test.notes || 'No assessment recorded.'}</p>
       </div>
     </div>
   );
@@ -495,6 +611,15 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
 
     return (
       <div className="test-results">
+        <section className="result-section result-section-notes">
+          <div className="result-section-header">
+            <div>
+              <h4>Assessment</h4>
+            </div>
+          </div>
+          <p className="test-notes">{test.notes || 'No assessment recorded for this sample.'}</p>
+        </section>
+
         <div className="test-overview-grid">
           {overviewMetrics.map((metric) => (
             <div key={metric.label} className="test-overview-card">
@@ -536,16 +661,6 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
             </section>
           );
         })}
-
-        <section className="result-section result-section-notes">
-          <div className="result-section-header">
-            <div>
-              <p className="result-section-eyebrow">Engineer remarks</p>
-              <h4>Notes</h4>
-            </div>
-          </div>
-          <p className="test-notes">{test.notes || 'No notes recorded for this sample.'}</p>
-        </section>
       </div>
     );
   };
@@ -564,7 +679,7 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
                 <div className="test-view-heading">
                   <div className="test-view-heading-main">
                     <h3>Oil Test Result</h3>
-                    <span className="test-type-badge">{viewingTest.testType}</span>
+                    <span className="test-type-badge">{normaliseTestTypeForStorage(viewingTest.testType)}</span>
                     <span className="test-view-date">
                       Sampled {new Date(viewingTest.testDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </span>
@@ -601,7 +716,7 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 <h3>DGA Analysis</h3>
-                <span className="test-type-badge">{dgaTest.testType}</span>
+                <span className="test-type-badge">{normaliseTestTypeForStorage(dgaTest.testType)}</span>
                 <span className="test-view-date">
                   📅 {new Date(dgaTest.testDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </span>
@@ -614,22 +729,138 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
             </div>
             <div className="heptagon-fullscreen-body">
               <DGAWorkbenchModal
-                transformer={transformer}
+                transformer={transformerForWorkbench}
                 oilTests={oilTests}
                 selectedTestId={dgaTest.id}
+                onPreferencesSaved={(preferences) => {
+                  setDgaPreferencesOverride(preferences);
+                }}
               />
             </div>
           </div>
         </div>
       )}
 
+      <Dialog
+        open={Boolean(pendingDeleteTest)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeDeleteTestDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-[460px]" showClose={!isDeletingTest}>
+          <DialogHeader>
+            <DialogTitle>Delete oil test record?</DialogTitle>
+            <DialogDescription className="leading-6">
+              {pendingDeleteTest?.testDate ? (
+                <>
+                  This will permanently remove the oil test sampled on{' '}
+                  <span className="font-semibold text-[var(--foreground)]">
+                    {new Date(pendingDeleteTest.testDate).toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </span>
+                  {pendingDeleteTest?.testType ? ` (${normaliseTestTypeForStorage(pendingDeleteTest.testType)})` : ''}.
+                </>
+              ) : (
+                'This will permanently remove the selected oil test record.'
+              )}{' '}
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteTestDialog} disabled={isDeletingTest}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteTest} disabled={isDeletingTest}>
+              {isDeletingTest ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDeleteAllTestIds.length > 0}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeDeleteAllDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-[520px]" showClose={!isDeletingAllTests}>
+          <DialogHeader>
+            <DialogTitle>Delete all oil test records?</DialogTitle>
+            <DialogDescription className="leading-6">
+              This will permanently remove{' '}
+              <span className="font-semibold text-[var(--foreground)]">
+                {pendingDeleteAllTestIds.length} oil test record{pendingDeleteAllTestIds.length === 1 ? '' : 's'}
+              </span>{' '}
+              from{' '}
+              <span className="font-semibold text-[var(--foreground)]">{activeCompartment}</span>. This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 px-5 py-4">
+            <label htmlFor="delete-all-confirm" className="text-sm font-medium text-[var(--foreground)]">
+              Type <span className="font-bold">{DELETE_ALL_CONFIRM_PHRASE}</span> to confirm
+            </label>
+            <Input
+              id="delete-all-confirm"
+              value={deleteAllConfirmText}
+              onChange={(event) => setDeleteAllConfirmText(event.target.value)}
+              placeholder={DELETE_ALL_CONFIRM_PHRASE}
+              autoComplete="off"
+              spellCheck={false}
+              autoFocus
+              disabled={isDeletingAllTests}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteAllDialog} disabled={isDeletingAllTests}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAllTests}
+              disabled={isDeletingAllTests || deleteAllConfirmText.trim() !== DELETE_ALL_CONFIRM_PHRASE}
+            >
+              {isDeletingAllTests ? 'Deleting...' : 'Delete all'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {!isAddingTest ? (
         <>
           <div className="section-header">
-            <h3>Oil Test Records</h3>
-            <button className="btn-add-small" onClick={handleAddTest}>
-              + Add Test Record
-            </button>
+            <div className="flex items-center gap-2">
+              <h3>Oil Test Records</h3>
+              <span className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-2 py-1 text-xs font-medium text-[var(--muted)]">
+                {activeCompartment}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleRequestDeleteAllTests}
+                disabled={oilTests.length === 0 || isDeletingAllTests || isDeletingTest}
+              >
+                Delete all
+              </Button>
+              <button
+                className="btn-add-small"
+                onClick={handleAddTest}
+                disabled={isDeletingAllTests || isDeletingTest}
+              >
+                + Add Test Record
+              </button>
+            </div>
           </div>
 
           {oilTests.length === 0 ? (
@@ -644,7 +875,7 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
             </div>
           ) : (
             <div className="test-list">
-              {oilTests.map(test => (
+              {oilTests.map((test) => (
                 <div key={test.id} className={`test-card ${expandedTests[test.id] ? 'expanded' : ''}`}>
                   {/* Compact header - click to expand/collapse */}
                   <div className="test-card-header" onClick={() => toggleExpand(test.id)}>
@@ -658,7 +889,7 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
                       <span className="test-card-date">
                         {new Date(test.testDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
-                      <span className="test-type-badge">{test.testType}</span>
+                      <span className="test-type-badge">{normaliseTestTypeForStorage(test.testType)}</span>
                     </div>
                     <div className="test-card-summary">
                       {getTestSummary(test).map((item, i) => (
@@ -701,7 +932,8 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
                     </button>
                     <button 
                       className="btn-delete-small"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteTest(test.id); }}
+                      onClick={(e) => { e.stopPropagation(); handleRequestDeleteTest(test); }}
+                      disabled={isDeletingTest || isDeletingAllTests}
                     >
                       Delete
                     </button>
@@ -722,6 +954,7 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
         <form onSubmit={handleSubmit} className="test-form">
           <div className="form-header">
             <h3>{editingTest ? 'Edit Test Record' : 'Add Test Record'}</h3>
+            <p className="text-sm text-[var(--muted)]">Compartment: {activeCompartment}</p>
           </div>
 
           <div className="form-section">
@@ -747,10 +980,11 @@ function OilTestSection({ transformerId, oilTests, onUpdate, transformer }) {
                   onChange={handleChange}
                   required
                 >
-                  <option value="Routine">Routine</option>
-                  <option value="Special">Special</option>
-                  <option value="Emergency">Emergency</option>
-                  <option value="Commissioning">Commissioning</option>
+                  {TEST_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
