@@ -1,0 +1,3 @@
+-- Seed file for local development
+-- Add sample data here if needed for local testing
+-- Example: insert into public.transformers (site_name, tx_name, voltage, latitude, longitude) values ('Test Site', 'TX-01', '132kV', 3.139, 101.687);

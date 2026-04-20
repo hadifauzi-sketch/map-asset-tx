@@ -42,3 +42,7 @@ Backup/
 
 # Dev server logs
 .devserver*.log
+
+# Supabase local dev
+supabase/.branches
+supabase/.temp

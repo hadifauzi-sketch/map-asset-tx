@@ -80,7 +80,14 @@ function TransformerModal({ open, transformer, onSave, onClose }) {
 
         <form onSubmit={handleSubmit} className="space-y-5 px-5 py-5">
           <section className="grid gap-4 md:grid-cols-2">
-            <Field label="Site name" name="siteName" required value={formData.siteName} onChange={handleChange} placeholder="Substation Alpha" />
+            <Field
+              label="Company / site name"
+              name="siteName"
+              required
+              value={formData.siteName}
+              onChange={handleChange}
+              placeholder="Kedah Cement"
+            />
             <SelectField
               label="State / territory"
               name="state"

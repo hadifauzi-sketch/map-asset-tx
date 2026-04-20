@@ -235,16 +235,24 @@ textarea {
 }
 
 .leaflet-popup-content-wrapper {
-  background: var(--card) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 8px !important;
-  box-shadow: var(--shadow-card) !important;
+  background: color-mix(in srgb, var(--card) 86%, transparent) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.5) !important;
+  backdrop-filter: blur(18px) saturate(1.5) !important;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.10) !important;
   color: var(--foreground) !important;
 }
 
+.leaflet-popup-tip-container {
+  -webkit-filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12));
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12));
+}
+
 .leaflet-popup-tip {
-  background: var(--card) !important;
-  border: 1px solid var(--border) !important;
+  background: color-mix(in srgb, var(--card) 86%, transparent) !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .leaflet-popup-content {
@@ -339,17 +347,20 @@ textarea {
 
 .popup-action {
   min-height: 34px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--card-muted);
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--card-muted) 70%, transparent);
   color: var(--foreground);
   font-size: 12px;
   font-weight: 600;
   transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 
 .popup-action:hover {
   background: var(--card-strong);
+  border-color: var(--border);
 }
 
 .popup-action-primary {
@@ -1243,4 +1254,355 @@ textarea {
     flex: 1;
     width: auto;
   }
+}
+
+.indoor-plan-preview {
+  overflow: hidden;
+}
+
+.indoor-equipment-marker,
+.indoor-room-label-marker {
+  background: transparent;
+  border: 0;
+}
+
+.indoor-equipment-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--indoor-equipment-color), white 12%),
+    var(--indoor-equipment-color)
+  );
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  color: #ffffff;
+}
+
+.indoor-equipment-short {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.indoor-room-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.92);
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  box-shadow: var(--shadow-card);
+  padding: 5px 10px;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dark .indoor-room-label {
+  background: rgba(25, 29, 27, 0.94);
+  border-color: rgba(241, 234, 219, 0.12);
+}
+
+.indoor-footprint-tooltip.leaflet-tooltip,
+.indoor-equipment-tooltip.leaflet-tooltip {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  color: var(--foreground);
+  padding: 6px 8px;
+}
+
+.indoor-footprint-tooltip.leaflet-tooltip-top:before,
+.indoor-equipment-tooltip.leaflet-tooltip-top:before {
+  border-top-color: var(--card);
+}
+
+.indoor-plan-popup .leaflet-popup-content-wrapper {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  color: var(--foreground);
+  padding: 0;
+}
+
+.indoor-plan-popup .leaflet-popup-content {
+  margin: 0;
+}
+
+.indoor-plan-popup .leaflet-popup-tip {
+  background: var(--card);
+}
+
+.indoor-plan-popup-content {
+  min-width: 280px;
+  padding: 14px;
+}
+
+.indoor-plan-popup-eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.indoor-plan-popup-title {
+  margin: 6px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.indoor-plan-popup-copy {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.indoor-plan-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--card-muted);
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 6px 9px;
+}
+
+.indoor-editor-board {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--background), white 4%),
+    color-mix(in srgb, var(--background), black 2%)
+  );
+  touch-action: none;
+}
+
+.floor-plan-label-marker,
+.floor-plan-vertex-marker {
+  background: transparent;
+  border: 0;
+}
+
+.floor-plan-label-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 94px;
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.94);
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  box-shadow: var(--shadow-card);
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dark .floor-plan-label-shell {
+  background: rgba(25, 29, 27, 0.94);
+  border-color: rgba(241, 234, 219, 0.12);
+}
+
+.floor-plan-label-shell:empty {
+  min-width: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #2563eb;
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  padding: 0;
+}
+
+.floor-plan-vertex-shell {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #2563eb;
+  border: 3px solid rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.34);
+}
+
+.floor-plan-tooltip.leaflet-tooltip {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  color: var(--foreground);
+  padding: 6px 8px;
+}
+
+.floor-plan-tooltip.leaflet-tooltip-top:before {
+  border-top-color: var(--card);
+}
+
+.floor-plan-popup .leaflet-popup-content-wrapper {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  color: var(--foreground);
+  padding: 0;
+}
+
+.floor-plan-popup .leaflet-popup-content {
+  margin: 0;
+}
+
+.floor-plan-popup .leaflet-popup-tip {
+  background: var(--card);
+}
+
+.floor-plan-popup-content {
+  min-width: 280px;
+  padding: 14px;
+}
+
+.floor-plan-popup-eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.floor-plan-popup-title {
+  margin: 6px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.floor-plan-popup-copy {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.floor-plan-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--card-muted);
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 6px 9px;
+}
+
+/* ── Floor Plan Detail Modal ────────────────────────────── */
+
+.floor-detail-modal [data-radix-dialog-content] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Crosshair cursor when in add-transformer mode */
+.floor-detail-add-mode .leaflet-container {
+  cursor: crosshair !important;
+}
+
+/* Transformer popup inside the detail modal */
+.floor-detail-tx-popup-wrap .leaflet-popup-content-wrapper {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  color: var(--foreground);
+  padding: 0;
+}
+
+.floor-detail-tx-popup-wrap .leaflet-popup-content {
+  margin: 0;
+}
+
+.floor-detail-tx-popup-wrap .leaflet-popup-tip {
+  background: var(--card);
+}
+
+.floor-detail-tx-popup {
+  padding: 12px 14px 14px;
+  min-width: 200px;
+}
+
+.floor-detail-tx-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.floor-detail-tx-site {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 3px 0 0;
+}
+
+.floor-detail-tx-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.floor-detail-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.floor-detail-action-primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.floor-detail-action-primary:hover {
+  opacity: 0.88;
+}
+
+.floor-detail-action-outline {
+  background: transparent;
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.floor-detail-action-outline:hover {
+  background: var(--card-muted);
+}
+
+.floor-detail-action-danger {
+  background: transparent;
+  color: var(--danger-strong, #dc2626);
+  border-color: var(--danger-strong, #dc2626);
+}
+
+.floor-detail-action-danger:hover {
+  background: color-mix(in srgb, var(--danger-strong, #dc2626) 10%, transparent);
 }

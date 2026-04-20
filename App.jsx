@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -9,6 +9,7 @@ import {
   Map as MapIcon,
   MapPin,
   Menu,
+  Move,
   Power,
   Satellite,
   TestTubeDiagonal,
@@ -18,11 +19,22 @@ import TransformerMarker from './components/TransformerMarker';
 import TransformerSidebar from './components/TransformerSidebar';
 import TransformerModal from './components/TransformerModal';
 import TransformerDetailModal from './components/TransformerDetailModal';
+import FloorPlanMapLayer from './components/FloorPlanMapLayer';
+import FloorPlanMetadataDialog from './components/FloorPlanMetadataDialog';
+import FloorPlanDetailModal from './components/FloorPlanDetailModal';
 import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog';
 import { analyzeSample } from './lib/dga/diagnostics';
+import {
+  createDraftFloorPlan,
+  findTransformersInsidePolygon,
+  getPolygonCentroid,
+  normalizeFloorPlan,
+} from './lib/floorPlanStorage';
+import { floorPlanService } from './lib/floorPlanService';
+import { getTransformerState } from './lib/malaysiaStates';
 import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
 import { isSupabaseConfigured } from './lib/supabaseClient';
@@ -245,6 +257,16 @@ function App() {
   });
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
   const [isSidebarInteracting, setIsSidebarInteracting] = useState(false);
+  const [floorPlans, setFloorPlans] = useState([]);
+  const [showFloorPlans, setShowFloorPlans] = useState(true);
+  const [selectedFloorPlanId, setSelectedFloorPlanId] = useState(null);
+  const [floorPlanDraft, setFloorPlanDraft] = useState(null);
+  const [isFloorPlanDialogOpen, setIsFloorPlanDialogOpen] = useState(false);
+  const [floorPlanDialogDraft, setFloorPlanDialogDraft] = useState(null);
+  const [floorDetailFloorPlanId, setFloorDetailFloorPlanId] = useState(null);
+  const [isFloorDetailModalOpen, setIsFloorDetailModalOpen] = useState(false);
+  const [isDraggable, setIsDraggable] = useState(false);
+  const pendingFloorAssignment = useRef(null);
 
   const activateSidebarInteraction = () => {
     setIsSidebarInteracting(true);
@@ -288,6 +310,7 @@ function App() {
     }
 
     loadTransformers();
+    loadFloorPlans();
   }, []);
 
   useEffect(() => {
@@ -420,6 +443,36 @@ function App() {
     }
   }, [selectedTransformer]);
 
+  const floorPlanByTransformerId = useMemo(() => {
+    const assignments = new Map();
+    floorPlans.forEach((floorPlan) => {
+      floorPlan.transformerIds.forEach((transformerId) => {
+        assignments.set(String(transformerId), floorPlan);
+      });
+    });
+    return assignments;
+  }, [floorPlans]);
+
+  const floorDetailFloorPlan = useMemo(
+    () => floorDetailFloorPlanId ? floorPlans.find((fp) => fp.id === floorDetailFloorPlanId) || null : null,
+    [floorPlans, floorDetailFloorPlanId]
+  );
+
+  const selectedFloorPlan = useMemo(
+    () => floorPlans.find((floorPlan) => floorPlan.id === selectedFloorPlanId) || null,
+    [floorPlans, selectedFloorPlanId]
+  );
+
+  const selectedFloorTransformers = useMemo(
+    () =>
+      selectedFloorPlan
+        ? selectedFloorPlan.transformerIds
+            .map((transformerId) => transformers.find((transformer) => String(transformer.id) === String(transformerId)))
+            .filter(Boolean)
+        : [],
+    [selectedFloorPlan, transformers]
+  );
+
   const focusTransformer = (transformer, zoom = 15) => {
     const latitude = Number(transformer?.position?.[0]);
     const longitude = Number(transformer?.position?.[1]);
@@ -431,11 +484,72 @@ function App() {
     setMapCenter(nextCenter);
     setMapZoom(zoom);
     setSelectedTransformer(transformer);
+    setSelectedFloorPlanId(null);
     deactivateSidebarInteraction();
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
   };
+
+  const focusFloorPlan = (floorPlan, zoom = 18) => {
+    const centroid = getPolygonCentroid(floorPlan?.points || []);
+    setMapCenter(centroid || [...DEFAULT_CENTER]);
+    setMapZoom(zoom);
+    setSelectedFloorPlanId(floorPlan?.id || null);
+    setSelectedTransformer(null);
+    deactivateSidebarInteraction();
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const loadFloorPlans = async () => {
+    try {
+      await floorPlanService.migrateFromLocalStorage();
+      const data = await floorPlanService.getAll();
+      setFloorPlans(data);
+    } catch (err) {
+      console.error('Failed to load floor plans:', err);
+    }
+  };
+
+  const handleOpenFloorDetail = useCallback((floorPlan) => {
+    if (!floorPlan) return;
+    setFloorDetailFloorPlanId(floorPlan.id);
+    setIsFloorDetailModalOpen(true);
+  }, []);
+
+  const handleRemoveTransformerFromFloor = useCallback(async (floorPlanId, transformerId) => {
+    const floorPlan = floorPlans.find((fp) => fp.id === floorPlanId);
+    if (!floorPlan) return;
+    const updatedIds = floorPlan.transformerIds.filter((id) => String(id) !== String(transformerId));
+    try {
+      await floorPlanService.updateTransformerIds(floorPlanId, updatedIds);
+      setFloorPlans((prev) =>
+        prev.map((fp) => fp.id === floorPlanId ? { ...fp, transformerIds: updatedIds } : fp)
+      );
+    } catch (err) {
+      console.error('Failed to remove transformer from floor:', err);
+      window.alert('Failed to update floor plan. Please try again.');
+    }
+  }, [floorPlans]);
+
+  const handleFloorDetailAddTransformer = useCallback((position, floorPlanId) => {
+    pendingFloorAssignment.current = floorPlanId;
+    setEditingTransformer({
+      position,
+      siteName: '',
+      state: '',
+      txName: '',
+      mnemonic: '',
+      serialNumber: '',
+      voltage: '',
+      loadMVA: '',
+      maker: '',
+      yearBuilt: '',
+    });
+    setIsModalOpen(true);
+  }, []);
 
   const loadTransformers = async () => {
     try {
@@ -443,6 +557,9 @@ function App() {
       setError(null);
       const data = await transformerService.getAll();
       setTransformers(data);
+      setSelectedTransformer((currentSelected) =>
+        currentSelected ? data.find((transformer) => transformer.id === currentSelected.id) || currentSelected : currentSelected
+      );
     } catch (err) {
       console.error('Failed to load transformers:', err);
       setError('Failed to load transformers. Please check your database connection and Supabase policies.');
@@ -452,6 +569,18 @@ function App() {
   };
 
   const handleMapClick = (event) => {
+    if (floorPlanDraft) {
+      setFloorPlanDraft((current) =>
+        current
+          ? {
+              ...current,
+              points: [...current.points, [event.latlng.lat, event.latlng.lng]],
+            }
+          : current
+      );
+      return;
+    }
+
     if (!isAddMode) {
       return;
     }
@@ -479,7 +608,19 @@ function App() {
       if (editingTransformer?.id) {
         await transformerService.update(editingTransformer.id, transformerData);
       } else {
-        await transformerService.create(transformerData);
+        const newTransformer = await transformerService.create(transformerData);
+        if (pendingFloorAssignment.current && newTransformer?.id) {
+          const targetFloorId = pendingFloorAssignment.current;
+          pendingFloorAssignment.current = null;
+          const targetFloor = floorPlans.find((fp) => fp.id === targetFloorId);
+          if (targetFloor) {
+            const updatedIds = [...new Set([...targetFloor.transformerIds, String(newTransformer.id)])];
+            await floorPlanService.updateTransformerIds(targetFloorId, updatedIds);
+            setFloorPlans((prev) =>
+              prev.map((fp) => fp.id === targetFloorId ? { ...fp, transformerIds: updatedIds } : fp)
+            );
+          }
+        }
       }
 
       await loadTransformers();
@@ -496,6 +637,7 @@ function App() {
   const handleEditTransformer = (transformer) => {
     setEditingTransformer(transformer);
     setIsModalOpen(true);
+    setSelectedFloorPlanId(null);
   };
 
   const handleDeleteTransformer = async (id) => {
@@ -509,6 +651,24 @@ function App() {
     try {
       setLoading(true);
       await transformerService.delete(id);
+      const affectedFloors = floorPlans.filter((plan) =>
+        plan.transformerIds.some((tid) => String(tid) === String(id))
+      );
+      await Promise.all(
+        affectedFloors.map((plan) =>
+          floorPlanService.updateTransformerIds(
+            plan.id,
+            plan.transformerIds.filter((tid) => String(tid) !== String(id))
+          )
+        )
+      );
+      const nextFloorPlans = floorPlans.map((floorPlan) => ({
+        ...floorPlan,
+        transformerIds: floorPlan.transformerIds.filter(
+          (transformerId) => String(transformerId) !== String(id)
+        ),
+      }));
+      setFloorPlans(nextFloorPlans);
       if (selectedTransformer?.id === id) {
         setSelectedTransformer(null);
         setIsDetailModalOpen(false);
@@ -530,6 +690,9 @@ function App() {
           transformer.id === id ? { ...transformer, position: newPosition } : transformer
         )
       );
+      setSelectedTransformer((currentSelected) =>
+        currentSelected?.id === id ? { ...currentSelected, position: newPosition } : currentSelected
+      );
     } catch (err) {
       console.error('Failed to update position:', err);
       window.alert('Failed to update position. Please try again.');
@@ -539,6 +702,7 @@ function App() {
   const handleViewDetails = (transformer) => {
     setSelectedTransformer(transformer);
     setIsDetailModalOpen(true);
+    setSelectedFloorPlanId(null);
   };
 
   const handleCloseDetailModal = () => {
@@ -576,6 +740,173 @@ function App() {
   const closeTransformerModal = () => {
     setIsModalOpen(false);
     setEditingTransformer(null);
+  };
+
+  const startFloorPlanDrawing = () => {
+    setIsAddMode(false);
+    setSelectedFloorPlanId(null);
+    setFloorPlanDraft(createDraftFloorPlan());
+    setIsFloorPlanDialogOpen(false);
+    setFloorPlanDialogDraft(null);
+  };
+
+  const handleEditFloorPlan = (floorPlan) => {
+    if (!floorPlan) {
+      return;
+    }
+
+    focusFloorPlan(floorPlan);
+    setIsAddMode(false);
+    setFloorPlanDraft(createDraftFloorPlan(floorPlan));
+    setIsFloorPlanDialogOpen(false);
+    setFloorPlanDialogDraft(null);
+  };
+
+  const cancelFloorPlanDrawing = () => {
+    setFloorPlanDraft(null);
+    setIsFloorPlanDialogOpen(false);
+    setFloorPlanDialogDraft(null);
+  };
+
+  const handleFloorDraftVertexMove = (pointIndex, nextPoint) => {
+    setFloorPlanDraft((current) =>
+      current
+        ? {
+            ...current,
+            points: current.points.map((point, index) => (index === pointIndex ? nextPoint : point)),
+          }
+        : current
+    );
+  };
+
+  const handleUndoFloorDraftPoint = () => {
+    setFloorPlanDraft((current) =>
+      current
+        ? {
+            ...current,
+            points: current.points.slice(0, -1),
+          }
+        : current
+    );
+  };
+
+  const openFloorPlanMetadataDialog = (draft) => {
+    setFloorPlanDialogDraft(draft);
+    setIsFloorPlanDialogOpen(true);
+  };
+
+  const handleEditFloorPlanInfo = (floorPlan) => {
+    if (!floorPlan) {
+      return;
+    }
+
+    focusFloorPlan(floorPlan);
+    setFloorPlanDraft(null);
+    openFloorPlanMetadataDialog({
+      ...createDraftFloorPlan(floorPlan),
+      points: floorPlan.points,
+      detectedTransformerIds: floorPlan.transformerIds.map((transformerId) => String(transformerId)),
+    });
+  };
+
+  const openFloorPlanDialogFromDraft = () => {
+    if (!floorPlanDraft || floorPlanDraft.points.length < 3) {
+      window.alert('Draw at least three points on the map to create a floor boundary.');
+      return;
+    }
+
+    const detectedTransformers = findTransformersInsidePolygon(transformers, floorPlanDraft.points);
+    const existingFloorPlan = floorPlanDraft.id
+      ? floorPlans.find((floorPlan) => floorPlan.id === floorPlanDraft.id) || null
+      : null;
+    const primaryTransformer =
+      detectedTransformers[0] ||
+      (existingFloorPlan?.transformerIds || [])
+        .map((transformerId) =>
+          transformers.find((transformer) => String(transformer.id) === String(transformerId))
+        )
+        .filter(Boolean)[0] ||
+      selectedTransformer ||
+      null;
+
+    openFloorPlanMetadataDialog({
+      ...createDraftFloorPlan({
+        ...existingFloorPlan,
+        ...floorPlanDraft,
+        name: existingFloorPlan?.name || '',
+        companyName: existingFloorPlan?.companyName || primaryTransformer?.siteName || '',
+        state: existingFloorPlan?.state || (primaryTransformer ? getTransformerState(primaryTransformer) : '') || '',
+        transformerIds:
+          existingFloorPlan?.transformerIds?.length
+            ? existingFloorPlan.transformerIds
+            : detectedTransformers.map((transformer) => String(transformer.id)),
+        }),
+      detectedTransformerIds: detectedTransformers.map((transformer) => String(transformer.id)),
+    });
+  };
+
+  const handleSaveFloorPlan = async (nextFloorPlanDraft) => {
+    try {
+      const currentFloorPlan = nextFloorPlanDraft?.id
+        ? floorPlans.find((floorPlan) => floorPlan.id === nextFloorPlanDraft.id) || null
+        : null;
+      const normalizedFloorPlan = normalizeFloorPlan({
+        ...currentFloorPlan,
+        ...nextFloorPlanDraft,
+        createdAt: currentFloorPlan?.createdAt || nextFloorPlanDraft?.createdAt || new Date().toISOString(),
+      });
+
+      const assignedTransformerIds = new Set(
+        normalizedFloorPlan.transformerIds.map((transformerId) => String(transformerId))
+      );
+
+      const stripUpdates = floorPlans
+        .filter((plan) => plan.id !== normalizedFloorPlan.id)
+        .filter((plan) => plan.transformerIds.some((tid) => assignedTransformerIds.has(String(tid))))
+        .map((plan) =>
+          floorPlanService.updateTransformerIds(
+            plan.id,
+            plan.transformerIds.filter((tid) => !assignedTransformerIds.has(String(tid)))
+          )
+        );
+
+      await Promise.all([floorPlanService.upsert(normalizedFloorPlan), ...stripUpdates]);
+
+      const storedFloorPlans = await floorPlanService.getAll();
+      setFloorPlans(storedFloorPlans);
+      setIsFloorPlanDialogOpen(false);
+      setFloorPlanDialogDraft(null);
+      setFloorPlanDraft(null);
+      focusFloorPlan(normalizedFloorPlan);
+    } catch (err) {
+      console.error('Failed to save floor plan:', err);
+      window.alert('Failed to save floor plan. Please try again.');
+    }
+  };
+
+  const handleDeleteFloorPlan = async (floorPlanId) => {
+    const confirmed = window.confirm(
+      'Delete this floor plan overlay? The transformer records stay, but they will be ungrouped from this floor.'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await floorPlanService.delete(floorPlanId);
+      setFloorPlans((current) => current.filter((plan) => plan.id !== floorPlanId));
+      if (selectedFloorPlanId === floorPlanId) {
+        setSelectedFloorPlanId(null);
+      }
+      if (floorPlanDraft?.id === floorPlanId) {
+        setFloorPlanDraft(null);
+      }
+      setIsFloorPlanDialogOpen(false);
+      setFloorPlanDialogDraft(null);
+    } catch (err) {
+      console.error('Failed to delete floor plan:', err);
+      window.alert('Failed to delete floor plan. Please try again.');
+    }
   };
 
   const activeBaseLayer = MAP_BASE_LAYERS[mapBaseLayer];
@@ -631,7 +962,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <div className="flex h-screen overflow-hidden">
         <aside
           className={cn(
-            'fixed inset-y-0 left-0 z-[1200] h-screen w-full max-w-[380px] shrink-0 overflow-hidden bg-[var(--background)] transition-all duration-300 lg:static',
+            'fixed inset-y-0 left-0 z-[1200] h-screen w-full max-w-[380px] shrink-0 overflow-hidden transition-all duration-300 lg:static',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
             isDesktopSidebarCollapsed
               ? 'border-r border-[color:var(--border)] lg:w-[84px] lg:max-w-[84px]'
@@ -651,19 +982,35 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         >
           <TransformerSidebar
             transformers={transformers}
+            floorPlans={floorPlans}
             onAddClick={() => {
+              cancelFloorPlanDrawing();
               setIsAddMode(true);
+              setSelectedFloorPlanId(null);
               if (typeof window !== 'undefined' && window.innerWidth < 1024) {
                 setSidebarOpen(false);
+              }
+            }}
+            onDrawFloorClick={() => {
+              if (floorPlanDraft) {
+                cancelFloorPlanDrawing();
+              } else {
+                startFloorPlanDrawing();
               }
             }}
             onTransformerClick={(transformer) => focusTransformer(transformer)}
             onEditClick={handleEditTransformer}
             onDeleteClick={handleDeleteTransformer}
             onViewDetails={handleViewDetails}
+            onFloorPlanClick={focusFloorPlan}
+            onEditFloorPlanInfo={handleEditFloorPlanInfo}
+            onEditFloorPlan={handleEditFloorPlan}
+            onDeleteFloorPlan={handleDeleteFloorPlan}
             isAddMode={isAddMode}
+            isFloorDrawingMode={Boolean(floorPlanDraft)}
             loading={loading}
             selectedTransformerId={selectedTransformer?.id ?? null}
+            selectedFloorPlanId={selectedFloorPlanId}
             theme={theme}
             onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
             onCloseMobile={() => setSidebarOpen(false)}
@@ -702,11 +1049,15 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                       <Badge variant="warning" className="shadow-sm">
                         Map placement active
                       </Badge>
+                    ) : floorPlanDraft ? (
+                      <Badge variant="secondary" className="shadow-sm">
+                        Floor pen active
+                      </Badge>
                     ) : null}
                   </div>
                 ) : null}
 
-                <div className="flex items-center gap-1 rounded-md border border-[color:var(--border)] bg-[color:var(--card-elevated)]/92 p-1 shadow-[var(--shadow-card)] backdrop-blur">
+                <div className="flex items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
                   {Object.entries(MAP_BASE_LAYERS).map(([layerKey, layer]) => {
                     const isActive = mapBaseLayer === layerKey;
                     const LayerIcon = layer.icon;
@@ -732,18 +1083,133 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     );
                   })}
                 </div>
+
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md">
+                  <Button
+                    size="sm"
+                    variant={showFloorPlans ? 'default' : 'outline'}
+                    className="h-9"
+                    onClick={() => setShowFloorPlans((current) => !current)}
+                  >
+                    {showFloorPlans ? 'Floors on' : 'Floors off'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={floorPlanDraft ? 'secondary' : 'outline'}
+                    className="h-9"
+                    onClick={() => {
+                      if (floorPlanDraft) {
+                        cancelFloorPlanDrawing();
+                      } else {
+                        startFloorPlanDrawing();
+                      }
+                    }}
+                  >
+                    {floorPlanDraft ? 'Cancel draw' : 'Draw floor'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={isDraggable ? 'secondary' : 'outline'}
+                    className={`h-9 gap-1.5${isDraggable ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}
+                    title={isDraggable ? 'Pin dragging ON — click to lock pins' : 'Pin dragging OFF — click to allow moving pins'}
+                    onClick={() => setIsDraggable((v) => !v)}
+                  >
+                    <Move className="h-3.5 w-3.5" />
+                    {isDraggable ? 'Pins unlocked' : 'Move pins'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    onClick={() => handleEditFloorPlanInfo(selectedFloorPlan)}
+                    disabled={!selectedFloorPlan}
+                    title={selectedFloorPlan ? 'Edit the selected floor name and company' : 'Select a floor first'}
+                  >
+                    Edit info
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    onClick={() => handleEditFloorPlan(selectedFloorPlan)}
+                    disabled={!selectedFloorPlan}
+                    title={selectedFloorPlan ? 'Edit the selected floor boundary' : 'Select a floor first'}
+                  >
+                    Reshape
+                  </Button>
+                </div>
               </div>
 
-              {selectedTransformer ? (
+              {selectedFloorPlan ? (
+                <div className="pointer-events-auto hidden w-full max-w-[360px] shrink-0 lg:block">
+                  <Card className="border-[color:var(--border)]/50 bg-[color:var(--card-elevated)]/80 shadow-[var(--shadow-card)] backdrop-blur-xl" style={{ borderRadius: '14px' }}>
+                    <CardContent className="space-y-3 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                            Selected Floor
+                          </p>
+                          <h2 className="truncate text-sm font-semibold">
+                            {selectedFloorPlan.name || 'Unnamed floor'}
+                          </h2>
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            {selectedFloorPlan.companyName || 'Unknown company'}
+                            {selectedFloorPlan.state ? ` - ${selectedFloorPlan.state}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                          <Badge variant="secondary" className="px-2 py-0 text-[10px]">
+                            {selectedFloorTransformers.length} assets
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => handleEditFloorPlanInfo(selectedFloorPlan)}
+                          >
+                            Info
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => handleEditFloorPlan(selectedFloorPlan)}
+                          >
+                            Reshape
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1">
+                        {selectedFloorTransformers.slice(0, 4).map((transformer) => (
+                          <Badge key={transformer.id} variant="outline" className="px-2 py-0 text-[10px]">
+                            {transformer.txName || transformer.mnemonic || 'Asset'}
+                          </Badge>
+                        ))}
+                        {selectedFloorTransformers.length > 4 ? (
+                          <Badge variant="outline" className="px-2 py-0 text-[10px]">
+                            +{selectedFloorTransformers.length - 4} more
+                          </Badge>
+                        ) : null}
+                      </div>
+
+                      <p className="text-[11px] text-[var(--muted)]">
+                        This overlay stays on the Leaflet map and groups the assets listed under this floor.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : selectedTransformer ? (
                 <div className="pointer-events-auto hidden w-full max-w-[340px] shrink-0 lg:block">
-                  <Card className="border-[color:var(--border)]/70 bg-[color:var(--card-elevated)]/72 shadow-[var(--shadow-card)] backdrop-blur-md">
+                  <Card className="border-[color:var(--border)]/50 bg-[color:var(--card-elevated)]/80 shadow-[var(--shadow-card)] backdrop-blur-xl" style={{ borderRadius: '14px' }}>
                     <CardContent className="space-y-2 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 space-y-1">
                           <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
                             Focused Asset
                           </p>
-                          <h2 className="truncate text-sm font-semibold">{selectedTransformer.txName || 'Unnamed Transformer'}</h2>
+                          <h2 className="truncate text-sm font-semibold">
+                            {selectedTransformer.txName || 'Unnamed Transformer'}
+                          </h2>
                           <p className="truncate text-xs text-[var(--muted)]">
                             {selectedTransformer.siteName || 'Unknown site'}
                             {selectedTransformer.mnemonic ? ` - ${selectedTransformer.mnemonic}` : ''}
@@ -763,14 +1229,20 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                               </div>
                             </div>
                           ) : focusedAssetFaultSummary?.message ? (
-                            <p className="pt-1 text-[10px] text-[var(--muted)]">{focusedAssetFaultSummary.message}</p>
+                            <p className="pt-1 text-[10px] text-[var(--muted)]">
+                              {focusedAssetFaultSummary.message}
+                            </p>
                           ) : null}
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
                           <Badge variant="secondary" className="px-2 py-0 text-[10px]">
                             {selectedTransformer.voltage || 'Voltage N/A'}
                           </Badge>
-                          <Button size="sm" className="h-8 px-3 text-xs" onClick={() => handleViewDetails(selectedTransformer)}>
+                          <Button
+                            size="sm"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => handleViewDetails(selectedTransformer)}
+                          >
                             Open
                           </Button>
                         </div>
@@ -781,6 +1253,35 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                           assetName={selectedTransformer.txName || selectedTransformer.mnemonic || 'Focused asset'}
                         />
                       ) : null}
+
+                      {floorPlanByTransformerId.get(String(selectedTransformer.id)) ? (
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-[color:var(--border)]/80 bg-[var(--card)]/55 px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-[var(--foreground)]">
+                              {floorPlanByTransformerId.get(String(selectedTransformer.id)).name}
+                            </p>
+                            <p className="truncate text-[11px] text-[var(--muted)]">
+                              {floorPlanByTransformerId.get(String(selectedTransformer.id)).companyName}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => handleOpenFloorDetail(floorPlanByTransformerId.get(String(selectedTransformer.id)))}
+                          >
+                            Open floor
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="rounded-md border border-dashed border-[color:var(--border)]/80 bg-[var(--card)]/55 px-3 py-2">
+                          <p className="text-xs font-medium text-[var(--foreground)]">
+                            This transformer is not inside a saved floor yet
+                          </p>
+                          <p className="text-[11px] text-[var(--muted)]">
+                            Draw a plant boundary on the map to group this asset under a named floor.
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
@@ -797,23 +1298,77 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
               <MapUpdater center={mapCenter} zoom={mapZoom} />
               <MapInteractionController sidebarActive={isSidebarInteracting} />
               <MapClickHandler onMapClick={handleMapClick} />
+              <FloorPlanMapLayer
+                floorPlans={floorPlans}
+                transformers={transformers}
+                showFloorPlans={showFloorPlans}
+                selectedFloorPlanId={selectedFloorPlanId}
+                draft={floorPlanDraft}
+                onSelectFloorPlan={focusFloorPlan}
+                onOpenFloor={handleOpenFloorDetail}
+                onEditFloorPlanInfo={handleEditFloorPlanInfo}
+                onEditFloorPlan={handleEditFloorPlan}
+                onDeleteFloorPlan={handleDeleteFloorPlan}
+                onDraftVertexMove={handleFloorDraftVertexMove}
+              />
               {transformers.map((transformer) => (
                 <TransformerMarker
                   key={transformer.id}
                   transformer={transformer}
-                  icon={createTransformerIcon()}
+                  icon={createTransformerIcon(
+                    selectedFloorPlan?.transformerIds?.includes(String(transformer.id))
+                      ? '#2563eb'
+                      : '#0f766e'
+                  )}
                   isSelected={selectedTransformer?.id === transformer.id}
+                  isDraggable={isDraggable}
                   onDragEnd={handleMarkerDragEnd}
                   onEdit={handleEditTransformer}
                   onDelete={handleDeleteTransformer}
                   onViewDetails={handleViewDetails}
-                  onSelect={setSelectedTransformer}
+                  onSelect={(nextTransformer) => {
+                    setSelectedTransformer(nextTransformer);
+                    setSelectedFloorPlanId(null);
+                  }}
                 />
               ))}
             </MapContainer>
           </div>
 
-          {isAddMode ? (
+          {floorPlanDraft ? (
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-[1000] flex justify-center">
+              <div className="pointer-events-auto flex w-full max-w-3xl flex-col gap-3 rounded-md border border-[color:var(--primary-soft)] bg-[color:var(--card-elevated)]/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    {floorPlanDraft.id ? 'Edit the floor boundary on the map.' : 'Click on the map to draw the floor boundary.'}
+                  </p>
+                  <p className="text-sm text-[var(--muted)]">
+                    {floorPlanDraft.points.length} point{floorPlanDraft.points.length === 1 ? '' : 's'} placed. Drag the blue handles to refine the shape, then save the floor.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUndoFloorDraftPoint}
+                    disabled={!floorPlanDraft.points.length}
+                  >
+                    Undo point
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={openFloorPlanDialogFromDraft}
+                    disabled={floorPlanDraft.points.length < 3}
+                  >
+                    Save floor
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={cancelFloorPlanDrawing}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : isAddMode ? (
             <div className="pointer-events-none absolute inset-x-4 bottom-4 z-[1000] flex justify-center">
               <div className="pointer-events-auto flex w-full max-w-xl items-center justify-between gap-4 rounded-md border border-[color:var(--warning-soft)] bg-[color:var(--card-elevated)]/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur">
                 <div className="min-w-0">
@@ -864,6 +1419,42 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onClose={handleCloseDetailModal}
         onUpdateOilTests={handleUpdateOilTests}
         onUpdateDocuments={handleUpdateDocuments}
+      />
+
+      <FloorPlanMetadataDialog
+        open={isFloorPlanDialogOpen}
+        floorPlanDraft={floorPlanDialogDraft}
+        transformers={transformers}
+        detectedTransformerIds={floorPlanDialogDraft?.detectedTransformerIds || []}
+        onClose={() => {
+          setIsFloorPlanDialogOpen(false);
+          setFloorPlanDialogDraft(null);
+        }}
+        onSave={handleSaveFloorPlan}
+      />
+
+      <FloorPlanDetailModal
+        floorPlan={floorDetailFloorPlan}
+        transformers={transformers}
+        isOpen={isFloorDetailModalOpen}
+        onClose={() => setIsFloorDetailModalOpen(false)}
+        onEditInfo={(floorPlan) => {
+          handleEditFloorPlanInfo(floorPlan);
+        }}
+        onReshape={(floorPlan) => {
+          handleEditFloorPlan(floorPlan);
+        }}
+        onAddTransformerToFloor={handleFloorDetailAddTransformer}
+        onEditTransformer={(transformer) => {
+          setEditingTransformer(transformer);
+          setIsModalOpen(true);
+        }}
+        onViewDetails={(transformer) => {
+          setSelectedTransformer(transformer);
+          setIsDetailModalOpen(true);
+        }}
+        onRemoveFromFloor={handleRemoveTransformerFromFloor}
+        onMarkerDragEnd={handleMarkerDragEnd}
       />
     </div>
   );

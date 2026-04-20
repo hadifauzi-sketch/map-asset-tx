@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Marker, Popup, Tooltip } from 'react-leaflet';
 import { getTransformerState } from '../lib/malaysiaStates';
 
-function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onViewDetails, onSelect, isSelected }) {
+function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onViewDetails, onSelect, isSelected, isDraggable = false }) {
   const markerRef = useRef(null);
   const transformerState = getTransformerState(transformer);
 
@@ -47,7 +47,7 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
   return (
     <Marker
       position={transformer.position}
-      draggable
+      draggable={isDraggable}
       eventHandlers={eventHandlers}
       ref={markerRef}
       icon={icon}
