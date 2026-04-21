@@ -134,7 +134,7 @@ function FloorPlanMetadataDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
-      <DialogContent className="max-w-3xl p-0">
+      <DialogContent className="mobile-form-dialog max-w-3xl p-0">
         <DialogHeader>
           <DialogTitle>{formData.id ? 'Edit Floor Plan' : 'Save Floor Plan'}</DialogTitle>
           <DialogDescription>
@@ -142,140 +142,142 @@ function FloorPlanMetadataDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-5 px-5 py-5">
-          <section className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-[var(--foreground)]">
-                Area Floor/Area Name
-                <span className="ml-1 text-[var(--danger-strong)]">*</span>
-              </span>
-              <Input
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="Plant 1"
-                required
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-[var(--foreground)]">
-                Company / site name
-                <span className="ml-1 text-[var(--danger-strong)]">*</span>
-              </span>
-              <Input
-                name="companyName"
-                value={formData.companyName}
-                onChange={handleChange}
-                placeholder="Kedah Cement"
-                required
-              />
-            </label>
-
-            <label className="space-y-2 md:col-span-2">
-              <span className="text-sm font-medium text-[var(--foreground)]">
-                State / territory
-                <span className="ml-1 text-[var(--danger-strong)]">*</span>
-              </span>
-              <select
-                name="state"
-                value={formData.state}
-                onChange={handleChange}
-                className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-                required
-              >
-                <option value="">Select a state</option>
-                {MALAYSIA_STATES.map((state) => (
-                  <option key={state} value={state}>
-                    {state}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </section>
-
-          <section className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">Transformers inside this floor</p>
-                <p className="text-sm text-[var(--muted)]">
-                  Assets detected inside the drawn boundary are preselected. Search by transformer name, serial number, or mnemonic to fine-tune the list.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">{formData.transformerIds.length} selected</Badge>
-                <Badge variant="outline">{detectedTransformerIds.length} detected in shape</Badge>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
+        <form onSubmit={handleSubmit} className="mobile-dialog-form">
+          <div className="mobile-dialog-scroll space-y-5 px-4 py-4 sm:px-5 sm:py-5">
+            <section className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
-                <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                  Search transformers
+                <span className="text-sm font-medium text-[var(--foreground)]">
+                  Area Floor/Area Name
+                  <span className="ml-1 text-[var(--danger-strong)]">*</span>
                 </span>
                 <Input
-                  value={transformerSearch}
-                  onChange={(event) => setTransformerSearch(event.target.value)}
-                  placeholder="Search by name, serial number, or mnemonic"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="Plant 1"
+                  required
                 />
               </label>
 
-              <p className="text-xs text-[var(--muted)]">
-                {filteredTransformers.length} of {sortedTransformers.length} transformers shown
-              </p>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-[var(--foreground)]">
+                  Company / site name
+                  <span className="ml-1 text-[var(--danger-strong)]">*</span>
+                </span>
+                <Input
+                  name="companyName"
+                  value={formData.companyName}
+                  onChange={handleChange}
+                  placeholder="Kedah Cement"
+                  required
+                />
+              </label>
 
-              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                {sortedTransformers.length === 0 ? (
-                  <p className="rounded-md bg-[var(--card)] px-3 py-3 text-sm text-[var(--muted)]">
-                    Add a transformer first, then attach it to this floor plan.
-                  </p>
-                ) : filteredTransformers.length === 0 ? (
-                  <p className="rounded-md bg-[var(--card)] px-3 py-3 text-sm text-[var(--muted)]">
-                    No transformer matched that search. Try part of the name, serial number, or mnemonic.
-                  </p>
-                ) : (
-                  filteredTransformers.map((transformer) => {
-                    const transformerId = String(transformer.id);
-                    const isSelected = formData.transformerIds.includes(transformerId);
-                    const isDetected = detectedTransformerIdSet.has(transformerId);
+              <label className="space-y-2 md:col-span-2">
+                <span className="text-sm font-medium text-[var(--foreground)]">
+                  State / territory
+                  <span className="ml-1 text-[var(--danger-strong)]">*</span>
+                </span>
+                <select
+                  name="state"
+                  value={formData.state}
+                  onChange={handleChange}
+                  className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                  required
+                >
+                  <option value="">Select a state</option>
+                  {MALAYSIA_STATES.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </section>
 
-                    return (
-                      <label
-                        key={transformer.id}
-                        className={`flex items-start gap-3 rounded-md border px-3 py-3 transition-colors ${
-                          isSelected
-                            ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
-                            : 'border-[color:var(--border)] bg-[var(--card)]'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4"
-                          checked={isSelected}
-                          onChange={() => toggleTransformerAssignment(transformer.id)}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-[var(--foreground)]">
-                              {transformer.txName || 'Unnamed transformer'}
-                            </p>
-                            {isDetected ? <Badge variant="secondary">Inside shape</Badge> : null}
-                          </div>
-                          <p className="truncate text-sm text-[var(--muted)]">
-                            {transformer.siteName || 'Unknown site'}
-                            {transformer.mnemonic ? ` - ${transformer.mnemonic}` : ''}
-                            {transformer.serialNumber ? ` - ${transformer.serialNumber}` : ''}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })
-                )}
+            <section className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">Transformers inside this floor</p>
+                  <p className="text-sm text-[var(--muted)]">
+                    Assets detected inside the drawn boundary are preselected. Search by transformer name, serial number, or mnemonic to fine-tune the list.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{formData.transformerIds.length} selected</Badge>
+                  <Badge variant="outline">{detectedTransformerIds.length} detected in shape</Badge>
+                </div>
               </div>
-            </div>
-          </section>
 
-          <DialogFooter className="px-0 pb-0">
+              <div className="mt-4 space-y-3">
+                <label className="space-y-2">
+                  <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                    Search transformers
+                  </span>
+                  <Input
+                    value={transformerSearch}
+                    onChange={(event) => setTransformerSearch(event.target.value)}
+                    placeholder="Search by name, serial number, or mnemonic"
+                  />
+                </label>
+
+                <p className="text-xs text-[var(--muted)]">
+                  {filteredTransformers.length} of {sortedTransformers.length} transformers shown
+                </p>
+
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {sortedTransformers.length === 0 ? (
+                    <p className="rounded-md bg-[var(--card)] px-3 py-3 text-sm text-[var(--muted)]">
+                      Add a transformer first, then attach it to this floor plan.
+                    </p>
+                  ) : filteredTransformers.length === 0 ? (
+                    <p className="rounded-md bg-[var(--card)] px-3 py-3 text-sm text-[var(--muted)]">
+                      No transformer matched that search. Try part of the name, serial number, or mnemonic.
+                    </p>
+                  ) : (
+                    filteredTransformers.map((transformer) => {
+                      const transformerId = String(transformer.id);
+                      const isSelected = formData.transformerIds.includes(transformerId);
+                      const isDetected = detectedTransformerIdSet.has(transformerId);
+
+                      return (
+                        <label
+                          key={transformer.id}
+                          className={`flex items-start gap-3 rounded-md border px-3 py-3 transition-colors ${
+                            isSelected
+                              ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
+                              : 'border-[color:var(--border)] bg-[var(--card)]'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4"
+                            checked={isSelected}
+                            onChange={() => toggleTransformerAssignment(transformer.id)}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                                {transformer.txName || 'Unnamed transformer'}
+                              </p>
+                              {isDetected ? <Badge variant="secondary">Inside shape</Badge> : null}
+                            </div>
+                            <p className="truncate text-sm text-[var(--muted)]">
+                              {transformer.siteName || 'Unknown site'}
+                              {transformer.mnemonic ? ` - ${transformer.mnemonic}` : ''}
+                              {transformer.serialNumber ? ` - ${transformer.serialNumber}` : ''}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <DialogFooter className="mt-auto px-4 sm:px-5">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>

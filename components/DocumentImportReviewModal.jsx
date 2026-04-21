@@ -185,7 +185,7 @@ function DocumentImportReviewModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen && !isSubmitting ? onClose() : null)}>
-      <DialogContent className="max-h-[92vh] max-w-[1100px] overflow-hidden" showClose={!isSubmitting}>
+      <DialogContent className="mobile-form-dialog max-w-[1100px] p-0" showClose={!isSubmitting}>
         <DialogHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
@@ -209,7 +209,7 @@ function DocumentImportReviewModal({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="mobile-dialog-scroll flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           {errorMessage ? (
             <div className="rounded-md border border-[color:var(--danger-soft)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger-strong)]">
               {errorMessage}

@@ -28,42 +28,44 @@ const DialogContent = React.forwardRef(function DialogContent(
   return (
     <DialogPortal>
       <DialogOverlay />
+      <div className="dialog-viewport">
         <DialogPrimitive.Content
           ref={ref}
           className={cn(
-            'fixed left-1/2 top-1/2 z-[4010] flex w-[calc(100vw-2rem)] max-w-[72rem] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--card)]/90 p-0 shadow-[var(--shadow-dialog)] backdrop-blur-xl',
+            'dialog-content-shell relative flex w-full max-w-[72rem] max-h-full flex-col overflow-hidden rounded-[20px] border border-[color:var(--border)]/60 bg-[color:var(--card)]/90 p-0 shadow-[var(--shadow-dialog)] backdrop-blur-xl sm:rounded-xl',
             'focus-visible:outline-none',
             className
           )}
-        {...props}
-      >
-        {children}
-        {showClose ? (
-          <DialogPrimitive.Close
-            className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-            aria-label="Close dialog"
-          >
-            <X className="h-4 w-4" />
-          </DialogPrimitive.Close>
-        ) : null}
-      </DialogPrimitive.Content>
+          {...props}
+        >
+          {children}
+          {showClose ? (
+            <DialogPrimitive.Close
+              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] sm:right-4 sm:top-4"
+              aria-label="Close dialog"
+            >
+              <X className="h-4 w-4" />
+            </DialogPrimitive.Close>
+          ) : null}
+        </DialogPrimitive.Content>
+      </div>
     </DialogPortal>
   );
 });
 
 function DialogHeader({ className, ...props }) {
-  return <div className={cn('flex flex-col gap-1.5 border-b border-[color:var(--border)] px-5 py-4', className)} {...props} />;
+  return <div className={cn('flex flex-col gap-1.5 border-b border-[color:var(--border)] px-4 py-4 sm:px-5', className)} {...props} />;
 }
 
 function DialogFooter({ className, ...props }) {
-  return <div className={cn('flex flex-col-reverse gap-2 border-t border-[color:var(--border)] px-5 py-4 sm:flex-row sm:justify-end', className)} {...props} />;
+  return <div className={cn('flex flex-col-reverse gap-2 border-t border-[color:var(--border)] px-4 py-4 sm:flex-row sm:justify-end sm:px-5', className)} {...props} />;
 }
 
 const DialogTitle = React.forwardRef(function DialogTitle({ className, ...props }, ref) {
   return (
     <DialogPrimitive.Title
       ref={ref}
-      className={cn('text-lg font-semibold text-[var(--foreground)]', className)}
+      className={cn('text-base font-semibold text-[var(--foreground)] sm:text-lg', className)}
       {...props}
     />
   );

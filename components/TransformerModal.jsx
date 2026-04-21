@@ -70,7 +70,7 @@ function TransformerModal({ open, transformer, onSave, onClose }) {
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
-      <DialogContent className="max-w-3xl p-0">
+      <DialogContent className="mobile-form-dialog max-w-3xl p-0">
         <DialogHeader>
           <DialogTitle>{transformer?.id ? 'Edit transformer' : 'Add transformer'}</DialogTitle>
           <DialogDescription>
@@ -78,54 +78,56 @@ function TransformerModal({ open, transformer, onSave, onClose }) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-5 px-5 py-5">
-          <section className="grid gap-4 md:grid-cols-2">
-            <Field
-              label="Company / site name"
-              name="siteName"
-              required
-              value={formData.siteName}
-              onChange={handleChange}
-              placeholder="Kedah Cement"
-            />
-            <SelectField
-              label="State / territory"
-              name="state"
-              value={formData.state}
-              onChange={handleChange}
-              hint="Leave this blank to auto-group from the site or transformer name."
-            >
-              <option value="">Auto detect / unassigned</option>
-              {MALAYSIA_STATES.map((state) => (
-                <option key={state} value={state}>
-                  {state}
-                </option>
-              ))}
-            </SelectField>
-            <Field label="Transformer name" name="txName" required value={formData.txName} onChange={handleChange} placeholder="TX-001" />
-            <Field label="Mnemonic" name="mnemonic" value={formData.mnemonic} onChange={handleChange} placeholder="TXALP01" />
-            <Field label="Serial number" name="serialNumber" value={formData.serialNumber} onChange={handleChange} placeholder="SN-2024-001" />
-            <Field label="Voltage" name="voltage" required value={formData.voltage} onChange={handleChange} placeholder="132/33 kV" />
-            <Field label="Load (MVA)" name="loadMVA" value={formData.loadMVA} onChange={handleChange} placeholder="60" />
-            <Field label="Manufacturer" name="maker" value={formData.maker} onChange={handleChange} placeholder="ABB, Siemens, Hitachi" />
-            <Field label="Year built" name="yearBuilt" value={formData.yearBuilt} onChange={handleChange} placeholder="2020" />
-          </section>
+        <form onSubmit={handleSubmit} className="mobile-dialog-form">
+          <div className="mobile-dialog-scroll space-y-5 px-4 py-4 sm:px-5 sm:py-5">
+            <section className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Company / site name"
+                name="siteName"
+                required
+                value={formData.siteName}
+                onChange={handleChange}
+                placeholder="Kedah Cement"
+              />
+              <SelectField
+                label="State / territory"
+                name="state"
+                value={formData.state}
+                onChange={handleChange}
+                hint="Leave this blank to auto-group from the site or transformer name."
+              >
+                <option value="">Auto detect / unassigned</option>
+                {MALAYSIA_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </SelectField>
+              <Field label="Transformer name" name="txName" required value={formData.txName} onChange={handleChange} placeholder="TX-001" />
+              <Field label="Mnemonic" name="mnemonic" value={formData.mnemonic} onChange={handleChange} placeholder="TXALP01" />
+              <Field label="Serial number" name="serialNumber" value={formData.serialNumber} onChange={handleChange} placeholder="SN-2024-001" />
+              <Field label="Voltage" name="voltage" required value={formData.voltage} onChange={handleChange} placeholder="132/33 kV" />
+              <Field label="Load (MVA)" name="loadMVA" value={formData.loadMVA} onChange={handleChange} placeholder="60" />
+              <Field label="Manufacturer" name="maker" value={formData.maker} onChange={handleChange} placeholder="ABB, Siemens, Hitachi" />
+              <Field label="Year built" name="yearBuilt" value={formData.yearBuilt} onChange={handleChange} placeholder="2020" />
+            </section>
 
-          <section className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
-            <div className="flex items-start gap-3">
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                <MapPin className="h-4 w-4" />
+            <section className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
+              <div className="flex items-start gap-3">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                  <MapPin className="h-4 w-4" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold">Map placement</p>
+                  <p className="text-sm text-[var(--muted)]">
+                    Latitude {formData.position[0].toFixed(6)} and longitude {formData.position[1].toFixed(6)}. Drag the marker on the map later if you need to refine the position.
+                  </p>
+                </div>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-semibold">Map placement</p>
-                <p className="text-sm text-[var(--muted)]">
-                  Latitude {formData.position[0].toFixed(6)} and longitude {formData.position[1].toFixed(6)}. Drag the marker on the map later if you need to refine the position.
-                </p>
-              </div>
-            </div>
-          </section>
+            </section>
+          </div>
 
-          <DialogFooter className="px-0 pb-0">
+          <DialogFooter className="mt-auto px-4 sm:px-5">
             <Button variant="outline" onClick={onClose}>
               Cancel
             </Button>

@@ -442,7 +442,7 @@ function TransformerDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
-      <DialogContent className="h-[100dvh] w-screen max-h-none max-w-none rounded-none border-0 p-0">
+      <DialogContent className="mobile-fullscreen-dialog h-full w-full max-h-full max-w-full border-0 p-0">
         <DialogHeader className="bg-[var(--card-elevated)]">
           <div className="flex flex-col gap-4 pr-10 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
@@ -467,10 +467,10 @@ function TransformerDetailModal({
           </div>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 pt-4 pb-5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-4 pb-4 sm:px-5 sm:pb-5">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
             <div className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap">
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
                   Compartments
                 </p>
@@ -576,7 +576,7 @@ function TransformerDetailModal({
               </TabsList>
             </div>
 
-            <div className="detail-scroll min-h-0 flex-1 overflow-y-auto py-5 pr-1">
+            <div className="detail-scroll min-h-0 flex-1 overflow-y-auto py-4 pr-1 sm:py-5">
               <TabsContent value="info" className="mt-0 space-y-5">
                 <section className="grid gap-4 lg:grid-cols-[1.3fr_0.9fr]">
                   <Card>

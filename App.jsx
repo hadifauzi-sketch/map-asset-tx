@@ -958,11 +958,11 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
   }
 
   return (
-    <div className="relative h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
-      <div className="flex h-screen overflow-hidden">
+    <div className="app-shell relative overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+      <div className="app-frame flex overflow-hidden">
         <aside
           className={cn(
-            'fixed inset-y-0 left-0 z-[1200] h-screen w-full max-w-[380px] shrink-0 overflow-hidden transition-all duration-300 lg:static',
+            'app-sidebar fixed inset-y-0 left-0 z-[1200] w-[92vw] max-w-[380px] shrink-0 overflow-hidden transition-all duration-300 lg:static',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
             isDesktopSidebarCollapsed
               ? 'border-r border-[color:var(--border)] lg:w-[84px] lg:max-w-[84px]'
@@ -1028,10 +1028,10 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           />
         ) : null}
 
-        <main className="relative h-screen min-w-0 flex-1 overflow-hidden">
-          <div className="absolute inset-x-0 top-0 z-[1000] p-4 pointer-events-none">
+        <main className="app-main relative min-w-0 flex-1 overflow-hidden">
+          <div className="app-top-overlay absolute inset-x-0 top-0 z-[1000] pointer-events-none">
             <div className="flex items-start justify-between gap-3">
-              <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+              <div className="pointer-events-auto flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 {!sidebarOpen ? (
                   <div className="flex items-center gap-2 lg:hidden">
                     <Button
@@ -1057,7 +1057,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   </div>
                 ) : null}
 
-                <div className="flex items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
+                <div className="mobile-control-strip flex items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
                   {Object.entries(MAP_BASE_LAYERS).map(([layerKey, layer]) => {
                     const isActive = mapBaseLayer === layerKey;
                     const LayerIcon = layer.icon;
@@ -1084,11 +1084,11 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   })}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md">
+                <div className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">
                   <Button
                     size="sm"
                     variant={showFloorPlans ? 'default' : 'outline'}
-                    className="h-9"
+                    className="h-9 shrink-0"
                     onClick={() => setShowFloorPlans((current) => !current)}
                   >
                     {showFloorPlans ? 'Floors on' : 'Floors off'}
@@ -1096,7 +1096,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   <Button
                     size="sm"
                     variant={floorPlanDraft ? 'secondary' : 'outline'}
-                    className="h-9"
+                    className="h-9 shrink-0"
                     onClick={() => {
                       if (floorPlanDraft) {
                         cancelFloorPlanDrawing();
@@ -1110,7 +1110,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   <Button
                     size="sm"
                     variant={isDraggable ? 'secondary' : 'outline'}
-                    className={`h-9 gap-1.5${isDraggable ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}
+                    className={`h-9 shrink-0 gap-1.5${isDraggable ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}
                     title={isDraggable ? 'Pin dragging ON — click to lock pins' : 'Pin dragging OFF — click to allow moving pins'}
                     onClick={() => setIsDraggable((v) => !v)}
                   >
@@ -1120,7 +1120,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-9"
+                    className="h-9 shrink-0"
                     onClick={() => handleEditFloorPlanInfo(selectedFloorPlan)}
                     disabled={!selectedFloorPlan}
                     title={selectedFloorPlan ? 'Edit the selected floor name and company' : 'Select a floor first'}
@@ -1130,7 +1130,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-9"
+                    className="h-9 shrink-0"
                     onClick={() => handleEditFloorPlan(selectedFloorPlan)}
                     disabled={!selectedFloorPlan}
                     title={selectedFloorPlan ? 'Edit the selected floor boundary' : 'Select a floor first'}
@@ -1289,7 +1289,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             </div>
           </div>
 
-          <div className="h-screen w-full">
+          <div className="app-map-region w-full">
             <MapContainer center={mapCenter} zoom={mapZoom} className="h-full w-full" zoomControl={false}>
               <TileLayer attribution={activeBaseLayer.attribution} url={activeBaseLayer.url} />
               {mapBaseLayer === 'hybrid' ? (
@@ -1336,7 +1336,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           </div>
 
           {floorPlanDraft ? (
-            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-[1000] flex justify-center">
+            <div className="app-bottom-banner pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center">
               <div className="pointer-events-auto flex w-full max-w-3xl flex-col gap-3 rounded-md border border-[color:var(--primary-soft)] bg-[color:var(--card-elevated)]/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -1369,13 +1369,13 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
               </div>
             </div>
           ) : isAddMode ? (
-            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-[1000] flex justify-center">
-              <div className="pointer-events-auto flex w-full max-w-xl items-center justify-between gap-4 rounded-md border border-[color:var(--warning-soft)] bg-[color:var(--card-elevated)]/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur">
+            <div className="app-bottom-banner pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center">
+              <div className="pointer-events-auto flex w-full max-w-xl flex-col gap-3 rounded-md border border-[color:var(--warning-soft)] bg-[color:var(--card-elevated)]/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[var(--foreground)]">Click anywhere on the map to place a transformer.</p>
                   <p className="text-sm text-[var(--muted)]">The location opens the asset form immediately after placement.</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setIsAddMode(false)}>
+                <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setIsAddMode(false)}>
                   Cancel
                 </Button>
               </div>
@@ -1383,7 +1383,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           ) : null}
 
           {error && isSupabaseConfigured ? (
-            <div className="absolute bottom-4 right-4 z-[1000] w-[calc(100%-2rem)] max-w-[28rem]">
+            <div className="app-toast absolute z-[1000] w-[calc(100%-2rem)] max-w-[28rem]">
               <div className="flex items-start gap-3 rounded-md border border-[color:var(--danger-soft)] bg-[color:var(--card-elevated)]/96 p-4 shadow-[var(--shadow-card)] backdrop-blur">
                 <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--danger-soft)] text-[var(--danger-strong)]">
                   <AlertTriangle className="h-4 w-4" />
