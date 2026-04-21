@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   FileText,
+  Image as ImageIcon,
   MapPin,
   Shield,
   TestTubeDiagonal,
@@ -9,6 +10,7 @@ import {
 } from 'lucide-react';
 import OilTestSection from './OilTestSection';
 import DocumentSection from './DocumentSection';
+import ImageSection from './ImageSection';
 import DataTrending from './DataTrending';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -24,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { documentService } from '../lib/documentService';
+import { isImageDocument } from '../lib/documentUtils';
 import { getTransformerState } from '../lib/malaysiaStates';
 
 const DEFAULT_COMPARTMENTS = ['Maintank', 'OLTC', 'ETX'];
@@ -191,7 +194,7 @@ function TransformerDetailModal({
 
   useEffect(() => {
     const loadDocuments = async () => {
-      if (!transformer?.id || activeTab !== 'documents') {
+      if (!transformer?.id || (activeTab !== 'documents' && activeTab !== 'images')) {
         return;
       }
 
@@ -305,6 +308,9 @@ function TransformerDetailModal({
   const filteredDocuments = useMemo(
     () =>
       (transformer?.documents || []).filter((doc) => {
+        if (isImageDocument(doc)) {
+          return false;
+        }
         const documentCompartment = resolveCompartmentName(
           doc?.compartment ||
             doc?.samplingPoint ||
@@ -312,6 +318,29 @@ function TransformerDetailModal({
             documentAssignments[String(doc?.id)]
         );
         return normalizeCompartmentName(documentCompartment) === selectedCompartmentKey;
+      }),
+    [
+      availableCompartments,
+      documentAssignments,
+      fallbackCompartment,
+      selectedCompartmentKey,
+      transformer?.documents,
+    ]
+  );
+
+  const filteredImages = useMemo(
+    () =>
+      (transformer?.documents || []).filter((doc) => {
+        if (!isImageDocument(doc)) {
+          return false;
+        }
+        const imageCompartment = resolveCompartmentName(
+          doc?.compartment ||
+            doc?.samplingPoint ||
+            doc?.sampling_point ||
+            documentAssignments[String(doc?.id)]
+        );
+        return normalizeCompartmentName(imageCompartment) === selectedCompartmentKey;
       }),
     [
       availableCompartments,
@@ -503,7 +532,7 @@ function TransformerDetailModal({
                 </button>
               </div>
               <p className="mt-2 text-xs text-[var(--muted)]">
-                Oil tests, documents, trending, and snapshot counts below are filtered by the selected
+                Oil tests, documents, images, trending, and snapshot counts below are filtered by the selected
                 compartment.
               </p>
 
@@ -550,7 +579,7 @@ function TransformerDetailModal({
             </div>
 
             <div className="border-b border-[color:var(--border)] py-4">
-              <TabsList className="grid w-full grid-cols-2 gap-1 md:grid-cols-4">
+              <TabsList className="grid w-full grid-cols-2 gap-1 md:grid-cols-5">
                 <TabsTrigger value="info">
                   <Shield className="h-4 w-4" />
                   Information
@@ -567,6 +596,13 @@ function TransformerDetailModal({
                   Documents
                   <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
                     {filteredDocuments.length}
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger value="images">
+                  <ImageIcon className="h-4 w-4" />
+                  Image
+                  <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
+                    {filteredImages.length}
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="dataTrending">
@@ -611,6 +647,11 @@ function TransformerDetailModal({
                         icon={FileText}
                         label="Documents"
                         value={`${filteredDocuments.length}`}
+                      />
+                      <SummaryMetric
+                        icon={ImageIcon}
+                        label="Images"
+                        value={`${filteredImages.length}`}
                       />
                     </CardContent>
                   </Card>
@@ -669,6 +710,17 @@ function TransformerDetailModal({
                         documentAssignments[String(doc?.id)]
                     )
                   }
+                />
+              </TabsContent>
+
+              <TabsContent value="images" className="mt-0">
+                <ImageSection
+                  transformerId={transformer.id}
+                  transformerName={transformer.txName}
+                  images={filteredImages}
+                  onUpdate={onUpdateDocuments}
+                  activeCompartment={selectedCompartmentName}
+                  onAssignImageCompartment={assignDocumentCompartment}
                 />
               </TabsContent>
 

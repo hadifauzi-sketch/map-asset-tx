@@ -70,6 +70,17 @@ CREATE TABLE documents (
     file_name TEXT NOT NULL,
     file_type TEXT NOT NULL,
     file_size BIGINT NOT NULL,
+    image_category TEXT,
+    CONSTRAINT documents_image_category_check CHECK (
+      image_category IN (
+        'name-plate',
+        'transformer-design',
+        'oil-level-design',
+        'oltc-design',
+        'buchholz-design',
+        'other'
+      )
+    ),
     storage_path TEXT NOT NULL,
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -81,6 +92,7 @@ CREATE INDEX idx_transformers_tx_name ON transformers(tx_name);
 CREATE INDEX idx_oil_tests_transformer ON oil_tests(transformer_id);
 CREATE INDEX idx_oil_tests_date ON oil_tests(test_date);
 CREATE INDEX idx_documents_transformer ON documents(transformer_id);
+CREATE INDEX idx_documents_image_category ON documents(image_category);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -234,6 +246,63 @@ ADD COLUMN IF NOT EXISTS dga_gas_limit_standard TEXT,
 ADD COLUMN IF NOT EXISTS dga_method_view TEXT;
 ```
 
+## Image Category Migration (Legacy Databases Only)
+
+> **Note:** The main schema in Step 2 already includes the `image_category` column. This migration is **only for databases created before 2026-04-22** that are missing the column. If you just followed Step 2 on a fresh project, you can skip this section.
+
+**Symptom you need this migration:**
+If the app shows an error like `Could not find the 'image_category' column of 'documents' in the schema cache` (PostgREST error code `PGRST204`), run this SQL in the Supabase **SQL Editor**:
+
+```sql
+ALTER TABLE documents
+ADD COLUMN IF NOT EXISTS image_category TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'documents_image_category_check'
+  ) THEN
+    ALTER TABLE documents
+    ADD CONSTRAINT documents_image_category_check
+    CHECK (
+      image_category IN (
+        'name-plate',
+        'transformer-design',
+        'oil-level-design',
+        'oltc-design',
+        'buchholz-design',
+        'other'
+      )
+    );
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_documents_image_category
+ON documents(image_category);
+```
+
+**After running:** If the error persists, reload the PostgREST schema cache at **Settings → API → Reload schema cache**, or wait ~30 seconds.
+
+**Optional — backfill categories from older file names:**
+Early uploads encoded the category in the file name as `imgcat-<category>--filename`. To migrate those into the new column, run:
+
+```sql
+UPDATE documents
+SET image_category = lower(substring(file_name FROM '^imgcat-([a-z0-9-]+)--'))
+WHERE image_category IS NULL
+  AND file_name ~* '^imgcat-([a-z0-9-]+)--'
+  AND lower(substring(file_name FROM '^imgcat-([a-z0-9-]+)--')) IN (
+    'name-plate',
+    'transformer-design',
+    'oil-level-design',
+    'oltc-design',
+    'buchholz-design',
+    'other'
+  );
+```
+
 ## 🔒 Security Notes (Production)
 
 For production use, you should:
@@ -260,6 +329,9 @@ For production use, you should:
 
 ### Issue: CORS errors
 **Fix**: Supabase handles CORS automatically, check your API keys
+
+### Issue: `Could not find the '<column>' column of '<table>' in the schema cache` (PGRST204)
+**Fix**: Your database is missing a column the app expects. Run the matching migration section above (e.g. **Image Category Migration**, **State Grouping Migration**, or **DGA Workspace Preference Migration**), then reload the schema at **Settings → API → Reload schema cache**.
 
 ## 📚 Useful Supabase Dashboard Links
 

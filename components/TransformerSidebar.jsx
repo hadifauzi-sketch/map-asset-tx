@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   ChevronDown,
@@ -18,8 +18,35 @@ import {
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
 import { compareMalaysianStates, getTransformerState } from '../lib/malaysiaStates';
+
+const EXPANDED_STATES_STORAGE_KEY = 'transformer-asset-map-expanded-states';
+const EXPANDED_COMPANIES_STORAGE_KEY = 'transformer-asset-map-expanded-companies';
+const EXPANDED_AREAS_STORAGE_KEY = 'transformer-asset-map-expanded-areas';
+
+function readStoredExpansionMap(storageKey) {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(storageKey);
+    if (!rawValue) {
+      return {};
+    }
+
+    const parsed = JSON.parse(rawValue);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return parsed;
+  } catch (error) {
+    return {};
+  }
+}
 
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
@@ -234,11 +261,20 @@ function countVisibleFloors(stateGroups) {
   );
 }
 
+function getCollapsedStatLabel(statKey, label) {
+  if (statKey === 'areas') {
+    return 'AREA/SUB';
+  }
+  if (statKey === 'companies') {
+    return 'CO/PARENT';
+  }
+  return label;
+}
+
 function TransformerSidebar({
   transformers,
   floorPlans = [],
   onAddClick,
-  onDrawFloorClick,
   onTransformerClick,
   onEditClick,
   onDeleteClick,
@@ -248,7 +284,6 @@ function TransformerSidebar({
   onEditFloorPlan,
   onDeleteFloorPlan,
   isAddMode,
-  isFloorDrawingMode,
   loading,
   selectedTransformerId,
   selectedFloorPlanId,
@@ -259,41 +294,151 @@ function TransformerSidebar({
   onToggleCollapsed,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedStates, setExpandedStates] = useState({});
-  const [expandedCompanies, setExpandedCompanies] = useState({});
-  const [expandedFloorPlans, setExpandedFloorPlans] = useState({});
+  const [expandedStates, setExpandedStates] = useState(() => readStoredExpansionMap(EXPANDED_STATES_STORAGE_KEY));
+  const [expandedCompanies, setExpandedCompanies] = useState(() =>
+    readStoredExpansionMap(EXPANDED_COMPANIES_STORAGE_KEY)
+  );
+  const [expandedFloorPlans, setExpandedFloorPlans] = useState(() => readStoredExpansionMap(EXPANDED_AREAS_STORAGE_KEY));
   const [expandedTransformers, setExpandedTransformers] = useState({});
+  const [isAssetsModalOpen, setIsAssetsModalOpen] = useState(false);
+  const [isAreasModalOpen, setIsAreasModalOpen] = useState(false);
+  const [isCompanyParentModalOpen, setIsCompanyParentModalOpen] = useState(false);
+  const [isStatesModalOpen, setIsStatesModalOpen] = useState(false);
 
   const hierarchy = useMemo(() => buildHierarchy(transformers, floorPlans), [floorPlans, transformers]);
   const filteredHierarchy = useMemo(() => filterHierarchy(hierarchy, searchTerm), [hierarchy, searchTerm]);
+  const sortedAreas = useMemo(
+    () =>
+      [...floorPlans].sort((left, right) => {
+        const stateDifference = compareMalaysianStates(left.state, right.state);
+        if (stateDifference !== 0) {
+          return stateDifference;
+        }
+        const companyDifference = String(left.companyName || '').localeCompare(String(right.companyName || ''));
+        if (companyDifference !== 0) {
+          return companyDifference;
+        }
+        return String(left.name || '').localeCompare(String(right.name || ''));
+      }),
+    [floorPlans]
+  );
+  const floorPlanByTransformerId = useMemo(() => {
+    const assignments = new Map();
+    floorPlans.forEach((floorPlan) => {
+      floorPlan.transformerIds.forEach((transformerId) => {
+        assignments.set(String(transformerId), floorPlan);
+      });
+    });
+    return assignments;
+  }, [floorPlans]);
+  const areaSubstationAssets = useMemo(
+    () =>
+      [...transformers].sort((left, right) => {
+        const transformerNameDifference = String(left.txName || '').localeCompare(String(right.txName || ''));
+        if (transformerNameDifference !== 0) {
+          return transformerNameDifference;
+        }
+        const mnemonicDifference = String(left.mnemonic || '').localeCompare(String(right.mnemonic || ''));
+        if (mnemonicDifference !== 0) {
+          return mnemonicDifference;
+        }
+        return String(left.serialNumber || '').localeCompare(String(right.serialNumber || ''));
+      }),
+    [transformers]
+  );
+  const companyParentList = useMemo(() => {
+    const registry = new Map();
+    const ensureEntry = (rawName) => {
+      const name = String(rawName || '').trim();
+      if (!name) {
+        return null;
+      }
+      if (!registry.has(name)) {
+        registry.set(name, { name, areaCount: 0, assetCount: 0 });
+      }
+      return registry.get(name);
+    };
+
+    floorPlans.forEach((floorPlan) => {
+      const entry = ensureEntry(floorPlan.companyName);
+      if (entry) {
+        entry.areaCount += 1;
+      }
+    });
+
+    transformers.forEach((transformer) => {
+      const entry = ensureEntry(transformer.siteName);
+      if (entry) {
+        entry.assetCount += 1;
+      }
+    });
+
+    return Array.from(registry.values()).sort((left, right) => left.name.localeCompare(right.name));
+  }, [floorPlans, transformers]);
+  const statesList = useMemo(
+    () =>
+      hierarchy.map((stateGroup) => {
+        const areaCount = stateGroup.companies.reduce(
+          (total, companyGroup) => total + companyGroup.floorPlans.length,
+          0
+        );
+        const assetCount = stateGroup.companies.reduce(
+          (total, companyGroup) =>
+            total +
+            companyGroup.floorPlans.reduce(
+              (floorTotal, floorPlan) => floorTotal + floorPlan.transformers.length,
+              0
+            ) +
+            companyGroup.ungroupedTransformers.length,
+          0
+        );
+
+        return {
+          name: stateGroup.state,
+          areaCount,
+          assetCount,
+        };
+      }),
+    [hierarchy]
+  );
 
   const quickStats = useMemo(() => {
-    const companyCount = new Set(
-      [...transformers.map((transformer) => transformer.siteName), ...floorPlans.map((floorPlan) => floorPlan.companyName)]
-        .filter(Boolean)
-        .map((value) => String(value).trim())
-    ).size;
-    const statesCount = new Set(
-      [...transformers.map((transformer) => getTransformerState(transformer)), ...floorPlans.map((floorPlan) => floorPlan.state)]
-        .filter(Boolean)
-        .map((value) => String(value).trim())
-    ).size;
-
     return [
-      { label: 'Assets', value: transformers.length, icon: Zap },
-      { label: 'Floors', value: floorPlans.length, icon: Layers3 },
-      { label: 'Companies', value: companyCount, icon: Building2 },
-      { label: 'States', value: statesCount, icon: MapPin },
+      { key: 'assets', label: 'Assets', value: transformers.length, icon: Zap },
+      { key: 'areas', label: 'Areas/Substation', value: floorPlans.length, icon: Layers3 },
+      { key: 'companies', label: 'Company/Parent', value: companyParentList.length, icon: Building2 },
+      { key: 'states', label: 'States', value: statesList.length, icon: MapPin },
     ];
-  }, [floorPlans, transformers]);
+  }, [companyParentList.length, floorPlans.length, statesList.length, transformers.length]);
 
   const visibleAssetCount = countVisibleAssets(filteredHierarchy);
   const visibleFloorCount = countVisibleFloors(filteredHierarchy);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(EXPANDED_STATES_STORAGE_KEY, JSON.stringify(expandedStates));
+  }, [expandedStates]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(EXPANDED_COMPANIES_STORAGE_KEY, JSON.stringify(expandedCompanies));
+  }, [expandedCompanies]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(EXPANDED_AREAS_STORAGE_KEY, JSON.stringify(expandedFloorPlans));
+  }, [expandedFloorPlans]);
+
   const toggleExpandedValue = (setter, key) => {
     setter((current) => ({
       ...current,
-      [key]: current[key] === false,
+      [key]: !current[key],
     }));
   };
 
@@ -302,6 +447,60 @@ function TransformerSidebar({
       ...current,
       [transformerId]: !current[transformerId],
     }));
+  };
+
+  const openAssetsModal = () => setIsAssetsModalOpen(true);
+  const closeAssetsModal = () => setIsAssetsModalOpen(false);
+  const handleAssetSelect = (transformer) => {
+    const searchToken = String(
+      transformer?.txName || transformer?.mnemonic || transformer?.serialNumber || ''
+    ).trim();
+    if (searchToken) {
+      setSearchTerm(searchToken);
+    }
+
+    const assignedFloorPlan = floorPlanByTransformerId.get(String(transformer?.id));
+    const stateName = assignedFloorPlan?.state || getTransformerState(transformer) || 'Unassigned';
+    const companyName = assignedFloorPlan?.companyName || transformer?.siteName || 'Unassigned company';
+    const stateKey = `state:${stateName}`;
+    const companyKey = `company:${stateName}:${companyName}`;
+
+    setExpandedStates((current) => ({
+      ...current,
+      [stateKey]: true,
+    }));
+    setExpandedCompanies((current) => ({
+      ...current,
+      [companyKey]: true,
+    }));
+    if (assignedFloorPlan?.id) {
+      const floorKey = `floor:${assignedFloorPlan.id}`;
+      setExpandedFloorPlans((current) => ({
+        ...current,
+        [floorKey]: true,
+      }));
+    }
+
+    onTransformerClick(transformer);
+    closeAssetsModal();
+  };
+  const openAreasModal = () => setIsAreasModalOpen(true);
+  const closeAreasModal = () => setIsAreasModalOpen(false);
+  const handleAreaSelect = (area) => {
+    onFloorPlanClick(area);
+    closeAreasModal();
+  };
+  const openCompanyParentModal = () => setIsCompanyParentModalOpen(true);
+  const closeCompanyParentModal = () => setIsCompanyParentModalOpen(false);
+  const handleCompanyParentSelect = (companyParentName) => {
+    setSearchTerm(companyParentName);
+    closeCompanyParentModal();
+  };
+  const openStatesModal = () => setIsStatesModalOpen(true);
+  const closeStatesModal = () => setIsStatesModalOpen(false);
+  const handleStateSelect = (stateName) => {
+    setSearchTerm(stateName);
+    closeStatesModal();
   };
 
   if (collapsed) {
@@ -335,21 +534,6 @@ function TransformerSidebar({
               </span>
             </button>
 
-            <button
-              type="button"
-              className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-              onClick={onDrawFloorClick}
-              aria-label={isFloorDrawingMode ? 'Floor drawing armed' : 'Draw floor overlay'}
-              title={isFloorDrawingMode ? 'Floor drawing armed' : 'Draw floor overlay'}
-            >
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                <Pencil className="h-4 w-4" />
-              </div>
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                {isFloorDrawingMode ? 'Draw' : 'Floor'}
-              </span>
-            </button>
-
             <Button
               variant="outline"
               size="icon"
@@ -365,10 +549,59 @@ function TransformerSidebar({
           <div className="flex w-full flex-col gap-2">
             {quickStats.map((stat) => {
               const Icon = stat.icon;
+              const isAssetsStat = stat.key === 'assets';
+              const isAreasStat = stat.key === 'areas';
+              const isCompanyParentStat = stat.key === 'companies';
+              const isStatesStat = stat.key === 'states';
+              const sharedClassName =
+                'flex w-full flex-col items-center gap-1 overflow-hidden rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-2 text-center transition-colors hover:bg-[var(--card-muted)]';
+
+              if (isAssetsStat || isAreasStat || isCompanyParentStat || isStatesStat) {
+                const onClick = isAssetsStat
+                  ? openAssetsModal
+                  : isAreasStat
+                    ? openAreasModal
+                    : isCompanyParentStat
+                      ? openCompanyParentModal
+                      : openStatesModal;
+                const ariaLabel = isAssetsStat
+                  ? `Assets: ${stat.value}. Open assets list`
+                  : isAreasStat
+                    ? `Areas/Substation: ${stat.value}. Open areas list`
+                    : isCompanyParentStat
+                      ? `Company/Parent: ${stat.value}. Open company/parent list`
+                      : `States: ${stat.value}. Open states list`;
+                const title = isAssetsStat
+                  ? 'Open assets list'
+                  : isAreasStat
+                    ? 'Open areas/substation list'
+                    : isCompanyParentStat
+                      ? 'Open company/parent list'
+                      : 'Open states list';
+                return (
+                  <button
+                    key={stat.key}
+                    type="button"
+                    className={`${sharedClassName} cursor-pointer`}
+                    onClick={onClick}
+                    aria-label={ariaLabel}
+                    title={title}
+                  >
+                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <span className="text-sm font-semibold text-[var(--foreground)]">{stat.value}</span>
+                    <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
+                      {getCollapsedStatLabel(stat.key, stat.label)}
+                    </span>
+                  </button>
+                );
+              }
+
               return (
                 <div
-                  key={stat.label}
-                  className="flex w-full flex-col items-center gap-1 rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-2 text-center transition-colors hover:bg-[var(--card-muted)]"
+                  key={stat.key}
+                  className={sharedClassName}
                   aria-label={`${stat.label}: ${stat.value}`}
                   title={`${stat.label}: ${stat.value}`}
                 >
@@ -376,8 +609,8 @@ function TransformerSidebar({
                     <Icon className="h-4 w-4" />
                   </div>
                   <span className="text-sm font-semibold text-[var(--foreground)]">{stat.value}</span>
-                  <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                    {stat.label}
+                  <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
+                    {getCollapsedStatLabel(stat.key, stat.label)}
                   </span>
                 </div>
               );
@@ -402,6 +635,33 @@ function TransformerSidebar({
             <X className="h-4 w-4" />
           </Button>
         </div>
+
+        <AssetsListDialog
+          open={isAssetsModalOpen}
+          assets={areaSubstationAssets}
+          selectedAssetId={selectedTransformerId}
+          onClose={closeAssetsModal}
+          onSelectAsset={handleAssetSelect}
+        />
+        <AreasListDialog
+          open={isAreasModalOpen}
+          areas={sortedAreas}
+          selectedAreaId={selectedFloorPlanId}
+          onClose={closeAreasModal}
+          onSelectArea={handleAreaSelect}
+        />
+        <CompanyParentListDialog
+          open={isCompanyParentModalOpen}
+          companyParents={companyParentList}
+          onClose={closeCompanyParentModal}
+          onSelectCompanyParent={handleCompanyParentSelect}
+        />
+        <StatesListDialog
+          open={isStatesModalOpen}
+          states={statesList}
+          onClose={closeStatesModal}
+          onSelectState={handleStateSelect}
+        />
       </div>
     );
   }
@@ -453,19 +713,64 @@ function TransformerSidebar({
         <div className="mt-4 grid grid-cols-2 gap-2">
           {quickStats.map((stat) => {
             const Icon = stat.icon;
+            const isAssetsStat = stat.key === 'assets';
+            const isAreasStat = stat.key === 'areas';
+            const isCompanyParentStat = stat.key === 'companies';
+            const isStatesStat = stat.key === 'states';
+            const cardBody = (
+              <CardContent className="space-y-1.5 p-3">
+                <div className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                  <Icon className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                    {stat.label}
+                  </p>
+                  <p className="text-xl font-semibold leading-none">{stat.value}</p>
+                </div>
+              </CardContent>
+            );
+
+            if (isAssetsStat || isAreasStat || isCompanyParentStat || isStatesStat) {
+              const onClick = isAssetsStat
+                ? openAssetsModal
+                : isAreasStat
+                  ? openAreasModal
+                  : isCompanyParentStat
+                    ? openCompanyParentModal
+                    : openStatesModal;
+              const ariaLabel = isAssetsStat
+                ? `Assets: ${stat.value}. Open assets list`
+                : isAreasStat
+                  ? `Areas/Substation: ${stat.value}. Open areas list`
+                  : isCompanyParentStat
+                    ? `Company/Parent: ${stat.value}. Open company/parent list`
+                    : `States: ${stat.value}. Open states list`;
+              const title = isAssetsStat
+                ? 'Open assets list'
+                : isAreasStat
+                  ? 'Open areas/substation list'
+                  : isCompanyParentStat
+                    ? 'Open company/parent list'
+                    : 'Open states list';
+              return (
+                <Card key={stat.key} className="bg-[var(--card-elevated)]">
+                  <button
+                    type="button"
+                    className="w-full rounded-[inherit] text-left transition-colors hover:bg-[var(--card-muted)]"
+                    onClick={onClick}
+                    aria-label={ariaLabel}
+                    title={title}
+                  >
+                    {cardBody}
+                  </button>
+                </Card>
+              );
+            }
+
             return (
-              <Card key={stat.label} className="bg-[var(--card-elevated)]">
-                <CardContent className="space-y-1.5 p-3">
-                  <div className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                    <Icon className="h-3.5 w-3.5" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                      {stat.label}
-                    </p>
-                    <p className="text-xl font-semibold leading-none">{stat.value}</p>
-                  </div>
-                </CardContent>
+              <Card key={stat.key} className="bg-[var(--card-elevated)]">
+                {cardBody}
               </Card>
             );
           })}
@@ -483,15 +788,6 @@ function TransformerSidebar({
             {isAddMode ? 'Map placement armed' : 'Add transformer'}
           </Button>
 
-          <Button
-            className="w-full justify-center"
-            variant={isFloorDrawingMode ? 'secondary' : 'outline'}
-            onClick={onDrawFloorClick}
-          >
-            <Pencil className="h-4 w-4" />
-            {isFloorDrawingMode ? 'Floor pen armed' : 'Draw floor overlay'}
-          </Button>
-
           <label className="space-y-2">
             <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
               Find an asset or floor
@@ -502,8 +798,19 @@ function TransformerSidebar({
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search by floor, company, or transformer"
-                className="pl-9"
+                className="pl-9 pr-9"
               />
+              {searchTerm ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-xs font-semibold text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  X
+                </button>
+              ) : null}
             </div>
           </label>
         </div>
@@ -550,7 +857,7 @@ function TransformerSidebar({
           <div className="space-y-3">
             {filteredHierarchy.map((stateGroup) => {
               const stateKey = `state:${stateGroup.state}`;
-              const isStateExpanded = expandedStates[stateKey] !== false;
+              const isStateExpanded = Boolean(expandedStates[stateKey]);
 
               return (
                 <section key={stateGroup.state} className="space-y-3">
@@ -558,7 +865,7 @@ function TransformerSidebar({
                     type="button"
                     onClick={() => toggleExpandedValue(setExpandedStates, stateKey)}
                     aria-expanded={isStateExpanded}
-                    className="flex w-full items-center justify-between rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-2 text-left transition-colors hover:bg-[var(--card-strong)]"
+                    className="flex w-full items-center justify-between rounded-md border border-emerald-300/60 bg-emerald-50/70 px-3 py-2 text-left transition-colors hover:bg-emerald-100/80 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:hover:bg-emerald-900/45"
                   >
                     <div>
                       <p className="text-sm font-semibold text-[var(--foreground)]">{stateGroup.state}</p>
@@ -580,7 +887,7 @@ function TransformerSidebar({
                     <div className="space-y-3 pl-1">
                       {stateGroup.companies.map((companyGroup) => {
                         const companyKey = `company:${stateGroup.state}:${companyGroup.companyName}`;
-                        const isCompanyExpanded = expandedCompanies[companyKey] !== false;
+                        const isCompanyExpanded = Boolean(expandedCompanies[companyKey]);
                         const companyAssetCount =
                           companyGroup.floorPlans.reduce(
                             (sum, floorPlan) => sum + floorPlan.transformers.length,
@@ -593,7 +900,7 @@ function TransformerSidebar({
                               type="button"
                               onClick={() => toggleExpandedValue(setExpandedCompanies, companyKey)}
                               aria-expanded={isCompanyExpanded}
-                              className="flex w-full items-center justify-between rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-left transition-colors hover:bg-[var(--card-elevated)]"
+                              className="flex w-full items-center justify-between rounded-md border border-sky-300/60 bg-sky-50/65 px-3 py-2 text-left transition-colors hover:bg-sky-100/80 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:bg-sky-900/40"
                             >
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold text-[var(--foreground)]">
@@ -617,7 +924,7 @@ function TransformerSidebar({
                               <div className="space-y-3 pl-2">
                                 {companyGroup.floorPlans.map((floorPlan) => {
                                   const floorKey = `floor:${floorPlan.id}`;
-                                  const isFloorExpanded = expandedFloorPlans[floorKey] !== false;
+                                  const isFloorExpanded = Boolean(expandedFloorPlans[floorKey]);
                                   const isFloorSelected = selectedFloorPlanId === floorPlan.id;
 
                                   return (
@@ -626,7 +933,7 @@ function TransformerSidebar({
                                       className={`rounded-md border p-3 shadow-[var(--shadow-card)] ${
                                         isFloorSelected
                                           ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
-                                          : 'border-[color:var(--border)] bg-[var(--card)]'
+                                          : 'border-violet-300/60 bg-violet-50/45 dark:border-violet-900/50 dark:bg-violet-950/20'
                                       }`}
                                     >
                                       <div className="flex items-start gap-2">
@@ -763,7 +1070,227 @@ function TransformerSidebar({
           </div>
         )}
       </div>
+      <AssetsListDialog
+        open={isAssetsModalOpen}
+        assets={areaSubstationAssets}
+        selectedAssetId={selectedTransformerId}
+        onClose={closeAssetsModal}
+        onSelectAsset={handleAssetSelect}
+      />
+      <AreasListDialog
+        open={isAreasModalOpen}
+        areas={sortedAreas}
+        selectedAreaId={selectedFloorPlanId}
+        onClose={closeAreasModal}
+        onSelectArea={handleAreaSelect}
+      />
+      <CompanyParentListDialog
+        open={isCompanyParentModalOpen}
+        companyParents={companyParentList}
+        onClose={closeCompanyParentModal}
+        onSelectCompanyParent={handleCompanyParentSelect}
+      />
+      <StatesListDialog
+        open={isStatesModalOpen}
+        states={statesList}
+        onClose={closeStatesModal}
+        onSelectState={handleStateSelect}
+      />
     </div>
+  );
+}
+
+function AssetsListDialog({ open, assets, selectedAssetId, onClose, onSelectAsset }) {
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
+      <DialogContent className="mobile-form-dialog max-w-3xl p-0">
+        <DialogHeader>
+          <DialogTitle>All Assets</DialogTitle>
+          <DialogDescription>
+            {assets.length} assets available. Select one to focus it and show it in the sidebar.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="mobile-dialog-scroll px-4 py-4 sm:px-5 sm:py-5">
+          {assets.length === 0 ? (
+            <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
+              No assets available yet.
+            </p>
+          ) : (
+            <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+              {assets.map((asset) => {
+                const isSelected = selectedAssetId === asset.id;
+
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => onSelectAsset(asset)}
+                    className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${
+                      isSelected
+                        ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
+                        : 'border-[color:var(--border)] bg-[var(--card)] hover:bg-[var(--card-muted)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                          {asset.txName || 'Unnamed transformer'}
+                        </p>
+                        <p className="truncate text-sm text-[var(--muted)]">
+                          Mnemonic: {asset.mnemonic || '-'} - Serial: {asset.serialNumber || '-'}
+                        </p>
+                      </div>
+                      {isSelected ? <Badge variant="secondary">Selected</Badge> : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AreasListDialog({ open, areas, selectedAreaId, onClose, onSelectArea }) {
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
+      <DialogContent className="mobile-form-dialog max-w-3xl p-0">
+        <DialogHeader>
+          <DialogTitle>All Areas/Substations</DialogTitle>
+          <DialogDescription>
+            {areas.length} areas/substations available in this app. Select one to focus it on the map.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="mobile-dialog-scroll px-4 py-4 sm:px-5 sm:py-5">
+          {areas.length === 0 ? (
+            <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
+              No areas saved yet.
+            </p>
+          ) : (
+            <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+              {areas.map((area) => {
+                const isSelected = selectedAreaId === area.id;
+                const assignedAssetCount = Array.isArray(area.transformerIds) ? area.transformerIds.length : 0;
+
+                return (
+                  <button
+                    key={area.id}
+                    type="button"
+                    onClick={() => onSelectArea(area)}
+                    className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${
+                      isSelected
+                        ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
+                        : 'border-[color:var(--border)] bg-[var(--card)] hover:bg-[var(--card-muted)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                          {area.name || 'Unnamed area'}
+                        </p>
+                        <p className="truncate text-sm text-[var(--muted)]">
+                          {area.companyName || 'Unknown company'}
+                          {area.state ? ` - ${area.state}` : ''}
+                        </p>
+                      </div>
+                      <Badge variant={isSelected ? 'secondary' : 'outline'}>
+                        {assignedAssetCount} assets
+                      </Badge>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CompanyParentListDialog({ open, companyParents, onClose, onSelectCompanyParent }) {
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
+      <DialogContent className="mobile-form-dialog max-w-2xl p-0">
+        <DialogHeader>
+          <DialogTitle>All Company/Parent</DialogTitle>
+          <DialogDescription>
+            {companyParents.length} company/parent names available in this app. Select one to filter the sidebar list.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="mobile-dialog-scroll px-4 py-4 sm:px-5 sm:py-5">
+          {companyParents.length === 0 ? (
+            <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
+              No company/parent names available yet.
+            </p>
+          ) : (
+            <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+              {companyParents.map((companyParent) => (
+                <button
+                  key={companyParent.name}
+                  type="button"
+                  onClick={() => onSelectCompanyParent(companyParent.name)}
+                  className="w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-3 text-left transition-colors hover:bg-[var(--card-muted)]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">{companyParent.name}</p>
+                    <Badge variant="outline">
+                      {companyParent.areaCount} areas · {companyParent.assetCount} assets
+                    </Badge>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StatesListDialog({ open, states, onClose, onSelectState }) {
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
+      <DialogContent className="mobile-form-dialog max-w-2xl p-0">
+        <DialogHeader>
+          <DialogTitle>All States</DialogTitle>
+          <DialogDescription>
+            {states.length} states available in this app. Select one to filter the sidebar list.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="mobile-dialog-scroll px-4 py-4 sm:px-5 sm:py-5">
+          {states.length === 0 ? (
+            <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
+              No states available yet.
+            </p>
+          ) : (
+            <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+              {states.map((state) => (
+                <button
+                  key={state.name}
+                  type="button"
+                  onClick={() => onSelectState(state.name)}
+                  className="w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-3 text-left transition-colors hover:bg-[var(--card-muted)]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">{state.name}</p>
+                    <Badge variant="outline">
+                      {state.areaCount} areas · {state.assetCount} assets
+                    </Badge>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

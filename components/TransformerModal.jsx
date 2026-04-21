@@ -82,12 +82,12 @@ function TransformerModal({ open, transformer, onSave, onClose }) {
           <div className="mobile-dialog-scroll space-y-5 px-4 py-4 sm:px-5 sm:py-5">
             <section className="grid gap-4 sm:grid-cols-2">
               <Field
-                label="Company / site name"
+                label="Site name"
                 name="siteName"
                 required
                 value={formData.siteName}
                 onChange={handleChange}
-                placeholder="Kedah Cement"
+                placeholder="PMU Melawati, PPU Melawati, PE Melawati, LLS Kerian"
               />
               <SelectField
                 label="State / territory"

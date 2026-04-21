@@ -44,6 +44,7 @@ const DEFAULT_CENTER = [3.139, 101.6869];
 const DEFAULT_ZOOM = 11;
 const THEME_STORAGE_KEY = 'transformer-asset-map-theme';
 const MAP_BASE_LAYER_STORAGE_KEY = 'transformer-asset-map-base-layer';
+const DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY = 'transformer-asset-map-desktop-sidebar-collapsed';
 
 const MAP_BASE_LAYERS = {
   streets: {
@@ -255,7 +256,18 @@ function App() {
     }
     return window.innerWidth >= 1024;
   });
-  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+
+    const storedPreference = window.localStorage.getItem(DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY);
+    if (storedPreference === null) {
+      return true;
+    }
+
+    return storedPreference === 'true';
+  });
   const [isSidebarInteracting, setIsSidebarInteracting] = useState(false);
   const [floorPlans, setFloorPlans] = useState([]);
   const [showFloorPlans, setShowFloorPlans] = useState(true);
@@ -291,6 +303,16 @@ function App() {
     }
     window.localStorage.setItem(MAP_BASE_LAYER_STORAGE_KEY, mapBaseLayer);
   }, [mapBaseLayer]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(
+      DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY,
+      String(isDesktopSidebarCollapsed)
+    );
+  }, [isDesktopSidebarCollapsed]);
 
   useEffect(() => {
     const syncSidebarState = () => {
@@ -760,6 +782,31 @@ function App() {
     setFloorPlanDraft(createDraftFloorPlan(floorPlan));
     setIsFloorPlanDialogOpen(false);
     setFloorPlanDialogDraft(null);
+  };
+
+  const handleSaveFloorPlanShape = async (floorPlan, nextPoints) => {
+    if (!floorPlan || !Array.isArray(nextPoints) || nextPoints.length < 3) {
+      window.alert('A floor boundary needs at least three points.');
+      return false;
+    }
+
+    try {
+      const normalizedFloorPlan = normalizeFloorPlan({
+        ...floorPlan,
+        points: nextPoints,
+        createdAt: floorPlan.createdAt || new Date().toISOString(),
+      });
+
+      await floorPlanService.upsert(normalizedFloorPlan);
+      const storedFloorPlans = await floorPlanService.getAll();
+      setFloorPlans(storedFloorPlans);
+      focusFloorPlan(normalizedFloorPlan);
+      return true;
+    } catch (err) {
+      console.error('Failed to reshape floor plan:', err);
+      window.alert('Failed to save floor boundary. Please try again.');
+      return false;
+    }
   };
 
   const cancelFloorPlanDrawing = () => {
@@ -1444,6 +1491,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onReshape={(floorPlan) => {
           handleEditFloorPlan(floorPlan);
         }}
+        onSaveReshape={handleSaveFloorPlanShape}
         onAddTransformerToFloor={handleFloorDetailAddTransformer}
         onEditTransformer={(transformer) => {
           setEditingTransformer(transformer);

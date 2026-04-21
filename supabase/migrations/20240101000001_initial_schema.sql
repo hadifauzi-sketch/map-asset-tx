@@ -91,12 +91,24 @@ create table if not exists public.documents (
   file_name       text        not null,
   file_type       text        not null,
   file_size       bigint      not null,
+  image_category  text,
+  constraint documents_image_category_check check (
+    image_category in (
+      'name-plate',
+      'transformer-design',
+      'oil-level-design',
+      'oltc-design',
+      'buchholz-design',
+      'other'
+    )
+  ),
   storage_path    text        not null,
   uploaded_at     timestamptz default now()
 );
 
 alter table public.documents enable row level security;
 create policy "anon_all" on public.documents for all using (true) with check (true);
+create index if not exists idx_documents_image_category on public.documents(image_category);
 
 -- ── floor_plans ───────────────────────────────────────────────
 create table if not exists public.floor_plans (

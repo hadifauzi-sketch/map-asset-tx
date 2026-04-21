@@ -91,7 +91,7 @@ const DynamicDGAChart = ({ data }) => {
   };
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height={240}>
       <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="date" fontSize={10} tickMargin={10} stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR }} />
@@ -306,7 +306,7 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
 
         {/* Inhibitor Depletion */}
         <DashboardCard title="Inhibitor (DBPC) Depletion" icon={Shield}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={240}>
             <LineChart data={chartData} connectNulls={true}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" fontSize={10} stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR }} />
@@ -321,7 +321,7 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
 
         {/* Corrosive Sulfur & Passivation */}
         <DashboardCard title="Corrosive Sulfur & Passivation" icon={AlertOctagon}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" fontSize={10} stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR }} />
@@ -344,7 +344,7 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
 
         {/* Paper Aging: Furan, Methanol & DP */}
         <DashboardCard title="Paper Aging: Furan, Methanol & DP" icon={FileText}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartData} connectNulls>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" fontSize={10} stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR }} />
@@ -362,7 +362,7 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
 
         {/* Oil Aging: IFT & Tan Delta */}
         <DashboardCard title="Oil Aging: IFT & Tan Delta" icon={Zap}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" fontSize={10} stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR }} />
@@ -378,7 +378,7 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
 
         {/* Physical: Color & Acidity */}
         <DashboardCard title="Physical: Color & Acidity" icon={FlaskConical}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" fontSize={10} stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR }} />

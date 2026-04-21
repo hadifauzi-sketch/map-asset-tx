@@ -107,12 +107,12 @@ function FloorPlanMetadataDialog({
     event.preventDefault();
 
     if (!String(formData.name || '').trim()) {
-      window.alert('Please enter an area floor or area name.');
+      window.alert('Please enter an area name.');
       return;
     }
 
     if (!String(formData.companyName || '').trim()) {
-      window.alert('Please enter a company or site name.');
+      window.alert('Please enter a company or parent name.');
       return;
     }
 
@@ -147,28 +147,28 @@ function FloorPlanMetadataDialog({
             <section className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
                 <span className="text-sm font-medium text-[var(--foreground)]">
-                  Area Floor/Area Name
-                  <span className="ml-1 text-[var(--danger-strong)]">*</span>
-                </span>
-                <Input
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  placeholder="Plant 1"
-                  required
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-[var(--foreground)]">
-                  Company / site name
+                  Company / Parent name
                   <span className="ml-1 text-[var(--danger-strong)]">*</span>
                 </span>
                 <Input
                   name="companyName"
                   value={formData.companyName}
                   onChange={handleChange}
-                  placeholder="Kedah Cement"
+                  placeholder="Ditrolic, PrefChem, PMU, PPU, PE and LSS"
+                  required
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-[var(--foreground)]">
+                  Area Name
+                  <span className="ml-1 text-[var(--danger-strong)]">*</span>
+                </span>
+                <Input
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="Plant 1, Substation, Area and Building"
                   required
                 />
               </label>
@@ -198,7 +198,7 @@ function FloorPlanMetadataDialog({
             <section className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-[var(--foreground)]">Transformers inside this floor</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">Transformers inside this Area</p>
                   <p className="text-sm text-[var(--muted)]">
                     Assets detected inside the drawn boundary are preselected. Search by transformer name, serial number, or mnemonic to fine-tune the list.
                   </p>
@@ -281,7 +281,7 @@ function FloorPlanMetadataDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit">{formData.id ? 'Update floor plan' : 'Save floor plan'}</Button>
+            <Button type="submit">{formData.id ? 'Update Area Plan' : 'Save floor plan'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
