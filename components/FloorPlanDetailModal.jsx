@@ -73,6 +73,7 @@ export default function FloorPlanDetailModal({
   floorPlan,
   transformers = [],
   isOpen,
+  canManageAssets = true,
   onClose,
   onEditInfo,
   onReshape,
@@ -115,13 +116,19 @@ export default function FloorPlanDetailModal({
 
   const handleMapClick = useCallback(
     (position) => {
+      if (!canManageAssets) {
+        return;
+      }
       setIsAddMode(false);
       onAddTransformerToFloor?.(position, floorPlan.id);
     },
-    [onAddTransformerToFloor, floorPlan]
+    [canManageAssets, onAddTransformerToFloor, floorPlan]
   );
 
   const handleReshapeButtonClick = useCallback(() => {
+    if (!canManageAssets) {
+      return;
+    }
     if (typeof onSaveReshape === 'function') {
       setIsAddMode(false);
       setIsReshapeMode(true);
@@ -130,7 +137,7 @@ export default function FloorPlanDetailModal({
     }
     onClose();
     onReshape?.(floorPlan);
-  }, [onClose, onReshape, onSaveReshape, floorPlan]);
+  }, [canManageAssets, onClose, onReshape, onSaveReshape, floorPlan]);
 
   const handleCancelReshape = useCallback(() => {
     setReshapePoints(clonePoints(floorPlan?.points || []));
@@ -184,28 +191,32 @@ export default function FloorPlanDetailModal({
             <div className="flex w-full shrink-0 flex-wrap items-center gap-2 pt-0.5 sm:w-auto sm:justify-end">
               <Badge variant="secondary">{floorTransformers.length} assets</Badge>
               <Badge variant="outline">{activePoints.length} boundary pts</Badge>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={isReshapeMode || isSavingReshape}
-                onClick={() => onEditInfo?.(floorPlan)}
-              >
-                Edit info
-              </Button>
-              {isReshapeMode ? (
+              {canManageAssets ? (
                 <>
-                  <Button size="sm" variant="outline" disabled={isSavingReshape} onClick={handleCancelReshape}>
-                    Cancel reshape
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isReshapeMode || isSavingReshape}
+                    onClick={() => onEditInfo?.(floorPlan)}
+                  >
+                    Edit info
                   </Button>
-                  <Button size="sm" disabled={isSavingReshape} onClick={handleSaveReshape}>
-                    {isSavingReshape ? 'Saving...' : 'Save shape'}
-                  </Button>
+                  {isReshapeMode ? (
+                    <>
+                      <Button size="sm" variant="outline" disabled={isSavingReshape} onClick={handleCancelReshape}>
+                        Cancel reshape
+                      </Button>
+                      <Button size="sm" disabled={isSavingReshape} onClick={handleSaveReshape}>
+                        {isSavingReshape ? 'Saving...' : 'Save shape'}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={handleReshapeButtonClick}>
+                      Reshape
+                    </Button>
+                  )}
                 </>
-              ) : (
-                <Button size="sm" variant="outline" onClick={handleReshapeButtonClick}>
-                  Reshape
-                </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </DialogHeader>
@@ -285,10 +296,10 @@ export default function FloorPlanDetailModal({
                 key={transformer.id}
                 position={transformer.position}
                 icon={createMarkerIcon('#0f766e')}
-                draggable={!isReshapeMode}
+                draggable={canManageAssets && !isReshapeMode}
                 eventHandlers={{
                   dragend: (e) => {
-                    if (isReshapeMode) {
+                    if (!canManageAssets || isReshapeMode) {
                       return;
                     }
                     const { lat, lng } = e.target.getLatLng();
@@ -312,20 +323,24 @@ export default function FloorPlanDetailModal({
                         <Eye size={13} />
                         View details
                       </button>
-                      <button
-                        className="floor-detail-action-btn floor-detail-action-outline"
-                        onClick={() => { onEditTransformer?.(transformer); onClose(); }}
-                      >
-                        <Pencil size={13} />
-                        Edit transformer
-                      </button>
-                      <button
-                        className="floor-detail-action-btn floor-detail-action-danger"
-                        onClick={() => onRemoveFromFloor?.(floorPlan.id, transformer.id)}
-                      >
-                        <X size={13} />
-                        Remove from floor
-                      </button>
+                      {canManageAssets ? (
+                        <>
+                          <button
+                            className="floor-detail-action-btn floor-detail-action-outline"
+                            onClick={() => { onEditTransformer?.(transformer); onClose(); }}
+                          >
+                            <Pencil size={13} />
+                            Edit transformer
+                          </button>
+                          <button
+                            className="floor-detail-action-btn floor-detail-action-danger"
+                            onClick={() => onRemoveFromFloor?.(floorPlan.id, transformer.id)}
+                          >
+                            <X size={13} />
+                            Remove from floor
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 </Popup>
@@ -349,16 +364,18 @@ export default function FloorPlanDetailModal({
               ))
             )}
           </div>
-          <Button
-            size="sm"
-            className={`w-full shrink-0 transition-all sm:w-auto${isAddMode ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}
-            variant={isAddMode ? 'secondary' : 'default'}
-            disabled={isReshapeMode || isSavingReshape}
-            onClick={() => setIsAddMode((v) => !v)}
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            {isAddMode ? 'Cancel placing' : 'Add transformer'}
-          </Button>
+          {canManageAssets ? (
+            <Button
+              size="sm"
+              className={`w-full shrink-0 transition-all sm:w-auto${isAddMode ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}
+              variant={isAddMode ? 'secondary' : 'default'}
+              disabled={isReshapeMode || isSavingReshape}
+              onClick={() => setIsAddMode((v) => !v)}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              {isAddMode ? 'Cancel placing' : 'Add transformer'}
+            </Button>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

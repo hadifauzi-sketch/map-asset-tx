@@ -125,6 +125,7 @@ function persistCompartmentConfig(transformerId, config) {
 function TransformerDetailModal({
   open,
   transformer,
+  readOnly = false,
   onClose,
   onUpdateOilTests,
   onUpdateDocuments,
@@ -172,6 +173,13 @@ function TransformerDetailModal({
     setNewCompartmentError('');
     setSelectedCompartment(DEFAULT_COMPARTMENTS[0]);
   }, [transformer?.id]);
+
+  useEffect(() => {
+    if (!readOnly) {
+      return;
+    }
+    setIsCreateCompartmentOpen(false);
+  }, [readOnly]);
 
   useEffect(() => {
     if (!transformer?.id) {
@@ -384,12 +392,18 @@ function TransformerDetailModal({
   };
 
   const openCreateCompartmentModal = () => {
+    if (readOnly) {
+      return;
+    }
     setNewCompartmentName('');
     setNewCompartmentError('');
     setIsCreateCompartmentOpen(true);
   };
 
   const handleCreateCompartment = (event) => {
+    if (readOnly) {
+      return;
+    }
     if (event?.preventDefault) {
       event.preventDefault();
     }
@@ -427,6 +441,9 @@ function TransformerDetailModal({
   };
 
   const handleSaveCompartmentMetrics = () => {
+    if (readOnly) {
+      return;
+    }
     const voltage = sanitizeMetricValue(compartmentMetricForm.voltage);
     const loadMVA = sanitizeMetricValue(compartmentMetricForm.loadMVA);
 
@@ -446,6 +463,9 @@ function TransformerDetailModal({
   };
 
   const handleResetCompartmentMetrics = () => {
+    if (readOnly) {
+      return;
+    }
     setCompartmentMetricForm({ voltage: '', loadMVA: '' });
     setCompartmentMetrics((current) => {
       const next = { ...current };
@@ -523,18 +543,25 @@ function TransformerDetailModal({
                     </button>
                   );
                 })}
-                <button
-                  type="button"
-                  onClick={openCreateCompartmentModal}
-                  className="inline-flex items-center rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--card-elevated)]"
-                >
-                  + Add compartment
-                </button>
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    onClick={openCreateCompartmentModal}
+                    className="inline-flex items-center rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--card-elevated)]"
+                  >
+                    + Add compartment
+                  </button>
+                ) : null}
               </div>
               <p className="mt-2 text-xs text-[var(--muted)]">
                 Oil tests, documents, images, trending, and snapshot counts below are filtered by the selected
                 compartment.
               </p>
+              {readOnly ? (
+                <p className="mt-2 text-xs font-medium text-[var(--muted)]">
+                  Viewer mode: asset details are read-only.
+                </p>
+              ) : null}
 
               <div className="mt-3 rounded-md border border-[color:var(--border)] bg-[var(--card)] p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
@@ -546,6 +573,7 @@ function TransformerDetailModal({
                     name="voltage"
                     value={compartmentMetricForm.voltage}
                     onChange={handleCompartmentMetricInputChange}
+                    disabled={readOnly}
                     placeholder={transformer.voltage ? `Voltage (default: ${transformer.voltage})` : 'Voltage'}
                     className="h-10 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 text-sm text-[var(--foreground)] outline-none ring-0 transition-colors focus:border-[color:var(--primary)]"
                   />
@@ -554,12 +582,14 @@ function TransformerDetailModal({
                     name="loadMVA"
                     value={compartmentMetricForm.loadMVA}
                     onChange={handleCompartmentMetricInputChange}
+                    disabled={readOnly}
                     placeholder={transformer.loadMVA ? `Load (default: ${transformer.loadMVA})` : 'Load (MVA)'}
                     className="h-10 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 text-sm text-[var(--foreground)] outline-none ring-0 transition-colors focus:border-[color:var(--primary)]"
                   />
                   <button
                     type="button"
                     onClick={handleSaveCompartmentMetrics}
+                    disabled={readOnly}
                     className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-strong)]"
                   >
                     Save
@@ -567,6 +597,7 @@ function TransformerDetailModal({
                   <button
                     type="button"
                     onClick={handleResetCompartmentMetrics}
+                    disabled={readOnly}
                     className="inline-flex h-10 items-center justify-center rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-4 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--card-elevated)]"
                   >
                     Use default
@@ -685,6 +716,7 @@ function TransformerDetailModal({
                   oilTests={filteredOilTests}
                   onUpdate={onUpdateOilTests}
                   transformer={transformer}
+                  readOnly={readOnly}
                   activeCompartment={selectedCompartmentName}
                   onAssignCompartment={assignOilTestCompartment}
                 />
@@ -696,6 +728,7 @@ function TransformerDetailModal({
                   transformerName={transformer.txName}
                   documents={filteredDocuments}
                   oilTests={filteredOilTests}
+                  readOnly={readOnly}
                   onUpdate={onUpdateDocuments}
                   onUpdateOilTests={onUpdateOilTests}
                   activeCompartment={selectedCompartmentName}
@@ -718,6 +751,7 @@ function TransformerDetailModal({
                   transformerId={transformer.id}
                   transformerName={transformer.txName}
                   images={filteredImages}
+                  readOnly={readOnly}
                   onUpdate={onUpdateDocuments}
                   activeCompartment={selectedCompartmentName}
                   onAssignImageCompartment={assignDocumentCompartment}
@@ -728,6 +762,7 @@ function TransformerDetailModal({
                 <DataTrending
                   oilTests={filteredOilTests}
                   transformer={transformer}
+                  readOnly={readOnly}
                   compartmentLabel={selectedCompartmentName}
                 />
               </TabsContent>

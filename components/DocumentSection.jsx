@@ -219,6 +219,7 @@ function DocumentSection({
   transformerName,
   documents,
   oilTests = [],
+  readOnly = false,
   onUpdate,
   onUpdateOilTests,
   activeCompartment = 'Maintank',
@@ -284,6 +285,9 @@ function DocumentSection({
 
   const handleSelectedFiles = useCallback(
     async (incomingFiles) => {
+      if (readOnly) {
+        return;
+      }
       const files = Array.from(incomingFiles || []).filter(Boolean);
 
       if (files.length === 0) {
@@ -338,11 +342,14 @@ function DocumentSection({
         setIsReadingImport(false);
       }
     },
-    [uploadFilesAsDocuments]
+    [readOnly, uploadFilesAsDocuments]
   );
 
   const handleDrop = useCallback(
     async (acceptedFiles, fileRejections) => {
+      if (readOnly) {
+        return;
+      }
       if (fileRejections.length > 0) {
         const tooLarge = fileRejections.find((rejection) =>
           rejection.errors.some((error) => error.code === 'file-too-large')
@@ -365,12 +372,12 @@ function DocumentSection({
 
       await handleSelectedFiles(acceptedFiles);
     },
-    [handleSelectedFiles]
+    [handleSelectedFiles, readOnly]
   );
 
   const { getRootProps, getInputProps, isDragActive, isDragAccept, isDragReject, open } = useDropzone({
     accept: STORAGE_ACCEPT,
-    disabled: isBusy,
+    disabled: isBusy || readOnly,
     maxSize: MAX_FILE_SIZE_BYTES,
     multiple: true,
     noClick: true,
@@ -379,6 +386,9 @@ function DocumentSection({
   });
 
   const handleRequestDeleteDocument = (doc) => {
+    if (readOnly) {
+      return;
+    }
     if (!doc) {
       return;
     }
@@ -611,68 +621,73 @@ function DocumentSection({
             {activeCompartment}
           </span>
         </div>
-        <Button onClick={open} disabled={isBusy}>
-          {actionButtonLabel}
-        </Button>
+        {!readOnly ? (
+          <Button onClick={open} disabled={isBusy}>
+            {actionButtonLabel}
+          </Button>
+        ) : null}
       </div>
 
       <div className="upload-info">
         <p>Store lab reports in Documents, or let the app read DGA and key oil-test values before sending them into Oil Tests.</p>
         <p>Supported formats: PDF, Word, Excel, Images (JPG, PNG, WEBP, BMP). Maximum file size: 10MB per file.</p>
+        {readOnly ? <p>Viewer mode: document upload, import, reassignment, and deletion are disabled.</p> : null}
       </div>
 
-      <div
-        {...getRootProps({
-          className: cn(
-            'rounded-md border-2 border-dashed transition-colors',
-            hasDocuments ? 'min-h-36 p-5' : 'min-h-[220px] p-6',
-            isDragReject
-              ? 'border-[color:var(--danger-soft)] bg-[var(--danger-soft)]'
-              : isDragAccept
-                ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
-                : 'border-[color:var(--border)] bg-[var(--card-muted)]'
-          ),
-        })}
-      >
-        <input {...getInputProps()} />
-
+      {!readOnly ? (
         <div
-          className={cn(
-            'flex h-full gap-4',
-            hasDocuments
-              ? 'flex-col justify-center text-left md:flex-row md:items-center md:justify-between'
-              : 'flex-col items-center justify-center text-center'
-          )}
+          {...getRootProps({
+            className: cn(
+              'rounded-md border-2 border-dashed transition-colors',
+              hasDocuments ? 'min-h-36 p-5' : 'min-h-[220px] p-6',
+              isDragReject
+                ? 'border-[color:var(--danger-soft)] bg-[var(--danger-soft)]'
+                : isDragAccept
+                  ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
+                  : 'border-[color:var(--border)] bg-[var(--card-muted)]'
+            ),
+          })}
         >
-          <div className={cn('space-y-3', hasDocuments ? 'max-w-3xl' : 'max-w-2xl')}>
-            <div className={cn('flex flex-wrap gap-2', hasDocuments ? '' : 'justify-center')}>
-              <Badge variant="secondary">
-                <TestTubeDiagonal className="h-3.5 w-3.5" />
-                Oil Test import ready
-              </Badge>
-              <Badge variant="outline">
-                <FileText className="h-3.5 w-3.5" />
-                Documents storage
-              </Badge>
+          <input {...getInputProps()} />
+
+          <div
+            className={cn(
+              'flex h-full gap-4',
+              hasDocuments
+                ? 'flex-col justify-center text-left md:flex-row md:items-center md:justify-between'
+                : 'flex-col items-center justify-center text-center'
+            )}
+          >
+            <div className={cn('space-y-3', hasDocuments ? 'max-w-3xl' : 'max-w-2xl')}>
+              <div className={cn('flex flex-wrap gap-2', hasDocuments ? '' : 'justify-center')}>
+                <Badge variant="secondary">
+                  <TestTubeDiagonal className="h-3.5 w-3.5" />
+                  Oil Test import ready
+                </Badge>
+                <Badge variant="outline">
+                  <FileText className="h-3.5 w-3.5" />
+                  Documents storage
+                </Badge>
+              </div>
+
+              <div>
+                <p className="text-base font-semibold text-[var(--foreground)]">{dropzoneLabel}</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                  Upload a single PDF, Excel file, or screenshot image to review extracted lab results
+                  first. Multiple files are stored in Documents only.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <p className="text-base font-semibold text-[var(--foreground)]">{dropzoneLabel}</p>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                Upload a single PDF, Excel file, or screenshot image to review extracted lab results
-                first. Multiple files are stored in Documents only.
-              </p>
+            <div className={cn('flex flex-wrap gap-2', hasDocuments ? 'justify-end' : 'justify-center')}>
+              <Button onClick={open} disabled={isBusy}>
+                <Upload className="h-4 w-4" />
+                {hasDocuments ? 'Choose Files' : 'Upload First Document'}
+              </Button>
             </div>
-          </div>
-
-          <div className={cn('flex flex-wrap gap-2', hasDocuments ? 'justify-end' : 'justify-center')}>
-            <Button onClick={open} disabled={isBusy}>
-              <Upload className="h-4 w-4" />
-              {hasDocuments ? 'Choose Files' : 'Upload First Document'}
-            </Button>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {feedback ? (
         <div
@@ -703,7 +718,7 @@ function DocumentSection({
               </div>
 
               <div className="doc-actions">
-                {availableCompartments.length > 0 ? (
+                {!readOnly && availableCompartments.length > 0 ? (
                   <select
                     value={getCompartmentForDocument ? getCompartmentForDocument(doc) : activeCompartment}
                     onChange={(event) => onAssignDocumentCompartment?.(doc.id, event.target.value)}
@@ -738,16 +753,18 @@ function DocumentSection({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                 </button>
-                <button
-                  className="doc-btn delete-btn"
-                  onClick={() => handleRequestDeleteDocument(doc)}
-                  title="Delete document"
-                  disabled={isBusy}
-                >
-                  <svg className="doc-icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
+                {!readOnly ? (
+                  <button
+                    className="doc-btn delete-btn"
+                    onClick={() => handleRequestDeleteDocument(doc)}
+                    title="Delete document"
+                    disabled={isBusy}
+                  >
+                    <svg className="doc-icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}

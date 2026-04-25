@@ -279,7 +279,7 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 2.1.0 (Supabase Edition)  
+**Version**: 2.2.0 (Supabase Edition)  
 **Last Updated**: April 2026  
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  

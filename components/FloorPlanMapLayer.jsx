@@ -40,6 +40,7 @@ function createFloorLabelIcon(label) {
 function FloorPlanMapLayer({
   floorPlans = [],
   transformers = [],
+  canManageAssets = true,
   showFloorPlans = true,
   selectedFloorPlanId = null,
   draft = null,
@@ -114,15 +115,19 @@ function FloorPlanMapLayer({
                     <Button size="sm" variant="outline" onClick={() => onOpenFloor?.(floorPlan)}>
                       Open floor
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => onEditFloorPlanInfo?.(floorPlan)}>
-                      Edit info
-                    </Button>
-                    <Button size="sm" onClick={() => onEditFloorPlan?.(floorPlan)}>
-                      Reshape
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => onDeleteFloorPlan?.(floorPlan.id)}>
-                      Delete
-                    </Button>
+                    {canManageAssets ? (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => onEditFloorPlanInfo?.(floorPlan)}>
+                          Edit info
+                        </Button>
+                        <Button size="sm" onClick={() => onEditFloorPlan?.(floorPlan)}>
+                          Reshape
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => onDeleteFloorPlan?.(floorPlan.id)}>
+                          Delete
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </Popup>

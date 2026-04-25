@@ -2,7 +2,18 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Marker, Popup, Tooltip } from 'react-leaflet';
 import { getTransformerState } from '../lib/malaysiaStates';
 
-function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onViewDetails, onSelect, isSelected, isDraggable = false }) {
+function TransformerMarker({
+  transformer,
+  icon,
+  onDragEnd,
+  onEdit,
+  onDelete,
+  onViewDetails,
+  onSelect,
+  isSelected,
+  isDraggable = false,
+  canManageAssets = true,
+}) {
   const markerRef = useRef(null);
   const transformerState = getTransformerState(transformer);
 
@@ -17,6 +28,9 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
         }
       },
       dragend() {
+        if (!canManageAssets) {
+          return;
+        }
         const marker = markerRef.current;
         if (!marker) {
           return;
@@ -25,7 +39,7 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
         onDragEnd(transformer.id, [nextPosition.lat, nextPosition.lng]);
       },
     }),
-    [isSelected, onDragEnd, onSelect, transformer]
+    [canManageAssets, isSelected, onDragEnd, onSelect, transformer]
   );
 
   useEffect(() => {
@@ -45,12 +59,12 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
   }, [isSelected]);
 
   return (
-    <Marker
-      position={transformer.position}
-      draggable={isDraggable}
-      eventHandlers={eventHandlers}
-      ref={markerRef}
-      icon={icon}
+      <Marker
+        position={transformer.position}
+        draggable={isDraggable && canManageAssets}
+        eventHandlers={eventHandlers}
+        ref={markerRef}
+        icon={icon}
     >
       <Tooltip
         direction="top"
@@ -92,12 +106,16 @@ function TransformerMarker({ transformer, icon, onDragEnd, onEdit, onDelete, onV
             <button type="button" className="popup-action popup-action-primary" onClick={() => onViewDetails(transformer)}>
               Details
             </button>
-            <button type="button" className="popup-action" onClick={() => onEdit(transformer)}>
-              Edit
-            </button>
-            <button type="button" className="popup-action popup-action-danger" onClick={() => onDelete(transformer.id)}>
-              Delete
-            </button>
+            {canManageAssets ? (
+              <>
+                <button type="button" className="popup-action" onClick={() => onEdit(transformer)}>
+                  Edit
+                </button>
+                <button type="button" className="popup-action popup-action-danger" onClick={() => onDelete(transformer.id)}>
+                  Delete
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </Popup>

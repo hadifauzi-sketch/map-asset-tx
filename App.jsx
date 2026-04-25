@@ -6,13 +6,19 @@ import {
   AlertTriangle,
   FileText,
   Layers3,
+  LogOut,
   Map as MapIcon,
   MapPin,
   Menu,
   Move,
+  Plus,
+  Minus,
   Power,
+  RotateCcw,
   Satellite,
+  Settings as SettingsIcon,
   TestTubeDiagonal,
+  UserCircle2,
   X,
 } from 'lucide-react';
 import TransformerMarker from './components/TransformerMarker';
@@ -26,6 +32,9 @@ import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog';
+import SignIn, { readSession, clearSession } from './components/Authentic/sign-in';
+import Roles from './components/Authentic/roles';
+import { getStandardOptionsForOilType } from './lib/dga/appConfig';
 import { analyzeSample } from './lib/dga/diagnostics';
 import {
   createDraftFloorPlan,
@@ -37,11 +46,13 @@ import { floorPlanService } from './lib/floorPlanService';
 import { getTransformerState } from './lib/malaysiaStates';
 import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
-import { isSupabaseConfigured } from './lib/supabaseClient';
+import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
 import './App.css';
 
 const DEFAULT_CENTER = [3.139, 101.6869];
 const DEFAULT_ZOOM = 11;
+const MALAYSIA_CENTER = [4.2105, 108.9758];
+const MALAYSIA_ZOOM = 6;
 const THEME_STORAGE_KEY = 'transformer-asset-map-theme';
 const MAP_BASE_LAYER_STORAGE_KEY = 'transformer-asset-map-base-layer';
 const DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY = 'transformer-asset-map-desktop-sidebar-collapsed';
@@ -110,6 +121,12 @@ const PENTAGON_ZONE_KEYS = {
 const FOCUSED_FAULT_OIL_TYPE = 'mineral';
 const FOCUSED_FAULT_STANDARD = 'IEEE_2019';
 const MAX_FOCUSED_TREND_POINTS = 8;
+const MARKER_DGA_GAS_KEYS = ['h2', 'ch4', 'c2h6', 'c2h4', 'c2h2'];
+const MARKER_STATUS_COLORS = {
+  normal: '#16a34a',
+  warning: '#eab308',
+  critical: '#dc2626',
+};
 
 const FOCUSED_TREND_GAS_SERIES = [
   { key: 'h2', label: 'H2', color: '#0ea5e9' },
@@ -135,6 +152,97 @@ function getDateTimestamp(value) {
   }
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+}
+
+function getSortedOilTests(oilTests = []) {
+  if (!Array.isArray(oilTests) || oilTests.length === 0) {
+    return [];
+  }
+
+  return [...oilTests].sort((left, right) => {
+    const dateDiff = getDateTimestamp(left.testDate) - getDateTimestamp(right.testDate);
+    if (dateDiff !== 0) {
+      return dateDiff;
+    }
+    return getDateTimestamp(left.createdAt) - getDateTimestamp(right.createdAt);
+  });
+}
+
+function getLatestOilTestRecord(oilTests = []) {
+  const sortedOilTests = getSortedOilTests(oilTests);
+  return sortedOilTests[sortedOilTests.length - 1] ?? null;
+}
+
+function resolveTransformerDgaPreferences(transformer) {
+  const oilType = transformer?.oilType || 'mineral';
+  const standardOptions = getStandardOptionsForOilType(oilType);
+  const gasLimitStandard = standardOptions.some((option) => option.value === transformer?.gasLimitStandard)
+    ? transformer.gasLimitStandard
+    : standardOptions[0]?.value ?? 'IEEE_2019';
+
+  return {
+    oilType,
+    gasLimitStandard,
+  };
+}
+
+function getTransformerMarkerStatus(transformer) {
+  const latestTest = getLatestOilTestRecord(transformer?.oilTests);
+  if (!latestTest) {
+    return 'normal';
+  }
+
+  const sampleDate = latestTest.testDate || new Date().toISOString().slice(0, 10);
+  const { oilType, gasLimitStandard } = resolveTransformerDgaPreferences(transformer);
+
+  try {
+    const analysis = analyzeSample(
+      {
+        date: sampleDate,
+        h2: latestTest?.h2,
+        ch4: latestTest?.ch4,
+        c2h6: latestTest?.c2h6,
+        c2h4: latestTest?.c2h4,
+        c2h2: latestTest?.c2h2,
+        co: latestTest?.co,
+        co2: latestTest?.co2,
+        o2: latestTest?.o2,
+        n2: latestTest?.n2,
+        transformerAge: getTransformerAgeAtSample(transformer?.yearBuilt, sampleDate),
+      },
+      gasLimitStandard,
+      oilType,
+    );
+
+    let hasWarning = false;
+
+    for (const gasKey of MARKER_DGA_GAS_KEYS) {
+      const detail = analysis.gasLimitDetails?.[gasKey];
+      const value = Number(detail?.value);
+      const limit = Number(detail?.activeLimit);
+
+      if (!Number.isFinite(value) || !Number.isFinite(limit) || limit <= 0) {
+        continue;
+      }
+
+      if (value >= limit * 1.1) {
+        return 'critical';
+      }
+
+      if (value >= limit * 1.05) {
+        hasWarning = true;
+      }
+    }
+
+    return hasWarning ? 'warning' : 'normal';
+  } catch (error) {
+    console.error('Failed to evaluate DGA marker status:', error);
+    return 'normal';
+  }
+}
+
+function getTransformerMarkerColor(transformer) {
+  return MARKER_STATUS_COLORS[getTransformerMarkerStatus(transformer)] ?? MARKER_STATUS_COLORS.normal;
 }
 
 function formatFaultZone(zone) {
@@ -226,6 +334,8 @@ const createTransformerIcon = (color = '#0f766e') =>
   });
 
 function App() {
+  const [currentUser, setCurrentUser] = useState(() => readSession());
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [transformers, setTransformers] = useState([]);
   const [selectedTransformer, setSelectedTransformer] = useState(null);
   const [isAddMode, setIsAddMode] = useState(false);
@@ -279,6 +389,18 @@ function App() {
   const [isFloorDetailModalOpen, setIsFloorDetailModalOpen] = useState(false);
   const [isDraggable, setIsDraggable] = useState(false);
   const pendingFloorAssignment = useRef(null);
+  const leafletMapRef = useRef(null);
+  const isAdmin = currentUser?.role === 'admin';
+  const isViewer = currentUser?.role === 'viewer';
+  const canEditAssets = !currentUser || currentUser.role !== 'viewer';
+
+  const ensureCanEditAssets = useCallback(() => {
+    if (canEditAssets) {
+      return true;
+    }
+    window.alert('Viewer accounts are read-only. Contact an administrator if you need edit access.');
+    return false;
+  }, [canEditAssets]);
 
   const activateSidebarInteraction = () => {
     setIsSidebarInteracting(true);
@@ -287,6 +409,15 @@ function App() {
   const deactivateSidebarInteraction = () => {
     setIsSidebarInteracting(false);
   };
+
+  useEffect(() => {
+    if (canEditAssets) {
+      return;
+    }
+    setIsAddMode(false);
+    setIsDraggable(false);
+    pendingFloorAssignment.current = null;
+  }, [canEditAssets]);
 
   useEffect(() => {
     if (typeof document === 'undefined' || typeof window === 'undefined') {
@@ -331,9 +462,14 @@ function App() {
       return;
     }
 
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
+
     loadTransformers();
     loadFloorPlans();
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (!isDetailModalOpen) {
@@ -370,15 +506,8 @@ function App() {
       };
     }
 
-    const sortedOilTests = [...oilTests].sort((left, right) => {
-      const dateDiff = getDateTimestamp(left.testDate) - getDateTimestamp(right.testDate);
-      if (dateDiff !== 0) {
-        return dateDiff;
-      }
-      return getDateTimestamp(left.createdAt) - getDateTimestamp(right.createdAt);
-    });
-
-    const latestTest = sortedOilTests[sortedOilTests.length - 1];
+    const sortedOilTests = getSortedOilTests(oilTests);
+    const latestTest = sortedOilTests[sortedOilTests.length - 1] ?? null;
 
     const fallbackDate = new Date().toISOString().slice(0, 10);
     const sampleDate = latestTest?.testDate || fallbackDate;
@@ -465,6 +594,17 @@ function App() {
     }
   }, [selectedTransformer]);
 
+  const transformerMarkerColors = useMemo(
+    () =>
+      new Map(
+        transformers.map((transformer) => [
+          transformer.id,
+          getTransformerMarkerColor(transformer),
+        ]),
+      ),
+    [transformers],
+  );
+
   const floorPlanByTransformerId = useMemo(() => {
     const assignments = new Map();
     floorPlans.forEach((floorPlan) => {
@@ -542,6 +682,9 @@ function App() {
   }, []);
 
   const handleRemoveTransformerFromFloor = useCallback(async (floorPlanId, transformerId) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     const floorPlan = floorPlans.find((fp) => fp.id === floorPlanId);
     if (!floorPlan) return;
     const updatedIds = floorPlan.transformerIds.filter((id) => String(id) !== String(transformerId));
@@ -554,9 +697,12 @@ function App() {
       console.error('Failed to remove transformer from floor:', err);
       window.alert('Failed to update floor plan. Please try again.');
     }
-  }, [floorPlans]);
+  }, [ensureCanEditAssets, floorPlans]);
 
   const handleFloorDetailAddTransformer = useCallback((position, floorPlanId) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     pendingFloorAssignment.current = floorPlanId;
     setEditingTransformer({
       position,
@@ -571,16 +717,25 @@ function App() {
       yearBuilt: '',
     });
     setIsModalOpen(true);
-  }, []);
+  }, [ensureCanEditAssets]);
 
   const loadTransformers = async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await transformerService.getAll();
-      setTransformers(data);
+      let visible = data;
+      if (currentUser && currentUser.role !== 'admin') {
+        const { data: perms, error: permError } = await supabase.rpc('list_my_permissions', {
+          p_user_id: currentUser.id,
+        });
+        if (permError) throw permError;
+        const allowed = new Set((perms ?? []).map((row) => row.transformer_id));
+        visible = data.filter((transformer) => allowed.has(transformer.id));
+      }
+      setTransformers(visible);
       setSelectedTransformer((currentSelected) =>
-        currentSelected ? data.find((transformer) => transformer.id === currentSelected.id) || currentSelected : currentSelected
+        currentSelected ? visible.find((transformer) => transformer.id === currentSelected.id) || currentSelected : currentSelected
       );
     } catch (err) {
       console.error('Failed to load transformers:', err);
@@ -591,6 +746,10 @@ function App() {
   };
 
   const handleMapClick = (event) => {
+    if (!canEditAssets) {
+      return;
+    }
+
     if (floorPlanDraft) {
       setFloorPlanDraft((current) =>
         current
@@ -625,12 +784,24 @@ function App() {
   };
 
   const handleAddTransformer = async (transformerData) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     try {
       setLoading(true);
       if (editingTransformer?.id) {
         await transformerService.update(editingTransformer.id, transformerData);
       } else {
         const newTransformer = await transformerService.create(transformerData);
+        if (currentUser && currentUser.role !== 'admin' && newTransformer?.id) {
+          const { error: grantError } = await supabase.rpc('grant_self_transformer_access', {
+            p_user_id: currentUser.id,
+            p_transformer_id: newTransformer.id,
+          });
+          if (grantError) {
+            throw grantError;
+          }
+        }
         if (pendingFloorAssignment.current && newTransformer?.id) {
           const targetFloorId = pendingFloorAssignment.current;
           pendingFloorAssignment.current = null;
@@ -657,12 +828,18 @@ function App() {
   };
 
   const handleEditTransformer = (transformer) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     setEditingTransformer(transformer);
     setIsModalOpen(true);
     setSelectedFloorPlanId(null);
   };
 
   const handleDeleteTransformer = async (id) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     const confirmed = window.confirm(
       'Delete this transformer and all of its oil tests and documents? This action cannot be undone.'
     );
@@ -705,6 +882,9 @@ function App() {
   };
 
   const handleMarkerDragEnd = async (id, newPosition) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     try {
       await transformerService.updatePosition(id, newPosition);
       setTransformers((current) =>
@@ -765,6 +945,9 @@ function App() {
   };
 
   const startFloorPlanDrawing = () => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     setIsAddMode(false);
     setSelectedFloorPlanId(null);
     setFloorPlanDraft(createDraftFloorPlan());
@@ -773,6 +956,9 @@ function App() {
   };
 
   const handleEditFloorPlan = (floorPlan) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     if (!floorPlan) {
       return;
     }
@@ -785,6 +971,9 @@ function App() {
   };
 
   const handleSaveFloorPlanShape = async (floorPlan, nextPoints) => {
+    if (!ensureCanEditAssets()) {
+      return false;
+    }
     if (!floorPlan || !Array.isArray(nextPoints) || nextPoints.length < 3) {
       window.alert('A floor boundary needs at least three points.');
       return false;
@@ -816,6 +1005,9 @@ function App() {
   };
 
   const handleFloorDraftVertexMove = (pointIndex, nextPoint) => {
+    if (!canEditAssets) {
+      return;
+    }
     setFloorPlanDraft((current) =>
       current
         ? {
@@ -827,6 +1019,9 @@ function App() {
   };
 
   const handleUndoFloorDraftPoint = () => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     setFloorPlanDraft((current) =>
       current
         ? {
@@ -838,11 +1033,17 @@ function App() {
   };
 
   const openFloorPlanMetadataDialog = (draft) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     setFloorPlanDialogDraft(draft);
     setIsFloorPlanDialogOpen(true);
   };
 
   const handleEditFloorPlanInfo = (floorPlan) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     if (!floorPlan) {
       return;
     }
@@ -857,6 +1058,9 @@ function App() {
   };
 
   const openFloorPlanDialogFromDraft = () => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     if (!floorPlanDraft || floorPlanDraft.points.length < 3) {
       window.alert('Draw at least three points on the map to create a floor boundary.');
       return;
@@ -893,6 +1097,9 @@ function App() {
   };
 
   const handleSaveFloorPlan = async (nextFloorPlanDraft) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     try {
       const currentFloorPlan = nextFloorPlanDraft?.id
         ? floorPlans.find((floorPlan) => floorPlan.id === nextFloorPlanDraft.id) || null
@@ -932,6 +1139,9 @@ function App() {
   };
 
   const handleDeleteFloorPlan = async (floorPlanId) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
     const confirmed = window.confirm(
       'Delete this floor plan overlay? The transformer records stay, but they will be ungrouped from this floor.'
     );
@@ -957,6 +1167,24 @@ function App() {
   };
 
   const activeBaseLayer = MAP_BASE_LAYERS[mapBaseLayer];
+
+  const handleSignOut = () => {
+    clearSession();
+    setCurrentUser(null);
+    setIsSettingsOpen(false);
+    setTransformers([]);
+    setSelectedTransformer(null);
+  };
+
+  if (!currentUser && isSupabaseConfigured) {
+    return (
+      <SignIn
+        onSuccess={(user) => {
+          setCurrentUser(user);
+        }}
+      />
+    );
+  }
 
   if (loading && transformers.length === 0) {
     return (
@@ -1030,7 +1258,12 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           <TransformerSidebar
             transformers={transformers}
             floorPlans={floorPlans}
+            currentUser={currentUser}
+            canManageAssets={canEditAssets}
             onAddClick={() => {
+              if (!ensureCanEditAssets()) {
+                return;
+              }
               cancelFloorPlanDrawing();
               setIsAddMode(true);
               setSelectedFloorPlanId(null);
@@ -1060,6 +1293,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             selectedFloorPlanId={selectedFloorPlanId}
             theme={theme}
             onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            onOpenSettings={() => setIsSettingsOpen(true)}
             onCloseMobile={() => setSidebarOpen(false)}
             collapsed={isDesktopSidebarCollapsed}
             onToggleCollapsed={() => setIsDesktopSidebarCollapsed((current) => !current)}
@@ -1099,6 +1333,10 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     ) : floorPlanDraft ? (
                       <Badge variant="secondary" className="shadow-sm">
                         Floor pen active
+                      </Badge>
+                    ) : isViewer ? (
+                      <Badge variant="outline" className="shadow-sm">
+                        Viewer mode
                       </Badge>
                     ) : null}
                   </div>
@@ -1144,6 +1382,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     size="sm"
                     variant={floorPlanDraft ? 'secondary' : 'outline'}
                     className="h-9 shrink-0"
+                    disabled={!canEditAssets}
                     onClick={() => {
                       if (floorPlanDraft) {
                         cancelFloorPlanDrawing();
@@ -1159,6 +1398,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     variant={isDraggable ? 'secondary' : 'outline'}
                     className={`h-9 shrink-0 gap-1.5${isDraggable ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}
                     title={isDraggable ? 'Pin dragging ON — click to lock pins' : 'Pin dragging OFF — click to allow moving pins'}
+                    disabled={!canEditAssets}
                     onClick={() => setIsDraggable((v) => !v)}
                   >
                     <Move className="h-3.5 w-3.5" />
@@ -1169,7 +1409,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     variant="outline"
                     className="h-9 shrink-0"
                     onClick={() => handleEditFloorPlanInfo(selectedFloorPlan)}
-                    disabled={!selectedFloorPlan}
+                    disabled={!canEditAssets || !selectedFloorPlan}
                     title={selectedFloorPlan ? 'Edit the selected floor name and company' : 'Select a floor first'}
                   >
                     Edit info
@@ -1179,10 +1419,41 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     variant="outline"
                     className="h-9 shrink-0"
                     onClick={() => handleEditFloorPlan(selectedFloorPlan)}
-                    disabled={!selectedFloorPlan}
+                    disabled={!canEditAssets || !selectedFloorPlan}
                     title={selectedFloorPlan ? 'Edit the selected floor boundary' : 'Select a floor first'}
                   >
                     Reshape
+                  </Button>
+
+                  {/* divider */}
+                  <div className="mx-1 h-6 w-px shrink-0 bg-[var(--border)]" />
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 w-9 shrink-0 p-0"
+                    title="Zoom in"
+                    onClick={() => leafletMapRef.current?.zoomIn()}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 w-9 shrink-0 p-0"
+                    title="Zoom out"
+                    onClick={() => leafletMapRef.current?.zoomOut()}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 w-9 shrink-0 p-0"
+                    title="Reset view — Malaysia"
+                    onClick={() => leafletMapRef.current?.setView(MALAYSIA_CENTER, MALAYSIA_ZOOM)}
+                  >
+                    <RotateCcw className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -1212,6 +1483,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                             size="sm"
                             variant="outline"
                             className="h-8 px-3 text-xs"
+                            disabled={!canEditAssets}
                             onClick={() => handleEditFloorPlanInfo(selectedFloorPlan)}
                           >
                             Info
@@ -1219,6 +1491,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                           <Button
                             size="sm"
                             className="h-8 px-3 text-xs"
+                            disabled={!canEditAssets}
                             onClick={() => handleEditFloorPlan(selectedFloorPlan)}
                           >
                             Reshape
@@ -1343,11 +1616,13 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 <TileLayer attribution={SATELLITE_LABELS_LAYER.attribution} url={SATELLITE_LABELS_LAYER.url} />
               ) : null}
               <MapUpdater center={mapCenter} zoom={mapZoom} />
+              <MapRefCapture mapRef={leafletMapRef} />
               <MapInteractionController sidebarActive={isSidebarInteracting} />
               <MapClickHandler onMapClick={handleMapClick} />
               <FloorPlanMapLayer
                 floorPlans={floorPlans}
                 transformers={transformers}
+                canManageAssets={canEditAssets}
                 showFloorPlans={showFloorPlans}
                 selectedFloorPlanId={selectedFloorPlanId}
                 draft={floorPlanDraft}
@@ -1362,13 +1637,10 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 <TransformerMarker
                   key={transformer.id}
                   transformer={transformer}
-                  icon={createTransformerIcon(
-                    selectedFloorPlan?.transformerIds?.includes(String(transformer.id))
-                      ? '#2563eb'
-                      : '#0f766e'
-                  )}
+                  icon={createTransformerIcon(transformerMarkerColors.get(transformer.id) ?? MARKER_STATUS_COLORS.normal)}
                   isSelected={selectedTransformer?.id === transformer.id}
-                  isDraggable={isDraggable}
+                  isDraggable={isDraggable && canEditAssets}
+                  canManageAssets={canEditAssets}
                   onDragEnd={handleMarkerDragEnd}
                   onEdit={handleEditTransformer}
                   onDelete={handleDeleteTransformer}
@@ -1463,6 +1735,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <TransformerDetailModal
         open={isDetailModalOpen}
         transformer={selectedTransformer}
+        readOnly={isViewer}
         onClose={handleCloseDetailModal}
         onUpdateOilTests={handleUpdateOilTests}
         onUpdateDocuments={handleUpdateDocuments}
@@ -1484,6 +1757,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         floorPlan={floorDetailFloorPlan}
         transformers={transformers}
         isOpen={isFloorDetailModalOpen}
+        canManageAssets={canEditAssets}
         onClose={() => setIsFloorDetailModalOpen(false)}
         onEditInfo={(floorPlan) => {
           handleEditFloorPlanInfo(floorPlan);
@@ -1504,6 +1778,59 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onRemoveFromFloor={handleRemoveTransformerFromFloor}
         onMarkerDragEnd={handleMarkerDragEnd}
       />
+
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-[960px]">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3 pr-8">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  <SettingsIcon className="h-4 w-4 text-[var(--primary)]" />
+                  Settings
+                </DialogTitle>
+                <DialogDescription>
+                  Manage your account
+                  {isAdmin ? ', users, and per-user asset access.' : '.'}
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-3 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-1.5 text-sm">
+                <UserCircle2 className="h-5 w-5 text-[var(--muted)]" />
+                <div className="leading-tight">
+                  <div className="font-semibold">{currentUser?.full_name || currentUser?.username}</div>
+                  <div className="text-xs text-[var(--muted)]">@{currentUser?.username} · {currentUser?.role}</div>
+                </div>
+                <Button size="sm" variant="outline" onClick={handleSignOut} className="ml-2">
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-5">
+            {isAdmin ? (
+              <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Account</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-[var(--muted)]">
+                  <p>
+                    You are signed in as <span className="font-semibold text-[var(--foreground)]">{currentUser?.username}</span>.
+                    Contact an administrator to change your access to transformer assets.
+                  </p>
+                  {isViewer ? (
+                    <p>
+                      This account is in <span className="font-semibold text-[var(--foreground)]">viewer</span> mode, so asset edits, uploads, and new records are disabled.
+                    </p>
+                  ) : null}
+                  <p>Assets you can currently view: <span className="font-semibold text-[var(--foreground)]">{transformers.length}</span></p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2119,6 +2446,12 @@ function MapUpdater({ center, zoom }) {
     map.setView(center, zoom, { animate: true, duration: 0.75 });
   }, [center, zoom, map]);
 
+  return null;
+}
+
+function MapRefCapture({ mapRef }) {
+  const map = useMap();
+  useEffect(() => { mapRef.current = map; }, [map, mapRef]);
   return null;
 }
 

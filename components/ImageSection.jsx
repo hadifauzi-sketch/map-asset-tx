@@ -157,6 +157,7 @@ function ImageSection({
   transformerId,
   transformerName,
   images = [],
+  readOnly = false,
   onUpdate,
   activeCompartment = 'Maintank',
   onAssignImageCompartment,
@@ -197,6 +198,9 @@ function ImageSection({
 
   const setCategoryForImageIds = useCallback(
     async (imageIds, categoryKey) => {
+      if (readOnly) {
+        return;
+      }
       const ids = (Array.isArray(imageIds) ? imageIds : [imageIds]).filter(Boolean).map(String);
       if (!ids.length || !CATEGORY_LOOKUP.has(String(categoryKey || '').toLowerCase())) {
         return;
@@ -218,10 +222,13 @@ function ImageSection({
         setUpdatingCategoryImageId(null);
       }
     },
-    [refreshDocuments]
+    [readOnly, refreshDocuments]
   );
 
   const onDrop = useCallback((acceptedFiles, rejectedFiles) => {
+    if (readOnly) {
+      return;
+    }
     setFeedback(null);
     if (rejectedFiles?.length) {
       setFeedback({
@@ -248,12 +255,13 @@ function ImageSection({
       });
       return nextFiles;
     });
-  }, []);
+  }, [readOnly]);
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     accept: IMAGE_ACCEPT,
     maxSize: MAX_IMAGE_SIZE,
     multiple: true,
+    disabled: readOnly,
     noClick: true,
     noKeyboard: true,
     onDrop,
@@ -289,6 +297,9 @@ function ImageSection({
   };
 
   const handleUpload = async () => {
+    if (readOnly) {
+      return;
+    }
     if (!pendingFiles.length || !transformerId) {
       return;
     }
@@ -327,6 +338,9 @@ function ImageSection({
   };
 
   const handleDeleteImage = async (image) => {
+    if (readOnly) {
+      return;
+    }
     if (!image?.id || !image?.storagePath) {
       return;
     }
@@ -399,6 +413,11 @@ function ImageSection({
             Upload visual references for {transformerName || 'this asset'}: name plate, transformer design,
             oil level design, OLTC design, Buchholz design, and more.
           </p>
+          {readOnly ? (
+            <p className="text-sm text-[var(--muted)]">
+              Viewer mode: image upload, recategorisation, and deletion are disabled.
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           {feedback ? (
@@ -407,63 +426,67 @@ function ImageSection({
             </div>
           ) : null}
 
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-            <label className="space-y-1 text-sm font-medium text-[var(--foreground)]">
-              Category
-              <select
-                value={selectedCategory}
-                onChange={(event) => setSelectedCategory(event.target.value)}
-                className="h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[color:var(--primary)]"
-                disabled={isBusy}
-              >
-                {IMAGE_CATEGORIES.map((category) => (
-                  <option key={category.key} value={category.key}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {!readOnly ? (
+            <>
+              <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+                <label className="space-y-1 text-sm font-medium text-[var(--foreground)]">
+                  Category
+                  <select
+                    value={selectedCategory}
+                    onChange={(event) => setSelectedCategory(event.target.value)}
+                    className="h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[color:var(--primary)]"
+                    disabled={isBusy}
+                  >
+                    {IMAGE_CATEGORIES.map((category) => (
+                      <option key={category.key} value={category.key}>
+                        {category.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <Button type="button" variant="outline" className="h-10 self-end" onClick={open} disabled={isBusy}>
-              <Upload className="h-4 w-4" />
-              Choose images
-            </Button>
+                <Button type="button" variant="outline" className="h-10 self-end" onClick={open} disabled={isBusy}>
+                  <Upload className="h-4 w-4" />
+                  Choose images
+                </Button>
 
-            <Button
-              type="button"
-              className="h-10 self-end"
-              onClick={handleUpload}
-              disabled={isBusy || pendingFiles.length === 0}
-            >
-              Upload {pendingFiles.length > 0 ? `(${pendingFiles.length})` : ''}
-            </Button>
-          </div>
-
-          <div
-            {...getRootProps()}
-            className={cn(
-              'rounded-xl border border-dashed p-5 transition-colors',
-              isDragActive
-                ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
-                : 'border-[color:var(--border)] bg-[var(--card-muted)]'
-            )}
-          >
-            <input {...getInputProps()} />
-            <div className="flex flex-col items-center justify-center gap-2 text-center">
-              <div className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card)] text-[var(--primary)]">
-                <ImageIcon className="h-5 w-5" />
+                <Button
+                  type="button"
+                  className="h-10 self-end"
+                  onClick={handleUpload}
+                  disabled={isBusy || pendingFiles.length === 0}
+                >
+                  Upload {pendingFiles.length > 0 ? `(${pendingFiles.length})` : ''}
+                </Button>
               </div>
-              <p className="text-sm font-medium text-[var(--foreground)]">
-                {isDragActive ? 'Drop images here' : 'Drag and drop image files here'}
-              </p>
-              <p className="text-xs text-[var(--muted)]">
-                Category: {selectedCategoryMeta.label}. {selectedCategoryMeta.description}
-              </p>
-              <p className="text-xs text-[var(--muted)]">Max 15 MB each. PNG, JPG, WEBP, BMP, GIF, SVG, AVIF, HEIC, TIFF.</p>
-            </div>
-          </div>
 
-          {pendingPreviews.length ? (
+              <div
+                {...getRootProps()}
+                className={cn(
+                  'rounded-xl border border-dashed p-5 transition-colors',
+                  isDragActive
+                    ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
+                    : 'border-[color:var(--border)] bg-[var(--card-muted)]'
+                )}
+              >
+                <input {...getInputProps()} />
+                <div className="flex flex-col items-center justify-center gap-2 text-center">
+                  <div className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card)] text-[var(--primary)]">
+                    <ImageIcon className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-medium text-[var(--foreground)]">
+                    {isDragActive ? 'Drop images here' : 'Drag and drop image files here'}
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    Category: {selectedCategoryMeta.label}. {selectedCategoryMeta.description}
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">Max 15 MB each. PNG, JPG, WEBP, BMP, GIF, SVG, AVIF, HEIC, TIFF.</p>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {!readOnly && pendingPreviews.length ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
@@ -563,21 +586,30 @@ function ImageSection({
                           <p className="text-xs text-[var(--muted)]">
                             {formatFileSize(getDocumentFileSize(image))} • {uploadDate}
                           </p>
-                          <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
-                            Category
-                            <select
-                              value={categoryKey}
-                              onChange={(event) => setCategoryForImageIds(image.id, event.target.value)}
-                              className="mt-1 h-9 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[color:var(--primary)]"
-                              disabled={isBusy}
-                            >
-                              {IMAGE_CATEGORIES.map((category) => (
-                                <option key={category.key} value={category.key}>
-                                  {category.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                          {readOnly ? (
+                            <div className="block text-xs font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+                              Category
+                              <p className="mt-1 text-sm font-medium normal-case text-[var(--foreground)]">
+                                {IMAGE_CATEGORIES.find((category) => category.key === categoryKey)?.label || 'Other'}
+                              </p>
+                            </div>
+                          ) : (
+                            <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+                              Category
+                              <select
+                                value={categoryKey}
+                                onChange={(event) => setCategoryForImageIds(image.id, event.target.value)}
+                                className="mt-1 h-9 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[color:var(--primary)]"
+                                disabled={isBusy}
+                              >
+                                {IMAGE_CATEGORIES.map((category) => (
+                                  <option key={category.key} value={category.key}>
+                                    {category.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                         </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -601,17 +633,19 @@ function ImageSection({
                             <Download className="h-3.5 w-3.5" />
                             Download
                           </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            className="col-span-2"
-                            onClick={() => handleDeleteImage(image)}
-                            disabled={isBusy}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {deletingImageId === image.id ? 'Deleting...' : 'Delete image'}
-                          </Button>
+                          {!readOnly ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="col-span-2"
+                              onClick={() => handleDeleteImage(image)}
+                              disabled={isBusy}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {deletingImageId === image.id ? 'Deleting...' : 'Delete image'}
+                            </Button>
+                          ) : null}
                         </div>
                       </article>
                     );
@@ -629,7 +663,9 @@ function ImageSection({
             </div>
             <p className="mt-3 text-sm font-medium text-[var(--foreground)]">No images saved yet</p>
             <p className="mt-1 text-xs text-[var(--muted)]">
-              Upload the first image for this asset to build a future maintenance reference gallery.
+              {readOnly
+                ? 'No images are available for this asset yet.'
+                : 'Upload the first image for this asset to build a future maintenance reference gallery.'}
             </p>
           </CardContent>
         </Card>

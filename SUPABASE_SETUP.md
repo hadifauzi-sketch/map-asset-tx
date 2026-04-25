@@ -303,6 +303,369 @@ WHERE image_category IS NULL
   );
 ```
 
+## 👤 Step 8: User Authentication & Asset-Access Control
+
+> Added 2026-04-23. This adds username/password login (not Supabase Auth —
+> kept as a custom flow so it stays consistent with the app's current
+> anon-key usage) plus admin-managed per-user asset visibility.
+>
+> **Security model:** the anon key has **no direct read/write** on
+> `app_users` or `user_asset_permissions`. All sensitive work runs inside
+> `SECURITY DEFINER` RPCs that hash with `pgcrypto` server-side and never
+> return `password_hash` / `salt` to the client.
+
+### 8A. One-shot SQL to run in Supabase SQL Editor
+
+Copy-paste this whole block once. It is idempotent — safe to re-run.
+
+```sql
+-- ──────────────────────────────────────────────────────────────
+-- App users + asset permissions + hardened auth RPCs
+-- (matches supabase/migrations/20260423000001_app_users_and_permissions.sql)
+-- ──────────────────────────────────────────────────────────────
+
+create extension if not exists "uuid-ossp" with schema extensions;
+create extension if not exists "pgcrypto" with schema extensions;
+
+-- Tables
+create table if not exists public.app_users (
+  id            uuid        primary key default extensions.uuid_generate_v4(),
+  username      text        unique not null,
+  full_name     text,
+  password_hash text        not null,
+  salt          text        not null,
+  role          text        not null default 'user',
+  is_active     boolean     not null default true,
+  created_at    timestamptz not null default now(),
+  constraint app_users_role_check check (role in ('admin', 'user', 'viewer'))
+);
+create index if not exists idx_app_users_username on public.app_users(username);
+
+create table if not exists public.user_asset_permissions (
+  user_id        uuid not null references public.app_users(id)    on delete cascade,
+  transformer_id uuid not null references public.transformers(id) on delete cascade,
+  granted_at     timestamptz not null default now(),
+  primary key (user_id, transformer_id)
+);
+create index if not exists idx_uap_user        on public.user_asset_permissions(user_id);
+create index if not exists idx_uap_transformer on public.user_asset_permissions(transformer_id);
+
+-- RLS ON, NO permissive policies → anon/authenticated have zero direct access
+alter table public.app_users                enable row level security;
+alter table public.user_asset_permissions   enable row level security;
+revoke all on public.app_users              from anon, authenticated;
+revoke all on public.user_asset_permissions from anon, authenticated;
+
+-- Private helpers
+create or replace function public._hash_password(p_salt text, p_password text)
+returns text language sql immutable as $$
+  select encode(extensions.digest(p_salt || ':' || p_password, 'sha256'), 'hex');
+$$;
+revoke all on function public._hash_password(text, text) from public;
+
+create or replace function public._is_admin(p_user_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists(
+    select 1
+    from public.app_users u
+    where u.id = p_user_id
+      and u.role = 'admin'
+      and u.is_active
+  );
+$$;
+revoke all on function public._is_admin(uuid) from public;
+
+-- Public RPCs: sign-in & register
+create or replace function public.verify_app_user(p_username text, p_password text)
+returns table(id uuid, username text, full_name text, role text, is_active boolean)
+language plpgsql security definer set search_path = public as $$
+declare v_row public.app_users%rowtype; v_salt text; v_hash text;
+begin
+  p_username := lower(trim(p_username));
+  -- First-run bootstrap: admin/admin creates the initial admin
+  if p_username = 'admin' and p_password = 'admin'
+     and not exists (
+       select 1
+       from public.app_users u
+       where u.role = 'admin'
+     ) then
+    v_salt := encode(extensions.gen_random_bytes(16), 'hex');
+    v_hash := public._hash_password(v_salt, 'admin');
+    insert into public.app_users (username, full_name, password_hash, salt, role, is_active)
+    values ('admin', 'Administrator', v_hash, v_salt, 'admin', true)
+    returning * into v_row;
+    return query select v_row.id, v_row.username, v_row.full_name, v_row.role, v_row.is_active;
+    return;
+  end if;
+  select * into v_row from public.app_users u where u.username = p_username;
+  if not found or not v_row.is_active then return; end if;
+  if public._hash_password(v_row.salt, p_password) <> v_row.password_hash then return; end if;
+  return query select v_row.id, v_row.username, v_row.full_name, v_row.role, v_row.is_active;
+end; $$;
+revoke all on function public.verify_app_user(text, text) from public;
+
+create or replace function public.register_app_user(
+  p_username text, p_full_name text, p_password text
+) returns table(id uuid, username text, full_name text, role text, is_active boolean)
+language plpgsql security definer set search_path = public as $$
+declare v_row public.app_users%rowtype; v_salt text; v_hash text;
+begin
+  p_username := lower(trim(p_username));
+  if p_username !~ '^[a-z0-9_.\-]{3,32}$' then
+    raise exception 'Username must be 3-32 chars (letters, digits, . _ -)'; end if;
+  if length(p_password) < 6 then
+    raise exception 'Password must be at least 6 characters'; end if;
+  if exists (select 1 from public.app_users u where u.username = p_username) then
+    raise exception 'That username is already taken'; end if;
+  v_salt := encode(extensions.gen_random_bytes(16), 'hex');
+  v_hash := public._hash_password(v_salt, p_password);
+  insert into public.app_users (username, full_name, password_hash, salt, role, is_active)
+  values (p_username, coalesce(nullif(trim(p_full_name), ''), p_username),
+          v_hash, v_salt, 'user', true)
+  returning * into v_row;
+  return query select v_row.id, v_row.username, v_row.full_name, v_row.role, v_row.is_active;
+end; $$;
+revoke all on function public.register_app_user(text, text, text) from public, anon, authenticated;
+
+-- Admin RPCs: user management
+create or replace function public.admin_list_users(p_admin_id uuid)
+returns table(id uuid, username text, full_name text, role text, is_active boolean, created_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  return query select u.id, u.username, u.full_name, u.role, u.is_active, u.created_at
+               from public.app_users u order by u.created_at asc;
+end; $$;
+revoke all on function public.admin_list_users(uuid) from public;
+
+create or replace function public.admin_create_user(
+  p_admin_id uuid, p_username text, p_full_name text, p_password text, p_role text
+) returns table(id uuid, username text, full_name text, role text, is_active boolean)
+language plpgsql security definer set search_path = public as $$
+declare v_row public.app_users%rowtype; v_salt text; v_hash text;
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  if p_role not in ('admin','user','viewer') then raise exception 'Invalid role'; end if;
+  p_username := lower(trim(p_username));
+  if p_username !~ '^[a-z0-9_.\-]{3,32}$' then raise exception 'Invalid username'; end if;
+  if length(p_password) < 6 then raise exception 'Password must be at least 6 characters'; end if;
+  if exists (select 1 from public.app_users u where u.username = p_username) then
+    raise exception 'That username is already taken'; end if;
+  v_salt := encode(extensions.gen_random_bytes(16), 'hex');
+  v_hash := public._hash_password(v_salt, p_password);
+  insert into public.app_users (username, full_name, password_hash, salt, role, is_active)
+  values (p_username, coalesce(nullif(trim(p_full_name), ''), p_username),
+          v_hash, v_salt, p_role, true)
+  returning * into v_row;
+  return query select v_row.id, v_row.username, v_row.full_name, v_row.role, v_row.is_active;
+end; $$;
+revoke all on function public.admin_create_user(uuid, text, text, text, text) from public;
+
+create or replace function public.admin_set_password(
+  p_admin_id uuid, p_target_id uuid, p_new_password text
+) returns void language plpgsql security definer set search_path = public as $$
+declare v_salt text;
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  if length(p_new_password) < 6 then raise exception 'Password must be at least 6 characters'; end if;
+  v_salt := encode(extensions.gen_random_bytes(16), 'hex');
+  update public.app_users
+     set salt = v_salt, password_hash = public._hash_password(v_salt, p_new_password)
+   where id = p_target_id;
+end; $$;
+revoke all on function public.admin_set_password(uuid, uuid, text) from public;
+
+create or replace function public.admin_set_active(
+  p_admin_id uuid, p_target_id uuid, p_is_active boolean
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  if p_admin_id = p_target_id and not p_is_active then
+    raise exception 'You cannot disable your own account'; end if;
+  update public.app_users set is_active = p_is_active where id = p_target_id;
+end; $$;
+revoke all on function public.admin_set_active(uuid, uuid, boolean) from public;
+
+create or replace function public.admin_delete_user(
+  p_admin_id uuid, p_target_id uuid
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  if p_admin_id = p_target_id then raise exception 'You cannot delete your own account'; end if;
+  delete from public.app_users where id = p_target_id;
+end; $$;
+revoke all on function public.admin_delete_user(uuid, uuid) from public;
+
+-- Admin RPCs: asset access
+create or replace function public.admin_list_permissions(p_admin_id uuid)
+returns table(user_id uuid, transformer_id uuid)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  return query select p.user_id, p.transformer_id from public.user_asset_permissions p;
+end; $$;
+revoke all on function public.admin_list_permissions(uuid) from public;
+
+create or replace function public.admin_grant_access(
+  p_admin_id uuid, p_user_id uuid, p_transformer_id uuid
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  insert into public.user_asset_permissions (user_id, transformer_id)
+  values (p_user_id, p_transformer_id) on conflict do nothing;
+end; $$;
+revoke all on function public.admin_grant_access(uuid, uuid, uuid) from public;
+
+create or replace function public.admin_revoke_access(
+  p_admin_id uuid, p_user_id uuid, p_transformer_id uuid
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  delete from public.user_asset_permissions
+   where user_id = p_user_id and transformer_id = p_transformer_id;
+end; $$;
+revoke all on function public.admin_revoke_access(uuid, uuid, uuid) from public;
+
+create or replace function public.admin_grant_many(
+  p_admin_id uuid, p_user_id uuid, p_transformer_ids uuid[]
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  insert into public.user_asset_permissions (user_id, transformer_id)
+    select p_user_id, unnest(p_transformer_ids) on conflict do nothing;
+end; $$;
+revoke all on function public.admin_grant_many(uuid, uuid, uuid[]) from public;
+
+create or replace function public.admin_revoke_many(
+  p_admin_id uuid, p_user_id uuid, p_transformer_ids uuid[]
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public._is_admin(p_admin_id) then raise exception 'Admin privileges required'; end if;
+  delete from public.user_asset_permissions
+   where user_id = p_user_id and transformer_id = any(p_transformer_ids);
+end; $$;
+revoke all on function public.admin_revoke_many(uuid, uuid, uuid[]) from public;
+
+-- Self-service: a user reads their own accessible transformer IDs
+create or replace function public.list_my_permissions(p_user_id uuid)
+returns table(transformer_id uuid)
+language sql security definer set search_path = public as $$
+  select p.transformer_id from public.user_asset_permissions p where p.user_id = p_user_id;
+$$;
+revoke all on function public.list_my_permissions(uuid) from public;
+
+create or replace function public.grant_self_transformer_access(
+  p_user_id uuid, p_transformer_id uuid
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.user_asset_permissions (user_id, transformer_id)
+  values (p_user_id, p_transformer_id)
+  on conflict do nothing;
+end; $$;
+revoke all on function public.grant_self_transformer_access(uuid, uuid) from public;
+
+-- Grants (only RPC calls are exposed to the client)
+grant execute on function public.verify_app_user(text, text)                      to anon, authenticated;
+grant execute on function public.admin_list_users(uuid)                           to anon, authenticated;
+grant execute on function public.admin_create_user(uuid, text, text, text, text)  to anon, authenticated;
+grant execute on function public.admin_set_password(uuid, uuid, text)             to anon, authenticated;
+grant execute on function public.admin_set_active(uuid, uuid, boolean)            to anon, authenticated;
+grant execute on function public.admin_delete_user(uuid, uuid)                    to anon, authenticated;
+grant execute on function public.admin_list_permissions(uuid)                     to anon, authenticated;
+grant execute on function public.admin_grant_access(uuid, uuid, uuid)             to anon, authenticated;
+grant execute on function public.admin_revoke_access(uuid, uuid, uuid)            to anon, authenticated;
+grant execute on function public.admin_grant_many(uuid, uuid, uuid[])             to anon, authenticated;
+grant execute on function public.admin_revoke_many(uuid, uuid, uuid[])            to anon, authenticated;
+grant execute on function public.list_my_permissions(uuid)                        to anon, authenticated;
+grant execute on function public.grant_self_transformer_access(uuid, uuid)        to anon, authenticated;
+```
+
+### 8B. Alternative — apply via Supabase CLI
+
+If you have the Supabase CLI linked (`npm run db:link` was used in this repo), the same SQL is already committed at:
+
+```
+supabase/migrations/20260423000001_app_users_and_permissions.sql
+```
+
+Push it to your remote project with:
+
+```bash
+npm run db:push
+```
+
+### 8C. First login
+
+1. Start the dev server: `npm run dev`
+2. On the login screen, enter **`admin`** / **`admin`**.
+   The `verify_app_user` RPC detects no admin exists and creates the initial administrator inside the function.
+3. Open **Settings → Users** and click the key icon to change the admin password immediately.
+4. Create all pilot accounts from **Settings → Users**. Public self-registration is disabled.
+5. Still in **Settings**, switch to **Asset Access** to tick which transformers each user can see.
+
+### 8D. How to verify the lock is working
+
+> ⚠️ **Do NOT run these in the Supabase SQL Editor.** The SQL Editor
+> runs as the `postgres` superuser, which bypasses RLS and grants —
+> these queries will succeed there and give you a false result (and
+> can actually insert/delete rows in the table).
+>
+> To verify the lock you need to run them **as the anon role** —
+> either from the app's DevTools console, or from `psql` with the
+> anon JWT. Using the app's console:
+
+```js
+// Paste into the browser DevTools console while the app is running.
+// All four should throw "permission denied for table app_users".
+await window.__supabase__?.from('app_users').select('*');
+await window.__supabase__?.from('app_users').select('password_hash');
+await window.__supabase__?.from('app_users').insert({ username: 'x', password_hash: 'x', salt: 'x' });
+await window.__supabase__?.from('app_users').delete().eq('username', 'x');
+```
+
+(If `window.__supabase__` isn't exposed, import the client in a quick
+test component or use the Supabase REST URL with your anon key in `curl`.)
+
+Only the RPC surface is exposed to the `anon` role — table access is denied.
+
+### 8E. Resetting the admin password if you forget it
+
+If you lose the admin password, run this once in the SQL Editor (replace the literal `'new-password-here'`):
+
+```sql
+update public.app_users
+   set salt = encode(extensions.gen_random_bytes(16), 'hex')
+ where username = 'admin'
+returning id, username;
+
+update public.app_users
+   set password_hash = public._hash_password(salt, 'new-password-here')
+ where username = 'admin';
+```
+
+### 8F. Table & RPC cheat-sheet
+
+| Object                              | Purpose                                              |
+| ----------------------------------- | ---------------------------------------------------- |
+| `app_users`                         | credentials + role + active flag                     |
+| `user_asset_permissions`            | which transformers a user can see                    |
+| `verify_app_user(u,p)`              | sign-in; bootstraps `admin/admin` once               |
+| `register_app_user(u,n,p)`          | available in SQL only; public execute is revoked     |
+| `admin_list_users(a)`               | list all users (admin only)                          |
+| `admin_create_user(a,u,n,p,r)`      | create user with role                                |
+| `admin_set_password(a,t,p)`         | reset a user's password                              |
+| `admin_set_active(a,t,b)`           | enable / disable a user                              |
+| `admin_delete_user(a,t)`            | hard-delete user                                     |
+| `admin_list_permissions(a)`         | list all (user → transformer) pairs                  |
+| `admin_grant_access(a,u,t)`         | grant one transformer to a user                      |
+| `admin_revoke_access(a,u,t)`        | revoke one transformer from a user                   |
+| `admin_grant_many(a,u,ids[])`       | bulk grant                                           |
+| `admin_revoke_many(a,u,ids[])`      | bulk revoke                                          |
+| `list_my_permissions(u)`            | a signed-in user fetches their own visible assets    |
+| `grant_self_transformer_access(u,t)`| after self-create, make the new asset visible to user|
+
+---
+
 ## 🔒 Security Notes (Production)
 
 For production use, you should:

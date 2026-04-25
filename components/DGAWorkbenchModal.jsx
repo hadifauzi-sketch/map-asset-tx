@@ -229,6 +229,7 @@ function getSampleTooltipPosition(triggerRect) {
 export default function DGAWorkbenchModal({
   transformer,
   oilTests = [],
+  readOnly = false,
   selectedTestId = null,
   onPreferencesSaved = null,
 }) {
@@ -274,6 +275,10 @@ export default function DGAWorkbenchModal({
   }, [gasLimitStandard, standardOptions]);
 
   useEffect(() => {
+    if (readOnly) {
+      return undefined;
+    }
+
     if (!transformer?.id) {
       return undefined;
     }
@@ -342,6 +347,7 @@ export default function DGAWorkbenchModal({
     methodView,
     oilType,
     onPreferencesSaved,
+    readOnly,
     standardOptions,
     transformer?.id,
   ]);
@@ -444,6 +450,7 @@ export default function DGAWorkbenchModal({
               <select
                 value={oilType}
                 onChange={(event) => setOilType(event.target.value)}
+                disabled={readOnly}
                 className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
               >
                 {OIL_OPTIONS.map((option) => (
@@ -467,6 +474,7 @@ export default function DGAWorkbenchModal({
                       onClick={() => setMethodView(option.value)}
                       aria-label={option.label}
                       title={option.label}
+                      disabled={readOnly}
                       className={`flex h-10 w-full items-center justify-center rounded-md border transition ${
                         isActive
                           ? 'border-[color:var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]'
@@ -498,7 +506,7 @@ export default function DGAWorkbenchModal({
               <select
                 value={gasLimitStandard}
                 onChange={(event) => setGasLimitStandard(event.target.value)}
-                disabled={standardOptions.length === 1}
+                disabled={readOnly || standardOptions.length === 1}
                 className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-80"
               >
                 {standardOptions.map((option) => (
@@ -512,7 +520,9 @@ export default function DGAWorkbenchModal({
         </div>
 
         <div className="mt-3 text-xs text-[var(--muted)]">
-          {preferencesError ? (
+          {readOnly ? (
+            <span>Viewer mode: workspace preferences are read-only.</span>
+          ) : preferencesError ? (
             <span className="text-[var(--danger-strong)]">{preferencesError}</span>
           ) : isSavingPreferences ? (
             <span>Saving workspace preferences to Supabase...</span>

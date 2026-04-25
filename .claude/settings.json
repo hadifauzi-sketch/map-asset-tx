@@ -11,7 +11,22 @@
       "mcp__serena__get_symbols_overview",
       "mcp__claude_ai_Supabase__list_tables",
       "mcp__claude_ai_Supabase__apply_migration",
-      "mcp__serena__find_symbol"
+      "mcp__serena__find_symbol",
+      "Bash(grep -n \"^    </div>\\\\|^  \\);$\\\\|^}\\\\|FloorPlanDetailModal\\\\|FloorPlanMetadataDialog\\\\|TransformerDetailModal\\\\|TransformerModal \" \"App.jsx\")",
+      "Bash(npm run *)",
+      "mcp__plugin_serena_serena__activate_project",
+      "mcp__plugin_serena_serena__check_onboarding_performed",
+      "mcp__plugin_serena_serena__initial_instructions",
+      "mcp__plugin_serena_serena__read_memory",
+      "mcp__plugin_serena_serena__find_file",
+      "mcp__plugin_serena_serena__search_for_pattern",
+      "mcp__plugin_serena_serena__get_symbols_overview",
+      "mcp__plugin_serena_serena__create_text_file",
+      "mcp__plugin_serena_serena__replace_content",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__list_migrations",
+      "mcp__plugin_supabase_supabase__apply_migration",
+      "mcp__plugin_serena_serena__find_symbol"
     ]
   },
   "enabledMcpjsonServers": [

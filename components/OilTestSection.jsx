@@ -122,6 +122,7 @@ function OilTestSection({
   oilTests,
   onUpdate,
   transformer,
+  readOnly = false,
   activeCompartment = 'Maintank',
   onAssignCompartment,
 }) {
@@ -188,6 +189,14 @@ function OilTestSection({
     setDgaPreferencesOverride(null);
   }, [transformer?.id]);
 
+  useEffect(() => {
+    if (!readOnly) {
+      return;
+    }
+    setIsAddingTest(false);
+    setEditingTest(null);
+  }, [readOnly]);
+
   const transformerForWorkbench = useMemo(() => {
     if (!transformer || !dgaPreferencesOverride) {
       return transformer;
@@ -205,6 +214,9 @@ function OilTestSection({
   const computedDpMethanol = useMemo(() => calculateDpFromMethanol(formData.methanol), [formData.methanol]);
 
   const handleAddTest = () => {
+    if (readOnly) {
+      return;
+    }
     setIsAddingTest(true);
     setEditingTest(null);
     setFormData({
@@ -252,6 +264,9 @@ function OilTestSection({
   };
 
   const handleEditTest = (test) => {
+    if (readOnly) {
+      return;
+    }
     setEditingTest(test);
     setIsAddingTest(true);
     setFormData({
@@ -270,6 +285,9 @@ function OilTestSection({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (readOnly) {
+      return;
+    }
     
     // Include auto-calculated values in the submission
     const submitData = {
@@ -309,6 +327,9 @@ function OilTestSection({
   };
 
   const handleRequestDeleteTest = (test) => {
+    if (readOnly) {
+      return;
+    }
     if (!test) {
       return;
     }
@@ -347,6 +368,9 @@ function OilTestSection({
   };
 
   const handleRequestDeleteAllTests = () => {
+    if (readOnly) {
+      return;
+    }
     if (isDeletingAllTests || isDeletingTest || oilTests.length === 0) {
       return;
     }
@@ -731,6 +755,7 @@ function OilTestSection({
               <DGAWorkbenchModal
                 transformer={transformerForWorkbench}
                 oilTests={oilTests}
+                readOnly={readOnly}
                 selectedTestId={dgaTest.id}
                 onPreferencesSaved={(preferences) => {
                   setDgaPreferencesOverride(preferences);
@@ -845,21 +870,25 @@ function OilTestSection({
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleRequestDeleteAllTests}
-                disabled={oilTests.length === 0 || isDeletingAllTests || isDeletingTest}
-              >
-                Delete all
-              </Button>
-              <button
-                className="btn-add-small"
-                onClick={handleAddTest}
-                disabled={isDeletingAllTests || isDeletingTest}
-              >
-                + Add Test Record
-              </button>
+              {!readOnly ? (
+                <>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleRequestDeleteAllTests}
+                    disabled={oilTests.length === 0 || isDeletingAllTests || isDeletingTest}
+                  >
+                    Delete all
+                  </Button>
+                  <button
+                    className="btn-add-small"
+                    onClick={handleAddTest}
+                    disabled={isDeletingAllTests || isDeletingTest}
+                  >
+                    + Add Test Record
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
 
@@ -869,9 +898,11 @@ function OilTestSection({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p>No oil test records yet</p>
-              <button className="btn-add-empty" onClick={handleAddTest}>
-                Add First Test Record
-              </button>
+              {!readOnly ? (
+                <button className="btn-add-empty" onClick={handleAddTest}>
+                  Add First Test Record
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="test-list">
@@ -924,19 +955,23 @@ function OilTestSection({
                       </svg>
                       DGA Analysis
                     </button>
-                    <button 
-                      className="btn-edit-small"
-                      onClick={(e) => { e.stopPropagation(); handleEditTest(test); }}
-                    >
-                      Edit
-                    </button>
-                    <button 
-                      className="btn-delete-small"
-                      onClick={(e) => { e.stopPropagation(); handleRequestDeleteTest(test); }}
-                      disabled={isDeletingTest || isDeletingAllTests}
-                    >
-                      Delete
-                    </button>
+                    {!readOnly ? (
+                      <>
+                        <button 
+                          className="btn-edit-small"
+                          onClick={(e) => { e.stopPropagation(); handleEditTest(test); }}
+                        >
+                          Edit
+                        </button>
+                        <button 
+                          className="btn-delete-small"
+                          onClick={(e) => { e.stopPropagation(); handleRequestDeleteTest(test); }}
+                          disabled={isDeletingTest || isDeletingAllTests}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : null}
                   </div>
 
                   {/* Collapsible detail section */}

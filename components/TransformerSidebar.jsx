@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
 import {
   Building2,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings as SettingsIcon,
   SunMedium,
   Trash2,
   X,
@@ -274,6 +276,8 @@ function getCollapsedStatLabel(statKey, label) {
 function TransformerSidebar({
   transformers,
   floorPlans = [],
+  currentUser = null,
+  canManageAssets = true,
   onAddClick,
   onTransformerClick,
   onEditClick,
@@ -289,6 +293,7 @@ function TransformerSidebar({
   selectedFloorPlanId,
   theme,
   onToggleTheme,
+  onOpenSettings,
   onCloseMobile,
   collapsed,
   onToggleCollapsed,
@@ -519,20 +524,26 @@ function TransformerSidebar({
           </Button>
 
           <div className="flex w-full flex-col items-center gap-2 border-y border-[color:var(--border)] py-3">
-            <button
-              type="button"
-              className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-              onClick={onAddClick}
-              aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
-              title={isAddMode ? 'Map placement armed' : 'Add transformer'}
-            >
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                <Plus className="h-4 w-4" />
-              </div>
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                {isAddMode ? 'Place' : 'Add'}
-              </span>
-            </button>
+            {canManageAssets ? (
+              <button
+                type="button"
+                className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                onClick={onAddClick}
+                aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
+                title={isAddMode ? 'Map placement armed' : 'Add transformer'}
+              >
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                  <Plus className="h-4 w-4" />
+                </div>
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                  {isAddMode ? 'Place' : 'Add'}
+                </span>
+              </button>
+            ) : (
+              <Badge variant="outline" className="justify-center px-2 py-1 text-[10px]">
+                Viewer
+              </Badge>
+            )}
 
             <Button
               variant="outline"
@@ -543,6 +554,16 @@ function TransformerSidebar({
               title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {theme === 'dark' ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-11 w-11"
+              onClick={onOpenSettings}
+              aria-label="Open settings"
+              title={currentUser ? `Open settings for ${currentUser.username}` : 'Open settings'}
+            >
+              <SettingsIcon className="h-4 w-4" />
             </Button>
           </div>
 
@@ -642,6 +663,10 @@ function TransformerSidebar({
           selectedAssetId={selectedTransformerId}
           onClose={closeAssetsModal}
           onSelectAsset={handleAssetSelect}
+          canManageAssets={canManageAssets}
+          onViewDetails={(asset) => { onViewDetails(asset); closeAssetsModal(); }}
+          onEdit={(asset) => { onEditClick(asset); closeAssetsModal(); }}
+          onDelete={(assetId) => { onDeleteClick(assetId); closeAssetsModal(); }}
         />
         <AreasListDialog
           open={isAreasModalOpen}
@@ -671,11 +696,15 @@ function TransformerSidebar({
       <header className="shrink-0 border-b border-[color:var(--border)] px-5 py-5">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-2">
-            <Badge variant="secondary" className="uppercase tracking-[0.14em]">
-              Asset map
+            <Badge
+              variant="secondary"
+              className="max-w-full truncate px-2.5 py-1 text-[11px] font-medium tracking-[0.02em]"
+              title={currentUser?.username || currentUser?.full_name || 'Asset map'}
+            >
+              {currentUser?.full_name || currentUser?.username || 'Asset map'}
             </Badge>
             <div>
-              <h1 className="text-2xl font-semibold">Transformer control room</h1>
+              <h1 className="text-2xl font-semibold">TX Asset Management</h1>
             </div>
           </div>
 
@@ -689,6 +718,15 @@ function TransformerSidebar({
               title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               <PanelLeftClose className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onOpenSettings}
+              aria-label="Open settings"
+              title={currentUser ? `Open settings for ${currentUser.username}` : 'Open settings'}
+            >
+              <SettingsIcon className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
@@ -779,14 +817,20 @@ function TransformerSidebar({
 
       <section className="shrink-0 border-b border-[color:var(--border)] px-5 py-4">
         <div className="flex flex-col gap-3">
-          <Button
-            className="w-full justify-center"
-            variant={isAddMode ? 'secondary' : 'default'}
-            onClick={onAddClick}
-          >
-            <Plus className="h-4 w-4" />
-            {isAddMode ? 'Map placement armed' : 'Add transformer'}
-          </Button>
+          {canManageAssets ? (
+            <Button
+              className="w-full justify-center"
+              variant={isAddMode ? 'secondary' : 'default'}
+              onClick={onAddClick}
+            >
+              <Plus className="h-4 w-4" />
+              {isAddMode ? 'Map placement armed' : 'Add transformer'}
+            </Button>
+          ) : (
+            <Badge variant="outline" className="justify-center px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em]">
+              Viewer mode
+            </Badge>
+          )}
 
           <label className="space-y-2">
             <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
@@ -964,25 +1008,29 @@ function TransformerSidebar({
                                         </button>
 
                                         <div className="flex items-center gap-1">
-                                          <IconAction
-                                            label="Edit floor info"
-                                            onClick={() => onEditFloorPlanInfo(floorPlan)}
-                                          >
-                                            <Pencil className="h-4 w-4" />
-                                          </IconAction>
-                                          <IconAction
-                                            label="Reshape floor boundary"
-                                            onClick={() => onEditFloorPlan(floorPlan)}
-                                          >
-                                            <Layers3 className="h-4 w-4" />
-                                          </IconAction>
-                                          <IconAction
-                                            label="Delete floor plan"
-                                            destructive
-                                            onClick={() => onDeleteFloorPlan(floorPlan.id)}
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                          </IconAction>
+                                          {canManageAssets ? (
+                                            <>
+                                              <IconAction
+                                                label="Edit floor info"
+                                                onClick={() => onEditFloorPlanInfo(floorPlan)}
+                                              >
+                                                <Pencil className="h-4 w-4" />
+                                              </IconAction>
+                                              <IconAction
+                                                label="Reshape floor boundary"
+                                                onClick={() => onEditFloorPlan(floorPlan)}
+                                              >
+                                                <Layers3 className="h-4 w-4" />
+                                              </IconAction>
+                                              <IconAction
+                                                label="Delete floor plan"
+                                                destructive
+                                                onClick={() => onDeleteFloorPlan(floorPlan.id)}
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </IconAction>
+                                            </>
+                                          ) : null}
                                           <button
                                             type="button"
                                             onClick={() => toggleExpandedValue(setExpandedFloorPlans, floorKey)}
@@ -1011,6 +1059,7 @@ function TransformerSidebar({
                                                 onToggleExpanded={() => toggleTransformerExpanded(transformer.id)}
                                                 onClick={() => onTransformerClick(transformer)}
                                                 onViewDetails={() => onViewDetails(transformer)}
+                                                canManageAssets={canManageAssets}
                                                 onEdit={() => onEditClick(transformer)}
                                                 onDelete={() => onDeleteClick(transformer.id)}
                                               />
@@ -1050,6 +1099,7 @@ function TransformerSidebar({
                                           onToggleExpanded={() => toggleTransformerExpanded(transformer.id)}
                                           onClick={() => onTransformerClick(transformer)}
                                           onViewDetails={() => onViewDetails(transformer)}
+                                          canManageAssets={canManageAssets}
                                           onEdit={() => onEditClick(transformer)}
                                           onDelete={() => onDeleteClick(transformer.id)}
                                         />
@@ -1076,6 +1126,10 @@ function TransformerSidebar({
         selectedAssetId={selectedTransformerId}
         onClose={closeAssetsModal}
         onSelectAsset={handleAssetSelect}
+        canManageAssets={canManageAssets}
+        onViewDetails={(asset) => { onViewDetails(asset); closeAssetsModal(); }}
+        onEdit={(asset) => { onEditClick(asset); closeAssetsModal(); }}
+        onDelete={(assetId) => { onDeleteClick(assetId); closeAssetsModal(); }}
       />
       <AreasListDialog
         open={isAreasModalOpen}
@@ -1100,57 +1154,234 @@ function TransformerSidebar({
   );
 }
 
-function AssetsListDialog({ open, assets, selectedAssetId, onClose, onSelectAsset }) {
+function AssetsListDialog({ open, assets, selectedAssetId, onClose, onSelectAsset, canManageAssets, onViewDetails, onEdit, onDelete }) {
+  const [query, setQuery] = useState('');
+  const [ctxMenu, setCtxMenu] = useState(null); // { asset, x, y }
+  const ctxRef = React.useRef(null);
+
+  // Reset search + context menu when modal opens/closes
+  React.useEffect(() => {
+    if (open) { setQuery(''); setCtxMenu(null); }
+  }, [open]);
+
+  // Close context menu on outside click or Escape
+  React.useEffect(() => {
+    if (!ctxMenu) return;
+    const handleClick = (e) => {
+      if (ctxRef.current && !ctxRef.current.contains(e.target)) setCtxMenu(null);
+    };
+    const handleKey = (e) => { if (e.key === 'Escape') setCtxMenu(null); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [ctxMenu]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return assets;
+    return assets.filter((a) =>
+      (a.txName || '').toLowerCase().includes(q) ||
+      (a.mnemonic || '').toLowerCase().includes(q) ||
+      (a.serialNumber || '').toLowerCase().includes(q)
+    );
+  }, [assets, query]);
+
+  const handleContextMenu = (e, asset) => {
+    e.preventDefault();
+    // Clamp so popup doesn't go off-screen
+    const PW = 260, PH = 320;
+    const x = Math.min(e.clientX, window.innerWidth - PW - 8);
+    const y = Math.min(e.clientY, window.innerHeight - PH - 8);
+    setCtxMenu({ asset, x, y });
+  };
+
+  const highlight = (text) => {
+    const q = query.trim();
+    if (!q || !text) return text || '-';
+    const idx = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark className="rounded bg-[var(--primary)]/30 px-0.5 text-[var(--primary-strong)]">
+          {text.slice(idx, idx + q.length)}
+        </mark>
+        {text.slice(idx + q.length)}
+      </>
+    );
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
-      <DialogContent className="mobile-form-dialog max-w-3xl p-0">
-        <DialogHeader>
-          <DialogTitle>All Assets</DialogTitle>
-          <DialogDescription>
-            {assets.length} assets available. Select one to focus it and show it in the sidebar.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
+        <DialogContent className="mobile-form-dialog max-w-3xl p-0">
+          <DialogHeader>
+            <DialogTitle>All Assets</DialogTitle>
+            <DialogDescription>
+              {assets.length} assets available. Select one to focus it and show it in the sidebar.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="mobile-dialog-scroll px-4 py-4 sm:px-5 sm:py-5">
-          {assets.length === 0 ? (
-            <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
-              No assets available yet.
-            </p>
-          ) : (
-            <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
-              {assets.map((asset) => {
-                const isSelected = selectedAssetId === asset.id;
-
-                return (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    onClick={() => onSelectAsset(asset)}
-                    className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${
-                      isSelected
-                        ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
-                        : 'border-[color:var(--border)] bg-[var(--card)] hover:bg-[var(--card-muted)]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[var(--foreground)]">
-                          {asset.txName || 'Unnamed transformer'}
-                        </p>
-                        <p className="truncate text-sm text-[var(--muted)]">
-                          Mnemonic: {asset.mnemonic || '-'} - Serial: {asset.serialNumber || '-'}
-                        </p>
-                      </div>
-                      {isSelected ? <Badge variant="secondary">Selected</Badge> : null}
-                    </div>
-                  </button>
-                );
-              })}
+          {/* Search bar */}
+          <div className="border-b border-[color:var(--border)] px-4 pb-3 pt-1 sm:px-5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name, mnemonic, or serial number…"
+                className="h-9 w-full rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/40"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            {query ? (
+              <p className="mt-1.5 text-xs text-[var(--muted)]">
+                {filtered.length} of {assets.length} assets match
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mobile-dialog-scroll px-4 py-4 sm:px-5 sm:py-5">
+            <p className="mb-2 text-[11px] text-[var(--muted)]">
+              Right-click an asset for a quick info preview.
+            </p>
+            {assets.length === 0 ? (
+              <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
+                No assets available yet.
+              </p>
+            ) : filtered.length === 0 ? (
+              <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-center text-sm text-[var(--muted)]">
+                No assets match <span className="font-semibold text-[var(--foreground)]">"{query}"</span>.
+              </p>
+            ) : (
+              <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+                {filtered.map((asset) => {
+                  const isSelected = selectedAssetId === asset.id;
+                  const isCtx = ctxMenu?.asset?.id === asset.id;
+                  return (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      onClick={() => onSelectAsset(asset)}
+                      onContextMenu={(e) => handleContextMenu(e, asset)}
+                      className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${
+                        isSelected
+                          ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]'
+                          : isCtx
+                          ? 'border-[color:var(--primary)]/50 bg-[var(--card-muted)]'
+                          : 'border-[color:var(--border)] bg-[var(--card)] hover:bg-[var(--card-muted)]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                            {highlight(asset.txName || 'Unnamed transformer')}
+                          </p>
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            Mnemonic: {highlight(asset.mnemonic || '-')} · Serial: {highlight(asset.serialNumber || '-')}
+                          </p>
+                        </div>
+                        {isSelected ? <Badge variant="secondary">Selected</Badge> : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Right-click infotip — portalled to body so it sits above the Dialog overlay */}
+      {ctxMenu ? ReactDOM.createPortal(
+        <div
+          ref={ctxRef}
+          className="fixed z-[9999] w-[260px] overflow-hidden rounded-xl border border-[color:var(--border)] bg-[var(--card)] shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
+          style={{ top: ctxMenu.y, left: ctxMenu.x }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2 border-b border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted)]">Transformer</p>
+              <p className="truncate text-sm font-bold text-[var(--foreground)]">{ctxMenu.asset.txName || 'Unnamed'}</p>
+            </div>
+            {ctxMenu.asset.voltage ? (
+              <span className="mt-0.5 flex-shrink-0 rounded bg-[var(--primary-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--primary-strong)]">
+                {ctxMenu.asset.voltage}
+              </span>
+            ) : null}
+          </div>
+
+          {/* Detail rows */}
+          <dl className="divide-y divide-[color:var(--border)] px-3 py-1 text-xs">
+            {[
+              ['Site',     ctxMenu.asset.siteName],
+              ['State',    ctxMenu.asset.state],
+              ['Mnemonic', ctxMenu.asset.mnemonic],
+              ['Serial',   ctxMenu.asset.serialNumber],
+              ['Load',     ctxMenu.asset.loadMVA ? `${ctxMenu.asset.loadMVA} MVA` : null],
+              ['Maker',    ctxMenu.asset.maker],
+              ['Built',    ctxMenu.asset.yearBuilt],
+            ].map(([label, val]) => (
+              <div key={label} className="flex justify-between gap-2 py-1.5">
+                <dt className="text-[var(--muted)]">{label}</dt>
+                <dd className="text-right font-medium text-[var(--foreground)]">{val || '—'}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {/* Stats */}
+          <div className="flex gap-3 border-t border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-2 text-[11px] text-[var(--muted)]">
+            <span>{ctxMenu.asset.oilTests?.length || 0} oil tests</span>
+            <span>{ctxMenu.asset.documents?.length || 0} documents</span>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-1.5 border-t border-[color:var(--border)] px-3 py-2.5">
+            <button
+              type="button"
+              onClick={() => { setCtxMenu(null); onViewDetails?.(ctxMenu.asset); }}
+              className="flex-1 rounded-md bg-[var(--primary)] px-2 py-1.5 text-xs font-semibold text-white transition hover:brightness-110"
+            >
+              Details
+            </button>
+            {canManageAssets ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { setCtxMenu(null); onEdit?.(ctxMenu.asset); }}
+                  className="flex-1 rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--card-muted)]"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCtxMenu(null); onDelete?.(ctxMenu.asset.id); }}
+                  className="flex-1 rounded-md bg-red-600/80 px-2 py-1.5 text-xs font-semibold text-white transition hover:bg-red-600"
+                >
+                  Delete
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>,
+        document.body
+      ) : null}
+    </>
   );
 }
 
@@ -1301,6 +1532,7 @@ function TransformerListCard({
   onToggleExpanded,
   onClick,
   onViewDetails,
+  canManageAssets = true,
   onEdit,
   onDelete,
 }) {
@@ -1371,12 +1603,16 @@ function TransformerListCard({
               <IconAction label="View details" onClick={onViewDetails}>
                 <MapPin className="h-4 w-4" />
               </IconAction>
-              <IconAction label="Edit transformer" onClick={onEdit}>
-                <Pencil className="h-4 w-4" />
-              </IconAction>
-              <IconAction label="Delete transformer" destructive onClick={onDelete}>
-                <Trash2 className="h-4 w-4" />
-              </IconAction>
+              {canManageAssets ? (
+                <>
+                  <IconAction label="Edit transformer" onClick={onEdit}>
+                    <Pencil className="h-4 w-4" />
+                  </IconAction>
+                  <IconAction label="Delete transformer" destructive onClick={onDelete}>
+                    <Trash2 className="h-4 w-4" />
+                  </IconAction>
+                </>
+              ) : null}
             </div>
           </div>
         </>
