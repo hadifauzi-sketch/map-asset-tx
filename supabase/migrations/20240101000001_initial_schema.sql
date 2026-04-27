@@ -39,6 +39,7 @@ create table if not exists public.oil_tests (
   acidity               numeric,
   water_content         numeric,
   interfacial_tension   numeric,
+  appearance            text,
   color                 text,
   flash_point           numeric,
   dielectric_strength   numeric,

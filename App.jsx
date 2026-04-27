@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import MarkerClusterGroup from 'react-leaflet-cluster';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 import L from 'leaflet';
 import {
   AlertTriangle,
@@ -25,6 +28,7 @@ import TransformerMarker from './components/TransformerMarker';
 import TransformerSidebar from './components/TransformerSidebar';
 import TransformerModal from './components/TransformerModal';
 import TransformerDetailModal from './components/TransformerDetailModal';
+import LocationRegisterModule from './components/location-register/LocationRegisterModule';
 import FloorPlanMapLayer from './components/FloorPlanMapLayer';
 import FloorPlanMetadataDialog from './components/FloorPlanMetadataDialog';
 import FloorPlanDetailModal from './components/FloorPlanDetailModal';
@@ -32,7 +36,12 @@ import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog';
-import SignIn, { readSession, clearSession } from './components/Authentic/sign-in';
+import SignIn, {
+  clearSession,
+  getSessionIdleRemainingMs,
+  readSession,
+  touchSessionActivity,
+} from './components/Authentic/sign-in';
 import Roles from './components/Authentic/roles';
 import { getStandardOptionsForOilType } from './lib/dga/appConfig';
 import { analyzeSample } from './lib/dga/diagnostics';
@@ -44,6 +53,7 @@ import {
 } from './lib/floorPlanStorage';
 import { floorPlanService } from './lib/floorPlanService';
 import { getTransformerState } from './lib/malaysiaStates';
+import { createTransformerDraft } from './lib/transformerDraft';
 import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
@@ -53,9 +63,12 @@ const DEFAULT_CENTER = [3.139, 101.6869];
 const DEFAULT_ZOOM = 11;
 const MALAYSIA_CENTER = [4.2105, 108.9758];
 const MALAYSIA_ZOOM = 6;
+const MARKER_CLUSTER_DISABLE_AT_ZOOM = 15;
 const THEME_STORAGE_KEY = 'transformer-asset-map-theme';
 const MAP_BASE_LAYER_STORAGE_KEY = 'transformer-asset-map-base-layer';
 const DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY = 'transformer-asset-map-desktop-sidebar-collapsed';
+const SESSION_ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+const IDLE_SIGN_OUT_MESSAGE = 'Session expired after 8 hours of inactivity. Please sign in again.';
 
 const MAP_BASE_LAYERS = {
   streets: {
@@ -335,6 +348,7 @@ const createTransformerIcon = (color = '#0f766e') =>
 
 function App() {
   const [currentUser, setCurrentUser] = useState(() => readSession());
+  const [authNotice, setAuthNotice] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [transformers, setTransformers] = useState([]);
   const [selectedTransformer, setSelectedTransformer] = useState(null);
@@ -388,11 +402,22 @@ function App() {
   const [floorDetailFloorPlanId, setFloorDetailFloorPlanId] = useState(null);
   const [isFloorDetailModalOpen, setIsFloorDetailModalOpen] = useState(false);
   const [isDraggable, setIsDraggable] = useState(false);
+  const [isLocationRegisterOpen, setIsLocationRegisterOpen] = useState(false);
   const pendingFloorAssignment = useRef(null);
   const leafletMapRef = useRef(null);
+  const idleSignOutTimerRef = useRef(null);
   const isAdmin = currentUser?.role === 'admin';
   const isViewer = currentUser?.role === 'viewer';
   const canEditAssets = !currentUser || currentUser.role !== 'viewer';
+
+  const clearIdleSignOutTimer = useCallback(() => {
+    if (typeof window === 'undefined' || idleSignOutTimerRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(idleSignOutTimerRef.current);
+    idleSignOutTimerRef.current = null;
+  }, []);
 
   const ensureCanEditAssets = useCallback(() => {
     if (canEditAssets) {
@@ -665,6 +690,23 @@ function App() {
     }
   };
 
+  const focusLocationPosition = useCallback((position, zoom = 18) => {
+    const latitude = Number(position?.[0]);
+    const longitude = Number(position?.[1]);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return;
+    }
+
+    setMapCenter([latitude, longitude]);
+    setMapZoom(zoom);
+    deactivateSidebarInteraction();
+
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
   const loadFloorPlans = async () => {
     try {
       await floorPlanService.migrateFromLocalStorage();
@@ -704,18 +746,9 @@ function App() {
       return;
     }
     pendingFloorAssignment.current = floorPlanId;
-    setEditingTransformer({
+    setEditingTransformer(createTransformerDraft({
       position,
-      siteName: '',
-      state: '',
-      txName: '',
-      mnemonic: '',
-      serialNumber: '',
-      voltage: '',
-      loadMVA: '',
-      maker: '',
-      yearBuilt: '',
-    });
+    }));
     setIsModalOpen(true);
   }, [ensureCanEditAssets]);
 
@@ -766,18 +799,9 @@ function App() {
       return;
     }
 
-    const newTransformer = {
+    const newTransformer = createTransformerDraft({
       position: [event.latlng.lat, event.latlng.lng],
-      siteName: '',
-      state: '',
-      txName: '',
-      mnemonic: '',
-      serialNumber: '',
-      voltage: '',
-      loadMVA: '',
-      maker: '',
-      yearBuilt: '',
-    };
+    });
     setEditingTransformer(newTransformer);
     setIsModalOpen(true);
     setIsAddMode(false);
@@ -818,6 +842,7 @@ function App() {
 
       await loadTransformers();
       setIsModalOpen(false);
+      setIsLocationRegisterOpen(false);
       setEditingTransformer(null);
     } catch (err) {
       console.error('Failed to save transformer:', err);
@@ -926,6 +951,22 @@ function App() {
     );
   };
 
+  const handleDgaPreferencesSaved = (transformerId, preferences) => {
+    if (!transformerId || !preferences) {
+      return;
+    }
+    setTransformers((current) =>
+      current.map((transformer) =>
+        transformer.id === transformerId ? { ...transformer, ...preferences } : transformer
+      )
+    );
+    setSelectedTransformer((currentSelected) =>
+      currentSelected?.id === transformerId
+        ? { ...currentSelected, ...preferences }
+        : currentSelected
+    );
+  };
+
   const handleUpdateDocuments = (transformerId, documents) => {
     setTransformers((current) =>
       current.map((transformer) =>
@@ -942,6 +983,7 @@ function App() {
   const closeTransformerModal = () => {
     setIsModalOpen(false);
     setEditingTransformer(null);
+    pendingFloorAssignment.current = null;
   };
 
   const startFloorPlanDrawing = () => {
@@ -1003,6 +1045,24 @@ function App() {
     setIsFloorPlanDialogOpen(false);
     setFloorPlanDialogDraft(null);
   };
+
+  const openLocationRegisterModule = useCallback(() => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+
+    cancelFloorPlanDrawing();
+    pendingFloorAssignment.current = null;
+    setEditingTransformer(null);
+    setIsModalOpen(false);
+    setIsAddMode(false);
+    setIsLocationRegisterOpen(true);
+    setSelectedFloorPlanId(null);
+
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, [cancelFloorPlanDrawing, ensureCanEditAssets]);
 
   const handleFloorDraftVertexMove = (pointIndex, nextPoint) => {
     if (!canEditAssets) {
@@ -1168,18 +1228,77 @@ function App() {
 
   const activeBaseLayer = MAP_BASE_LAYERS[mapBaseLayer];
 
-  const handleSignOut = () => {
+  const handleSignOut = useCallback((reason = 'manual') => {
+    const signOutReason = reason === 'idle' ? 'idle' : 'manual';
     clearSession();
+    clearIdleSignOutTimer();
     setCurrentUser(null);
+    setAuthNotice(signOutReason === 'idle' ? IDLE_SIGN_OUT_MESSAGE : null);
     setIsSettingsOpen(false);
     setTransformers([]);
     setSelectedTransformer(null);
-  };
+  }, [clearIdleSignOutTimer]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    clearIdleSignOutTimer();
+
+    if (!currentUser) {
+      return undefined;
+    }
+
+    const scheduleIdleCheck = () => {
+      clearIdleSignOutTimer();
+
+      const idleRemainingMs = getSessionIdleRemainingMs();
+      if (idleRemainingMs === null || idleRemainingMs <= 0) {
+        handleSignOut('idle');
+        return;
+      }
+
+      idleSignOutTimerRef.current = window.setTimeout(() => {
+        scheduleIdleCheck();
+      }, idleRemainingMs);
+    };
+
+    const handleActivity = () => {
+      const sessionStillValid = touchSessionActivity();
+      if (!sessionStillValid) {
+        handleSignOut('idle');
+        return;
+      }
+
+      scheduleIdleCheck();
+    };
+
+    const handleVisibilityChange = () => {
+      scheduleIdleCheck();
+    };
+
+    scheduleIdleCheck();
+    SESSION_ACTIVITY_EVENTS.forEach((eventName) => {
+      window.addEventListener(eventName, handleActivity);
+    });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      SESSION_ACTIVITY_EVENTS.forEach((eventName) => {
+        window.removeEventListener(eventName, handleActivity);
+      });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearIdleSignOutTimer();
+    };
+  }, [currentUser, handleSignOut, clearIdleSignOutTimer]);
 
   if (!currentUser && isSupabaseConfigured) {
     return (
       <SignIn
+        infoMessage={authNotice}
         onSuccess={(user) => {
+          setAuthNotice(null);
           setCurrentUser(user);
         }}
       />
@@ -1232,6 +1351,26 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
     );
   }
 
+  const markerClusterEnabled = !(isDraggable && canEditAssets);
+  const transformerMarkerNodes = transformers.map((transformer) => (
+    <TransformerMarker
+      key={transformer.id}
+      transformer={transformer}
+      icon={createTransformerIcon(transformerMarkerColors.get(transformer.id) ?? MARKER_STATUS_COLORS.normal)}
+      isSelected={selectedTransformer?.id === transformer.id}
+      isDraggable={isDraggable && canEditAssets}
+      canManageAssets={canEditAssets}
+      onDragEnd={handleMarkerDragEnd}
+      onEdit={handleEditTransformer}
+      onDelete={handleDeleteTransformer}
+      onViewDetails={handleViewDetails}
+      onSelect={(nextTransformer) => {
+        setSelectedTransformer(nextTransformer);
+        setSelectedFloorPlanId(null);
+      }}
+    />
+  ));
+
   return (
     <div className="app-shell relative overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <div className="app-frame flex overflow-hidden">
@@ -1265,12 +1404,14 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 return;
               }
               cancelFloorPlanDrawing();
+              setIsLocationRegisterOpen(false);
               setIsAddMode(true);
               setSelectedFloorPlanId(null);
               if (typeof window !== 'undefined' && window.innerWidth < 1024) {
                 setSidebarOpen(false);
               }
             }}
+            onLocationRegisterClick={openLocationRegisterModule}
             onDrawFloorClick={() => {
               if (floorPlanDraft) {
                 cancelFloorPlanDrawing();
@@ -1287,6 +1428,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             onEditFloorPlan={handleEditFloorPlan}
             onDeleteFloorPlan={handleDeleteFloorPlan}
             isAddMode={isAddMode}
+            isLocationRegisterOpen={isLocationRegisterOpen}
             isFloorDrawingMode={Boolean(floorPlanDraft)}
             loading={loading}
             selectedTransformerId={selectedTransformer?.id ?? null}
@@ -1392,6 +1534,16 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     }}
                   >
                     {floorPlanDraft ? 'Cancel draw' : 'Draw floor'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={isLocationRegisterOpen ? 'secondary' : 'outline'}
+                    className="h-9 shrink-0 gap-1.5"
+                    disabled={!canEditAssets}
+                    onClick={openLocationRegisterModule}
+                  >
+                    <MapPin className="h-3.5 w-3.5" />
+                    GPS register
                   </Button>
                   <Button
                     size="sm"
@@ -1633,24 +1785,19 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 onDeleteFloorPlan={handleDeleteFloorPlan}
                 onDraftVertexMove={handleFloorDraftVertexMove}
               />
-              {transformers.map((transformer) => (
-                <TransformerMarker
-                  key={transformer.id}
-                  transformer={transformer}
-                  icon={createTransformerIcon(transformerMarkerColors.get(transformer.id) ?? MARKER_STATUS_COLORS.normal)}
-                  isSelected={selectedTransformer?.id === transformer.id}
-                  isDraggable={isDraggable && canEditAssets}
-                  canManageAssets={canEditAssets}
-                  onDragEnd={handleMarkerDragEnd}
-                  onEdit={handleEditTransformer}
-                  onDelete={handleDeleteTransformer}
-                  onViewDetails={handleViewDetails}
-                  onSelect={(nextTransformer) => {
-                    setSelectedTransformer(nextTransformer);
-                    setSelectedFloorPlanId(null);
-                  }}
-                />
-              ))}
+              {markerClusterEnabled ? (
+                <MarkerClusterGroup
+                  chunkedLoading
+                  disableClusteringAtZoom={MARKER_CLUSTER_DISABLE_AT_ZOOM}
+                  showCoverageOnHover={false}
+                  spiderfyOnMaxZoom
+                  removeOutsideVisibleBounds
+                >
+                  {transformerMarkerNodes}
+                </MarkerClusterGroup>
+              ) : (
+                transformerMarkerNodes
+              )}
             </MapContainer>
           </div>
 
@@ -1732,6 +1879,13 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onClose={closeTransformerModal}
       />
 
+      <LocationRegisterModule
+        open={isLocationRegisterOpen}
+        onClose={() => setIsLocationRegisterOpen(false)}
+        onSave={handleAddTransformer}
+        onFocusPosition={focusLocationPosition}
+      />
+
       <TransformerDetailModal
         open={isDetailModalOpen}
         transformer={selectedTransformer}
@@ -1739,6 +1893,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onClose={handleCloseDetailModal}
         onUpdateOilTests={handleUpdateOilTests}
         onUpdateDocuments={handleUpdateDocuments}
+        onDgaPreferencesSaved={handleDgaPreferencesSaved}
       />
 
       <FloorPlanMetadataDialog

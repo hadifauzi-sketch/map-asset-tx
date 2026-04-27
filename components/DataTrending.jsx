@@ -152,7 +152,7 @@ const CorrosionTooltip = ({ active, payload, label }) => {
       <div style={{ background: '#1e293b', padding: 12, border: '1px solid #334155', borderRadius: 8, fontSize: 13, color: '#e2e8f0' }}>
         <p style={{ fontWeight: 600, marginBottom: 4 }}>{label}</p>
         <p style={{ color: '#ef4444' }}>DBDS: {dbds ? dbds.value : 'N/A'} ppm</p>
-        <p style={{ color: '#3b82f6' }}>Passivator: {passivator ? passivator.value : 0} ppm</p>
+        <p style={{ color: '#3b82f6' }}>Passivator: {passivator ? passivator.value : 0} mg/kg</p>
         <div style={{
           marginTop: 8, padding: '4px 8px', borderRadius: 4, textAlign: 'center', fontSize: 11, fontWeight: 700,
           background: corrosion && corrosion.value > 0 ? '#fef2f2' : '#f0fdf4',
@@ -325,12 +325,12 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="date" fontSize={10} stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR }} />
-              <YAxis yAxisId="left" label={{ value: 'Concentration (ppm)', angle: -90, position: 'insideLeft', fill: CHART_TEXT_COLOR }} tick={{ fill: CHART_TEXT_COLOR }} stroke={CHART_AXIS_COLOR} />
+              <YAxis yAxisId="left" label={{ value: 'Concentration', angle: -90, position: 'insideLeft', fill: CHART_TEXT_COLOR }} tick={{ fill: CHART_TEXT_COLOR }} stroke={CHART_AXIS_COLOR} />
               <YAxis yAxisId="right" orientation="right" type="number" domain={[0, 1]} tickFormatter={(val) => val === 1 ? 'Fail' : 'Pass'} tick={{ fill: CHART_TEXT_COLOR }} stroke={CHART_AXIS_COLOR} />
               <Tooltip content={<CorrosionTooltip />} />
               <Legend verticalAlign="top" height={36} formatter={(v) => <span style={{ color: CHART_TEXT_COLOR, fontWeight: 600 }}>{v}</span>} />
               <Bar yAxisId="left" dataKey="DBDS" name="DBDS (ppm)" fill="#ef4444" barSize={20} radius={[4, 4, 0, 0]} />
-              <Line yAxisId="left" type="monotone" dataKey="Passivator" name="Passivator (ppm)" stroke="#3b82f6" strokeWidth={2} dot={false} />
+              <Line yAxisId="left" type="monotone" dataKey="Passivator" name="Passivator (mg/kg)" stroke="#3b82f6" strokeWidth={2} dot={false} />
               <Line yAxisId="right" type="step" dataKey="CopperCorr" name="Copper Corrosion" stroke="transparent" dot={(props) => {
                 const { cx, cy, payload } = props;
                 if (!cx || !cy) return null;
@@ -353,7 +353,7 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
               <Tooltip contentStyle={tooltipStyle} />
               <Legend verticalAlign="top" height={36} formatter={(v) => <span style={{ color: CHART_TEXT_COLOR, fontWeight: 600 }}>{v}</span>} />
               <Line yAxisId="left" type="monotone" dataKey="Furan" name="2-FAL (ppb)" stroke="#8b5cf6" strokeWidth={2} />
-              <Line yAxisId="left" type="monotone" dataKey="Methanol" name="Methanol (ppb)" stroke="#ec4899" strokeDasharray="3 3" />
+              <Line yAxisId="left" type="monotone" dataKey="Methanol" name="Methanol (ppm)" stroke="#ec4899" strokeDasharray="3 3" />
               <Line yAxisId="right" type="monotone" dataKey="DPFuran" name="Est. DP (Furan)" stroke="#64748b" strokeWidth={2} strokeDasharray="10 5" />
               <Line yAxisId="right" type="monotone" dataKey="DPMethanol" name="Est. DP (Methanol)" stroke="#f97316" strokeWidth={2} strokeDasharray="5 3" />
             </ComposedChart>

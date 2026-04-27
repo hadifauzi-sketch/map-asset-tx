@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   FileText,
+  Gauge,
   Image as ImageIcon,
   MapPin,
   Shield,
@@ -12,6 +13,7 @@ import OilTestSection from './OilTestSection';
 import DocumentSection from './DocumentSection';
 import ImageSection from './ImageSection';
 import DataTrending from './DataTrending';
+import TransformerHealthDashboard from './TransformerHealthDashboard';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import {
@@ -129,6 +131,7 @@ function TransformerDetailModal({
   onClose,
   onUpdateOilTests,
   onUpdateDocuments,
+  onDgaPreferencesSaved,
 }) {
   const [activeTab, setActiveTab] = useState('info');
   const [selectedCompartment, setSelectedCompartment] = useState(DEFAULT_COMPARTMENTS[0]);
@@ -480,12 +483,17 @@ function TransformerDetailModal({
 
   const transformerState = getTransformerState(transformer);
   const selectedCompartmentMetrics = compartmentMetrics[selectedCompartmentKey] || {};
+  const scopedTransformer = {
+    ...transformer,
+    voltage: sanitizeMetricValue(selectedCompartmentMetrics.voltage) || transformer.voltage,
+    loadMVA: sanitizeMetricValue(selectedCompartmentMetrics.loadMVA) || transformer.loadMVA,
+  };
   const voltageValue = formatValueWithUnit(
-    sanitizeMetricValue(selectedCompartmentMetrics.voltage) || transformer.voltage,
+    scopedTransformer.voltage,
     'kV'
   );
   const loadValue = formatValueWithUnit(
-    sanitizeMetricValue(selectedCompartmentMetrics.loadMVA) || transformer.loadMVA,
+    scopedTransformer.loadMVA,
     'MvA'
   );
 
@@ -610,10 +618,14 @@ function TransformerDetailModal({
             </div>
 
             <div className="border-b border-[color:var(--border)] py-4">
-              <TabsList className="grid w-full grid-cols-2 gap-1 md:grid-cols-5">
+              <TabsList className="grid w-full grid-cols-2 gap-1 md:grid-cols-6">
                 <TabsTrigger value="info">
                   <Shield className="h-4 w-4" />
                   Information
+                </TabsTrigger>
+                <TabsTrigger value="dashboard">
+                  <Gauge className="h-4 w-4" />
+                  Dashboard
                 </TabsTrigger>
                 <TabsTrigger value="oilTests">
                   <TestTubeDiagonal className="h-4 w-4" />
@@ -710,15 +722,25 @@ function TransformerDetailModal({
                 </Card>
               </TabsContent>
 
+              <TabsContent value="dashboard" className="mt-0">
+                <TransformerHealthDashboard
+                  transformer={scopedTransformer}
+                  oilTests={filteredOilTests}
+                  documents={[...filteredDocuments, ...filteredImages]}
+                  compartmentLabel={selectedCompartmentName}
+                />
+              </TabsContent>
+
               <TabsContent value="oilTests" className="mt-0">
                 <OilTestSection
                   transformerId={transformer.id}
                   oilTests={filteredOilTests}
                   onUpdate={onUpdateOilTests}
-                  transformer={transformer}
+                  transformer={scopedTransformer}
                   readOnly={readOnly}
                   activeCompartment={selectedCompartmentName}
                   onAssignCompartment={assignOilTestCompartment}
+                  onDgaPreferencesSaved={onDgaPreferencesSaved}
                 />
               </TabsContent>
 

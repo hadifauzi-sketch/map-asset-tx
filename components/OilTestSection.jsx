@@ -4,6 +4,20 @@ import DGAWorkbenchModal from './DGAWorkbenchModal';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { normaliseTestTypeForStorage, TEST_TYPE_OPTIONS } from '../lib/testTypeUtils';
+import { normaliseOilTypeForStorage, OIL_TYPE_OPTIONS } from '../lib/oilTypeUtils';
+import Iec60422Panel from './standards/Iec60422Panel';
+import {
+  getHealthyRangeLabel,
+} from '../lib/standards/iec60422Profiles';
+import {
+  getOilQualityAssessment,
+  getOilQualitySupplementaryAssessment,
+} from '../lib/standards/oilQualityAssessment';
+import {
+  WATER_CONTENT_BASIS,
+  WATER_CONTENT_NORMALIZATION_MIN_TEMPERATURE_C,
+  describeWaterContent,
+} from '../lib/waterContentCorrection';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +62,7 @@ const TEST_DETAIL_SECTIONS = [
       { key: 'acidity', label: 'Acidity', unit: 'mgKOH/g' },
       { key: 'waterContent', label: 'Water Content', unit: 'ppm' },
       { key: 'interfacialTension', label: 'IFT', unit: 'mN/m' },
+      { key: 'appearance', label: 'Appearance' },
       { key: 'color', label: 'Color', unit: 'ASTM' },
       { key: 'flashPoint', label: 'Flash Point', unit: 'deg C' },
       { key: 'inhibitor', label: 'Inhibitor', unit: '%' },
@@ -60,7 +75,7 @@ const TEST_DETAIL_SECTIONS = [
       { key: 'powerFactor', label: 'Power Factor' },
       { key: 'resistivity', label: 'Resistivity', unit: 'GOhm-m' },
       { key: 'specificGravity', label: 'Specific Gravity' },
-      { key: 'passivator', label: 'Passivator', unit: 'ppm' },
+      { key: 'passivator', label: 'Passivator', unit: 'mg/kg' },
     ],
   },
   {
@@ -113,8 +128,31 @@ function hasResultValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== '';
 }
 
+function calcLifeUsed(dpFuran, dpMethanol) {
+  const dp = parseFloat(dpFuran) || parseFloat(dpMethanol);
+  if (!dp || dp <= 0) return null;
+  const pct = Math.round(((1000 - dp) / 800) * 100);
+  return Math.min(100, Math.max(0, pct));
+}
+
+function lifeUsedSeverity(pct) {
+  if (pct >= 80) return { color: 'var(--danger, #ef4444)', label: 'Critical' };
+  if (pct >= 60) return { color: 'var(--warning, #f97316)', label: 'Action' };
+  if (pct >= 30) return { color: 'var(--caution, #eab308)', label: 'Monitor' };
+  return { color: 'var(--success, #22c55e)', label: 'Good' };
+}
+
 function getResultValue(value) {
   return hasResultValue(value) ? String(value) : '-';
+}
+
+function formatLimitRange(limit) {
+  if (!limit) {
+    return '-';
+  }
+
+  const range = getHealthyRangeLabel(limit);
+  return limit.unit ? `${range} ${limit.unit}` : range;
 }
 
 function OilTestSection({
@@ -125,13 +163,13 @@ function OilTestSection({
   readOnly = false,
   activeCompartment = 'Maintank',
   onAssignCompartment,
+  onDgaPreferencesSaved,
 }) {
   const [isAddingTest, setIsAddingTest] = useState(false);
   const [editingTest, setEditingTest] = useState(null);
   const [expandedTests, setExpandedTests] = useState({});
   const [viewingTest, setViewingTest] = useState(null);
   const [dgaTest, setDgaTest] = useState(null);
-  const [dgaPreferencesOverride, setDgaPreferencesOverride] = useState(null);
   const [pendingDeleteTest, setPendingDeleteTest] = useState(null);
   const [isDeletingTest, setIsDeletingTest] = useState(false);
   const [pendingDeleteAllTestIds, setPendingDeleteAllTestIds] = useState([]);
@@ -140,11 +178,15 @@ function OilTestSection({
   const [formData, setFormData] = useState({
     testDate: new Date().toISOString().split('T')[0],
     testType: 'Routine',
+    oilType: normaliseOilTypeForStorage(),
     // Physical & Chemical Tests
     breakdown: '',
     acidity: '',
     waterContent: '',
+    waterContentTemperature: '',
+    waterContentBasis: WATER_CONTENT_BASIS.MEASURED,
     interfacialTension: '',
+    appearance: '',
     color: '',
     flashPoint: '',
     inhibitor: '',
@@ -186,10 +228,6 @@ function OilTestSection({
   });
 
   useEffect(() => {
-    setDgaPreferencesOverride(null);
-  }, [transformer?.id]);
-
-  useEffect(() => {
     if (!readOnly) {
       return;
     }
@@ -197,21 +235,18 @@ function OilTestSection({
     setEditingTest(null);
   }, [readOnly]);
 
-  const transformerForWorkbench = useMemo(() => {
-    if (!transformer || !dgaPreferencesOverride) {
-      return transformer;
-    }
-
-    return {
-      ...transformer,
-      ...dgaPreferencesOverride,
-    };
-  }, [dgaPreferencesOverride, transformer]);
-
   // Auto-calculate TDCG and DP estimates when relevant fields change
   const computedTdcg = useMemo(() => calculateTdcg(formData), [formData.h2, formData.ch4, formData.c2h2, formData.c2h4, formData.c2h6, formData.co]);
   const computedDpFuran = useMemo(() => calculateDpFromFuran(formData.fal2), [formData.fal2]);
   const computedDpMethanol = useMemo(() => calculateDpFromMethanol(formData.methanol), [formData.methanol]);
+  const formOilQualityAssessment = useMemo(() => getOilQualityAssessment(formData, transformer), [formData, transformer]);
+  const formLimitPreviewItems = useMemo(
+    () =>
+      (formOilQualityAssessment?.items || [])
+        .filter((item) => ['breakdown', 'waterContent', 'acidity', 'powerFactor', 'interfacialTension'].includes(item.key))
+        .slice(0, 5),
+    [formOilQualityAssessment],
+  );
 
   const handleAddTest = () => {
     if (readOnly) {
@@ -222,10 +257,14 @@ function OilTestSection({
     setFormData({
       testDate: new Date().toISOString().split('T')[0],
       testType: 'Routine',
+      oilType: normaliseOilTypeForStorage(),
       breakdown: '',
       acidity: '',
       waterContent: '',
+      waterContentTemperature: '',
+      waterContentBasis: WATER_CONTENT_BASIS.MEASURED,
       interfacialTension: '',
+      appearance: '',
       color: '',
       flashPoint: '',
       inhibitor: '',
@@ -272,6 +311,9 @@ function OilTestSection({
     setFormData({
       ...test,
       testType: normaliseTestTypeForStorage(test?.testType),
+      oilType: normaliseOilTypeForStorage(test?.oilType),
+      waterContentTemperature: test?.waterContentTemperature ?? '',
+      waterContentBasis: test?.waterContentBasis || WATER_CONTENT_BASIS.MEASURED,
     });
   };
 
@@ -290,11 +332,15 @@ function OilTestSection({
     }
     
     // Include auto-calculated values in the submission
+    const trimmedWaterTemp = String(formData.waterContentTemperature ?? '').trim();
+    const hasWaterContent = String(formData.waterContent ?? '').trim() !== '';
     const submitData = {
       ...formData,
       tdcg: computedTdcg || formData.tdcg || null,
       estimatedDpFuran: computedDpFuran || formData.estimatedDpFuran || null,
       estimatedDpMethanol: computedDpMethanol || formData.estimatedDpMethanol || null,
+      waterContentTemperature: trimmedWaterTemp === '' ? null : trimmedWaterTemp,
+      waterContentBasis: hasWaterContent ? (formData.waterContentBasis || WATER_CONTENT_BASIS.MEASURED) : null,
     };
     
     try {
@@ -505,7 +551,7 @@ function OilTestSection({
             <span className="result-value">{test.specificGravity || '-'}</span>
           </div>
           <div className="result-item">
-            <span className="result-label">Passivator (ppm)</span>
+            <span className="result-label">Passivator (mg/kg)</span>
             <span className="result-value">{test.passivator || '-'}</span>
           </div>
         </div>
@@ -656,8 +702,20 @@ function OilTestSection({
           ))}
         </div>
 
+        <Iec60422Panel
+          assessment={getOilQualityAssessment(test, transformer)}
+          supplementaryAssessment={getOilQualitySupplementaryAssessment(test)}
+          title="Oil quality sample assessment"
+          description="The result is checked against the selected oil type, test type, and transformer voltage group so the same limit logic can drive the dashboard."
+        />
+
         {TEST_DETAIL_SECTIONS.map((section) => {
           const completedCount = section.metrics.filter((metric) => hasResultValue(test[metric.key])).length;
+          const isEstimatedDp = section.title === 'Estimated DP';
+          const lifeUsedFuranPct = isEstimatedDp ? calcLifeUsed(test.estimatedDpFuran, null) : null;
+          const lifeUsedMethanolPct = isEstimatedDp ? calcLifeUsed(test.estimatedDpMethanol, null) : null;
+          const lifeUsedFuranSev = lifeUsedFuranPct !== null ? lifeUsedSeverity(lifeUsedFuranPct) : null;
+          const lifeUsedMethanolSev = lifeUsedMethanolPct !== null ? lifeUsedSeverity(lifeUsedMethanolPct) : null;
 
           return (
             <section key={section.title} className="result-section">
@@ -672,13 +730,120 @@ function OilTestSection({
               </div>
 
               <div className="result-grid">
-                {section.metrics.map((metric) => (
-                  <div key={metric.key} className="result-item">
-                    <div className="result-meta">
-                      <span className="result-label">{metric.label}</span>
-                      {metric.unit ? <span className="result-unit">{metric.unit}</span> : null}
+                {section.metrics.map((metric) => {
+                  if (metric.key === 'waterContent') {
+                    const waterInfo = describeWaterContent({
+                      value: test.waterContent,
+                      basis: test.waterContentBasis,
+                      samplingTemperatureC: test.waterContentTemperature,
+                    });
+                    const isNormalized = waterInfo.basis === WATER_CONTENT_BASIS.NORMALIZED_20C;
+                    const badgeLabel = isNormalized ? 'NORMALIZED 20°C' : 'MEASURED';
+                    const badgeColor = isNormalized ? 'var(--info, #38bdf8)' : 'var(--success, #22c55e)';
+                    const fmt = (val) => (val === null || val === undefined
+                      ? '-'
+                      : Number.isFinite(val) ? (Math.round(val * 10) / 10).toString() : String(val));
+                    const tempLabel = waterInfo.hasTemperature
+                      ? `${fmt(waterInfo.samplingTemperatureC)} °C`
+                      : 'no temp';
+                    return (
+                      <div key={metric.key} className="result-item">
+                        <div className="result-meta">
+                          <span className="result-label">{metric.label}</span>
+                          {metric.unit ? <span className="result-unit">{metric.unit}</span> : null}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                            <span className="result-value">{getResultValue(test.waterContent)}</span>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                letterSpacing: 0.4,
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                background: 'var(--card-muted, rgba(255,255,255,0.05))',
+                                color: badgeColor,
+                                border: `1px solid ${badgeColor}`,
+                              }}
+                            >
+                              {badgeLabel}
+                            </span>
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                              @ {tempLabel}
+                            </span>
+                          </div>
+                          {waterInfo.stored !== null && waterInfo.hasTemperature ? (
+                            waterInfo.correctionApplicable ? (
+                              isNormalized ? (
+                                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                  ≈ {fmt(waterInfo.measuredAtTs)} ppm at {fmt(waterInfo.samplingTemperatureC)} °C
+                                  {' · used for IEC limit assessment'}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                  ≈ {fmt(waterInfo.normalizedAt20C)} ppm normalized to 20 °C (Annex C)
+                                </span>
+                              )
+                            ) : (
+                              <span style={{ fontSize: 11, color: 'var(--warning, #f97316)' }}>
+                                Annex C normalization not valid below {WATER_CONTENT_NORMALIZATION_MIN_TEMPERATURE_C} °C - using value as-entered for limit check.
+                              </span>
+                            )
+                          ) : waterInfo.stored !== null ? (
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                              No sampling temp recorded - correction skipped, value used as-entered.
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div key={metric.key} className="result-item">
+                      <div className="result-meta">
+                        <span className="result-label">{metric.label}</span>
+                        {metric.unit ? <span className="result-unit">{metric.unit}</span> : null}
+                      </div>
+                      <span className="result-value">{getResultValue(test[metric.key])}</span>
                     </div>
-                    <span className="result-value">{getResultValue(test[metric.key])}</span>
+                  );
+                })}
+
+                {isEstimatedDp && [
+                  { label: 'Life Used from 2-FAL', pct: lifeUsedFuranPct, sev: lifeUsedFuranSev, source: '2-FAL' },
+                  { label: 'Life Used from Methanol', pct: lifeUsedMethanolPct, sev: lifeUsedMethanolSev, source: 'Methanol' },
+                ].map(({ label, pct, sev, source }) => (
+                  <div key={label} className="result-item">
+                    <div className="result-meta">
+                      <span className="result-label">{label}</span>
+                      <span className="result-unit">%</span>
+                    </div>
+                    {pct !== null ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                          <span className="result-value">{pct}%</span>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: sev.color }}>{sev.label}</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${pct}%`,
+                              borderRadius: 3,
+                              background: sev.color,
+                              transition: 'width 0.4s ease',
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 10, color: 'var(--muted)' }}>
+                          DP₀ 1000 → 200 end-of-life · {source}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="result-value">-</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -753,12 +918,14 @@ function OilTestSection({
             </div>
             <div className="heptagon-fullscreen-body">
               <DGAWorkbenchModal
-                transformer={transformerForWorkbench}
+                transformer={transformer}
                 oilTests={oilTests}
                 readOnly={readOnly}
                 selectedTestId={dgaTest.id}
                 onPreferencesSaved={(preferences) => {
-                  setDgaPreferencesOverride(preferences);
+                  if (typeof onDgaPreferencesSaved === 'function' && transformer?.id) {
+                    onDgaPreferencesSaved(transformer.id, preferences);
+                  }
                 }}
               />
             </div>
@@ -1022,7 +1189,68 @@ function OilTestSection({
                   ))}
                 </select>
               </div>
+              <div className="form-group">
+                <label htmlFor="oilType">Type of Oil *</label>
+                <select
+                  id="oilType"
+                  name="oilType"
+                  value={formData.oilType}
+                  onChange={handleChange}
+                  required
+                >
+                  {OIL_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="waterContentTemperature">Oil Sampling Temp (°C)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  id="waterContentTemperature"
+                  name="waterContentTemperature"
+                  value={formData.waterContentTemperature ?? ''}
+                  onChange={handleChange}
+                  placeholder="e.g., 45 (leave blank to skip correction)"
+                />
+                <span className="form-hint" style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  Optional. Required to apply IEC 60422 Annex C water normalization (only valid at &ge; {WATER_CONTENT_NORMALIZATION_MIN_TEMPERATURE_C} °C).
+                </span>
+              </div>
             </div>
+            {formOilQualityAssessment ? (
+              <div className="mt-3 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
+                      Oil quality active limit basis
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">
+                      {formOilQualityAssessment.limitProfile.label}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-1 text-[var(--muted)]">
+                      {formOilQualityAssessment.limitProfile.sourceLabel}
+                    </span>
+                    <span className="rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-1 text-[var(--muted)]">
+                      Group {formOilQualityAssessment.profile.code} - {formOilQualityAssessment.profile.shortLabel}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  {formLimitPreviewItems.map((item) => (
+                    <div key={item.key} className="rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2">
+                      <p className="text-[11px] font-semibold text-[var(--muted)]">{item.limit.shortLabel}</p>
+                      <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{formatLimitRange(item.limit)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="form-section">
@@ -1054,15 +1282,52 @@ function OilTestSection({
               </div>
               <div className="form-group">
                 <label htmlFor="waterContent">Water Content (ppm)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  id="waterContent"
-                  name="waterContent"
-                  value={formData.waterContent}
-                  onChange={handleChange}
-                  placeholder="e.g., 25"
-                />
+                <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, width: '100%' }}>
+                  <input
+                    type="number"
+                    step="0.1"
+                    id="waterContent"
+                    name="waterContent"
+                    value={formData.waterContent}
+                    onChange={handleChange}
+                    placeholder="e.g., 25"
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      padding: '0 12px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: formData.waterContentBasis === WATER_CONTENT_BASIS.NORMALIZED_20C
+                        ? 'rgba(20,184,166,0.07)'
+                        : 'var(--card-muted, rgba(255,255,255,0.03))',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      transition: 'background 0.15s',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.waterContentBasis === WATER_CONTENT_BASIS.NORMALIZED_20C}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          waterContentBasis: e.target.checked
+                            ? WATER_CONTENT_BASIS.NORMALIZED_20C
+                            : WATER_CONTENT_BASIS.MEASURED,
+                        }))
+                      }
+                      style={{ width: 14, height: 14, accentColor: 'var(--primary, #14b8a6)', cursor: 'pointer', flexShrink: 0 }}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--foreground)' }}>
+                      Normalized to 20 °C <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(IEC 60422 Annex C)</span>
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
             <div className="form-row">
@@ -1076,6 +1341,17 @@ function OilTestSection({
                   value={formData.interfacialTension}
                   onChange={handleChange}
                   placeholder="e.g., 35"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="appearance">Appearance</label>
+                <input
+                  type="text"
+                  id="appearance"
+                  name="appearance"
+                  value={formData.appearance}
+                  onChange={handleChange}
+                  placeholder="e.g., Clear, free from sediment"
                 />
               </div>
               <div className="form-group">
@@ -1229,7 +1505,7 @@ function OilTestSection({
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="passivator">Passivator (ppm)</label>
+                <label htmlFor="passivator">Passivator (mg/kg)</label>
                 <input
                   type="number"
                   step="0.01"

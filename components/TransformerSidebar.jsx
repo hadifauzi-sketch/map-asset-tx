@@ -279,6 +279,7 @@ function TransformerSidebar({
   currentUser = null,
   canManageAssets = true,
   onAddClick,
+  onLocationRegisterClick,
   onTransformerClick,
   onEditClick,
   onDeleteClick,
@@ -288,6 +289,7 @@ function TransformerSidebar({
   onEditFloorPlan,
   onDeleteFloorPlan,
   isAddMode,
+  isLocationRegisterOpen = false,
   loading,
   selectedTransformerId,
   selectedFloorPlanId,
@@ -525,20 +527,36 @@ function TransformerSidebar({
 
           <div className="flex w-full flex-col items-center gap-2 border-y border-[color:var(--border)] py-3">
             {canManageAssets ? (
-              <button
-                type="button"
-                className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-                onClick={onAddClick}
-                aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
-                title={isAddMode ? 'Map placement armed' : 'Add transformer'}
-              >
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                  <Plus className="h-4 w-4" />
-                </div>
-                <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                  {isAddMode ? 'Place' : 'Add'}
-                </span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                  onClick={onAddClick}
+                  aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
+                  title={isAddMode ? 'Map placement armed' : 'Add transformer'}
+                >
+                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                    <Plus className="h-4 w-4" />
+                  </div>
+                  <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                    {isAddMode ? 'Place' : 'Add'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                  onClick={onLocationRegisterClick}
+                  aria-label={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
+                  title={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
+                >
+                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                    <MapPin className="h-4 w-4" />
+                  </div>
+                  <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                    {isLocationRegisterOpen ? 'GPS On' : 'GPS'}
+                  </span>
+                </button>
+              </>
             ) : (
               <Badge variant="outline" className="justify-center px-2 py-1 text-[10px]">
                 Viewer
@@ -818,14 +836,24 @@ function TransformerSidebar({
       <section className="shrink-0 border-b border-[color:var(--border)] px-5 py-4">
         <div className="flex flex-col gap-3">
           {canManageAssets ? (
-            <Button
-              className="w-full justify-center"
-              variant={isAddMode ? 'secondary' : 'default'}
-              onClick={onAddClick}
-            >
-              <Plus className="h-4 w-4" />
-              {isAddMode ? 'Map placement armed' : 'Add transformer'}
-            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                className="w-full justify-center"
+                variant={isAddMode ? 'secondary' : 'default'}
+                onClick={onAddClick}
+              >
+                <Plus className="h-4 w-4" />
+                {isAddMode ? 'Map placement armed' : 'Transformer'}
+              </Button>
+              <Button
+                className="w-full justify-center"
+                variant={isLocationRegisterOpen ? 'secondary' : 'outline'}
+                onClick={onLocationRegisterClick}
+              >
+                <MapPin className="h-4 w-4" />
+                {isLocationRegisterOpen ? 'Location register open' : 'GPS register'}
+              </Button>
+            </div>
           ) : (
             <Badge variant="outline" className="justify-center px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em]">
               Viewer mode
