@@ -8,7 +8,6 @@ import {
   FlaskConical,
   Gauge,
   HeartPulse,
-  Image as ImageIcon,
   Layers,
   ShieldCheck,
   Sparkles,
@@ -28,11 +27,6 @@ import {
   Legend,
   Line,
   LineChart,
-  PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
-  Radar,
-  RadarChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -41,7 +35,7 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
-import { isImageDocument } from '../lib/documentUtils';
+import { DuvalDiagram } from './dga-workbench/DuvalDiagram';
 import {
   IEC_60422_VOLTAGE_GROUPS,
   getHealthyRangeLabel,
@@ -54,12 +48,14 @@ import {
   getSupplementaryReferenceLineValue,
   getSupplementaryStatusSeverity,
 } from '../lib/standards/supplementaryOilReferences';
-import { analyzeSample, FAULT_METADATA, FAULT_SEVERITY, getFaultMethodsData } from '../lib/dga/diagnostics';
+import { analyzeSample, FAULT_METADATA } from '../lib/dga/diagnostics';
 import { getStandardLabelForOilType, getStandardOptionsForOilType } from '../lib/dga/appConfig';
 
 const CHART_TEXT_COLOR = 'var(--foreground)';
+const CHART_MUTED_COLOR = 'color-mix(in srgb, var(--foreground) 68%, var(--muted) 32%)';
 const CHART_AXIS_COLOR = 'color-mix(in srgb, var(--foreground) 58%, var(--border) 42%)';
 const CHART_GRID_COLOR = 'color-mix(in srgb, var(--foreground) 12%, transparent)';
+const REFERENCE_LIFE_YEARS = 40;
 const CHART_TOOLTIP_STYLE = {
   backgroundColor: 'var(--card)',
   border: '1px solid var(--border)',
@@ -89,6 +85,15 @@ const DGA_WARNING_LIMITS = {
 };
 
 const DGA_GAS_KEYS = ['H2', 'CH4', 'C2H6', 'C2H4', 'C2H2', 'CO'];
+const DGA_TREND_LINES = [
+  { dataKey: 'C2H2', name: 'Acetylene (C2H2)', color: '#f97316' },
+  { dataKey: 'CO', name: 'CO', color: '#f59e0b' },
+  { dataKey: 'C2H6', name: 'Ethane (C2H6)', color: '#8b5cf6' },
+  { dataKey: 'C2H4', name: 'Ethylene (C2H4)', color: '#ef4444' },
+  { dataKey: 'H2', name: 'Hydrogen (H2)', color: '#10b981' },
+  { dataKey: 'CH4', name: 'Methane (CH4)', color: '#3b82f6' },
+  { dataKey: 'TDCG', name: 'TDCG', color: '#94a3b8', dashed: true },
+];
 const DGA_GAS_KEY_LOOKUP = { H2: 'h2', CH4: 'ch4', C2H6: 'c2h6', C2H4: 'c2h4', C2H2: 'c2h2', CO: 'co' };
 
 function resolveGasLimitStandardKey(transformer) {
@@ -242,6 +247,64 @@ function formatRelativeDate(value) {
   if (diffDays < 30) return `${diffDays} days ago`;
   if (diffDays < 365) return `${Math.round(diffDays / 30)} months ago`;
   return `${(diffDays / 365).toFixed(1)} years ago`;
+}
+
+function getDpSeverity(dpValue) {
+  if (dpValue === null || dpValue === undefined) return null;
+  if (dpValue < 350) return 90;
+  if (dpValue < 500) return 60;
+  if (dpValue < 700) return 25;
+  return 5;
+}
+
+function getDpBadge(dpValue) {
+  if (dpValue === null || dpValue === undefined) return null;
+  if (dpValue >= 700) return { label: 'New / healthy', tone: 'success' };
+  if (dpValue >= 500) return { label: 'Mid-life', tone: 'success' };
+  if (dpValue >= 350) return { label: 'Aged', tone: 'warning' };
+  return { label: 'End of life', tone: 'danger' };
+}
+
+function getLifetimeUsagePctFromAge(ageYears, referenceLifeYears = REFERENCE_LIFE_YEARS) {
+  if (!Number.isFinite(ageYears)) return null;
+  return Math.min(100, Math.round((Math.max(ageYears, 0) / referenceLifeYears) * 100));
+}
+
+function getLifetimeUsagePctForDate(yearBuilt, targetDate, referenceLifeYears = REFERENCE_LIFE_YEARS) {
+  if (!Number.isFinite(yearBuilt)) return null;
+  const d = targetDate instanceof Date ? targetDate : new Date(targetDate);
+  if (Number.isNaN(d.getTime())) return null;
+  return getLifetimeUsagePctFromAge(d.getFullYear() - yearBuilt, referenceLifeYears);
+}
+
+function getLifetimeUsageSeverity(usagePct) {
+  if (usagePct === null || usagePct === undefined) return null;
+  if (usagePct >= 90) return 90;
+  if (usagePct >= 75) return 60;
+  if (usagePct >= 50) return 25;
+  return 5;
+}
+
+function getMetricSnapshot(records, dataKey) {
+  if (!Array.isArray(records) || records.length === 0) {
+    return {
+      latestRecord: null,
+      latestValue: null,
+      previousRecord: null,
+      previousValue: null,
+    };
+  }
+
+  const withValue = records.filter((record) => toNumber(record?.[dataKey]) !== null);
+  const latestRecord = withValue.length ? withValue[withValue.length - 1] : null;
+  const previousRecord = withValue.length > 1 ? withValue[withValue.length - 2] : null;
+
+  return {
+    latestRecord,
+    latestValue: latestRecord ? toNumber(latestRecord[dataKey]) : null,
+    previousRecord,
+    previousValue: previousRecord ? toNumber(previousRecord[dataKey]) : null,
+  };
 }
 
 // --- Map a single oil test to chart-friendly object ---
@@ -564,63 +627,212 @@ function KpiTile({ icon: Icon, label, value, unit, trend, status, helper }) {
   );
 }
 
-// Fault severity colour bands
-const SEVERITY_COLOR = ['#6b7280', '#22c55e', '#eab308', '#f97316', '#ef4444'];
-const SEVERITY_LABEL = ['No data', 'Low concern', 'Monitor', 'Action', 'Critical'];
+function buildLatestDuvalCards(analysis, oilType = 'mineral') {
+  const methodByKey = Object.fromEntries((analysis?.methods ?? []).map((method) => [method.key, method]));
+  const baseTriangleKey = {
+    mineral: 'triangle1',
+    soybean: 'triangle3_soybean',
+    rapeseed: 'triangle3_rapeseed',
+    sunflower: 'triangle3_sunflower',
+    synthetic: 'triangle3_synthetic',
+  }[oilType] ?? 'triangle1';
+  const pentagonKey = {
+    mineral: 'pentagon',
+    soybean: 'pentagon3_soybean',
+    rapeseed: 'pentagon3_rapeseed',
+    sunflower: 'pentagon3_sunflower',
+    synthetic: 'pentagon3_synthetic',
+  }[oilType] ?? 'pentagon';
 
-// --- Fault Methods Radar ---
-function FaultMethodsRadar({ latest }) {
+  const followUpKey =
+    oilType === 'mineral'
+      ? methodByKey.triangle4?.zone
+        ? 'triangle4'
+        : methodByKey.triangle5?.zone
+          ? 'triangle5'
+          : null
+      : methodByKey.triangle6?.zone
+        ? 'triangle6'
+        : null;
+
+  return [baseTriangleKey, followUpKey, pentagonKey]
+    .filter(Boolean)
+    .map((key) => {
+      const method = methodByKey[key] ?? null;
+      const zone = method?.zone ?? null;
+
+      return {
+        id: key,
+        type: key.startsWith('pentagon') ? 'pentagon' : 'triangle',
+        diagramKey: key.startsWith('pentagon') ? null : key,
+        title: method?.title ?? key,
+        zone,
+        label: zone ? (FAULT_METADATA[zone]?.label ?? zone) : 'Pending',
+      };
+    });
+}
+
+function LifetimeUsageCard({ assetAge, yearBuilt, sampleDate }) {
+  const age = Number.isFinite(assetAge) ? Math.max(assetAge, 0) : null;
+  const usagePct = getLifetimeUsagePctFromAge(age);
+  const remainingYears = age === null ? null : Math.max(0, REFERENCE_LIFE_YEARS - age);
+  const overrunYears = age === null ? null : Math.max(0, age - REFERENCE_LIFE_YEARS);
+  const tone =
+    usagePct === null
+      ? { label: 'Reference age unavailable', variant: 'secondary', color: '#94a3b8' }
+      : usagePct >= 90
+        ? { label: 'Near end of reference life', variant: 'danger', color: '#ef4444' }
+        : usagePct >= 75
+          ? { label: 'Late-life asset', variant: 'warning', color: '#f59e0b' }
+          : { label: 'Within reference life', variant: 'success', color: '#14b8a6' };
+
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
+  const dashoffset = usagePct === null ? circumference : circumference * (1 - usagePct / 100);
+  const summary =
+    age === null
+      ? 'Add the built year to estimate transformer lifetime usage.'
+      : overrunYears > 0
+        ? `Operating about ${overrunYears} year${overrunYears === 1 ? '' : 's'} beyond the ${REFERENCE_LIFE_YEARS}-year reference life.`
+        : `Approx. ${remainingYears} year${remainingYears === 1 ? '' : 's'} remaining against a ${REFERENCE_LIFE_YEARS}-year reference life.`;
+
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Gauge className="h-4 w-4 text-[var(--primary-strong)]" />
+          Estimated Lifetime Use
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex h-full flex-col items-center gap-4">
+        <div className="relative flex h-[172px] w-[172px] items-center justify-center">
+          <svg viewBox="0 0 172 172" className="h-full w-full overflow-visible">
+            <defs>
+              <linearGradient id="lifetime-usage-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#14b8a6" />
+                <stop offset="65%" stopColor={tone.color} />
+                <stop offset="100%" stopColor="#f97316" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="86"
+              cy="86"
+              r={radius}
+              fill="none"
+              stroke="color-mix(in srgb, var(--foreground) 10%, transparent)"
+              strokeWidth="14"
+            />
+            <circle
+              cx="86"
+              cy="86"
+              r={radius}
+              fill="none"
+              stroke={usagePct === null ? 'color-mix(in srgb, var(--foreground) 18%, transparent)' : 'url(#lifetime-usage-gradient)'}
+              strokeWidth="14"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={dashoffset}
+              transform="rotate(-90 86 86)"
+            />
+            <circle
+              cx="86"
+              cy="86"
+              r="38"
+              fill="color-mix(in srgb, var(--card) 82%, transparent)"
+              stroke="color-mix(in srgb, var(--foreground) 8%, transparent)"
+              strokeWidth="1"
+            />
+          </svg>
+          <div className="absolute text-center">
+            <div className="text-3xl font-semibold text-[var(--foreground)]">{usagePct ?? '--'}%</div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--muted)]">life used</div>
+          </div>
+        </div>
+
+        <Badge variant={tone.variant}>{tone.label}</Badge>
+
+        <p className="max-w-[240px] text-center text-xs leading-5 text-[var(--muted)]">
+          {summary}
+        </p>
+
+        <div className="grid w-full grid-cols-2 gap-2">
+          <Mini label="Age" value={age !== null ? age : '-'} unit={age !== null ? 'yrs' : ''} />
+          <Mini label="Built" value={yearBuilt ?? '-'} unit="" />
+          <div className="col-span-2 rounded-md bg-[var(--card)] px-2 py-1.5">
+            <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+              <span>Reference life</span>
+              <span>{REFERENCE_LIFE_YEARS} yrs</span>
+            </div>
+            {sampleDate ? (
+              <p className="mt-1 text-[11px] text-[var(--muted)]">As of {formatDate(sampleDate)}</p>
+            ) : null}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FaultMethodsRadar({ latest, standard, oilType = 'mineral' }) {
   if (!latest) return null;
-  const methods = getFaultMethodsData(latest?.raw || latest);
-  if (!methods) {
+
+  let analysis;
+  try {
+    analysis = analyzeSample(latest?.raw || latest, standard, oilType);
+  } catch (error) {
+    console.error('Dashboard: failed to build Duval snapshot', error);
     return (
-      <p className="py-6 text-center text-xs text-[var(--muted)]">
-        Insufficient gas data — five combustible gases (H₂, CH₄, C₂H₆, C₂H₄, C₂H₂) required.
+      <p className="py-4 text-sm text-[var(--muted)]">
+        Latest Duval snapshot is not available right now.
       </p>
     );
   }
 
-  const maxSeverity = Math.max(...methods.map((m) => m.severity));
-  const strokeColor = SEVERITY_COLOR[maxSeverity] || SEVERITY_COLOR[0];
+  if (analysis.requiredGasCount < 5) {
+    return (
+      <p className="py-4 text-sm text-[var(--muted)]">
+        Add H2, CH4, C2H6, C2H4, and C2H2 to show the latest Duval snapshot.
+      </p>
+    );
+  }
+
+  const cards = buildLatestDuvalCards(analysis, oilType);
+  const sampleId = 'latest';
+  const completedSamples = [{ id: sampleId, analysis }];
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <RadarChart data={methods} cx="50%" cy="50%" outerRadius="72%">
-        <PolarGrid stroke={CHART_GRID_COLOR} />
-        <PolarAngleAxis
-          dataKey="method"
-          tick={{ fill: CHART_TEXT_COLOR, fontSize: 11 }}
-        />
-        <PolarRadiusAxis
-          angle={90}
-          domain={[0, 4]}
-          tickCount={5}
-          tick={{ fill: CHART_AXIS_COLOR, fontSize: 9 }}
-          stroke={CHART_GRID_COLOR}
-        />
-        <Radar
-          name="Severity"
-          dataKey="severity"
-          stroke={strokeColor}
-          fill={strokeColor}
-          fillOpacity={0.28}
-          isAnimationActive={false}
-        />
-        <Tooltip
-          contentStyle={CHART_TOOLTIP_STYLE}
-          formatter={(value, _name, props) => {
-            const { zone, fullName } = props.payload;
-            const faultLabel = zone ? (FAULT_METADATA[zone]?.label ?? zone) : 'No data / not applicable';
-            return [`${faultLabel} (score ${value})`, fullName];
-          }}
-        />
-      </RadarChart>
-    </ResponsiveContainer>
+    <div className="grid gap-4 xl:grid-cols-3">
+      {cards.map((card) => (
+        <div key={card.id} className="rounded-xl border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+              {card.title}
+            </p>
+            <p className="mt-2 text-base font-semibold text-[var(--foreground)]">{card.label}</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">{card.zone ? `Zone ${card.zone}` : 'Pending'}</p>
+          </div>
+
+          <div className="rounded-lg border border-[color:var(--border)] bg-[var(--card)] p-2">
+            <div className="flex justify-center">
+              <DuvalDiagram
+                type={card.type}
+                diagramKey={card.diagramKey ?? undefined}
+                oilType={oilType}
+                currentZone={card.zone}
+                completedSamples={completedSamples}
+                latestId={sampleId}
+                selectedId={sampleId}
+                size="default"
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
-
 // --- DGA limits bar (latest vs caution / warning) ---
-function DgaLimitsBars({ latest, cautionLimits = DGA_CAUTION_LIMITS, warningLimits = DGA_WARNING_LIMITS }) {
+function DgaLimitsBars({ latest, cautionLimits = DGA_CAUTION_LIMITS, warningLimits = DGA_WARNING_LIMITS, height = 220 }) {
   if (!latest) return null;
   const data = DGA_GAS_KEYS.map((g) => ({
     gas: g,
@@ -630,18 +842,23 @@ function DgaLimitsBars({ latest, cautionLimits = DGA_CAUTION_LIMITS, warningLimi
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 6 }}>
         <CartesianGrid stroke={CHART_GRID_COLOR} vertical={false} />
         <XAxis dataKey="gas" stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR, fontSize: 11 }} />
-        <YAxis stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_AXIS_COLOR, fontSize: 11 }} />
+        <YAxis stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR, fontSize: 11 }} />
         <Tooltip
           contentStyle={CHART_TOOLTIP_STYLE}
-          formatter={(value, name) => [`${value} ppm`, name === 'value' ? 'Latest' : 'Caution limit']}
+          labelStyle={{ color: 'var(--foreground)', fontWeight: 600 }}
+          itemStyle={{ color: 'var(--foreground)', fontSize: 12 }}
+          formatter={(value, _name, entry) => [
+            `${value} ppm`,
+            entry?.dataKey === 'value' ? 'Current DGA result' : 'Caution limit',
+          ]}
         />
         <Legend wrapperStyle={{ fontSize: 12, color: CHART_TEXT_COLOR }} />
         <Bar dataKey="caution" name="Caution limit" fill="#94a3b8" radius={[3, 3, 0, 0]} />
-        <Bar dataKey="value" name="Latest" radius={[3, 3, 0, 0]}>
+        <Bar dataKey="value" name="Current DGA result" radius={[3, 3, 0, 0]}>
           {data.map((row, idx) => {
             let fill = '#16a34a';
             if (row.severity >= 80) fill = '#dc2626';
@@ -654,18 +871,51 @@ function DgaLimitsBars({ latest, cautionLimits = DGA_CAUTION_LIMITS, warningLimi
     </ResponsiveContainer>
   );
 }
+// --- DGA trending chart with clickable legend ---
+function DgaTrendingChart({ data, height = 220 }) {
+  const [visible, setVisible] = React.useState(() =>
+    Object.fromEntries(DGA_TREND_LINES.map((line) => [line.dataKey, true])),
+  );
 
-// --- Trend chart for selected metrics ---
-function TrendChart({ data, lines }) {
+  const handleLegendClick = (entry) => {
+    const dataKey = entry?.dataKey;
+    if (!dataKey) return;
+    setVisible((prev) => ({ ...prev, [dataKey]: !prev[dataKey] }));
+  };
+
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 6, right: 12, left: 0, bottom: 6 }}>
         <CartesianGrid stroke={CHART_GRID_COLOR} vertical={false} />
-        <XAxis dataKey="date" stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR, fontSize: 11 }} />
+        <XAxis
+          dataKey="date"
+          stroke={CHART_AXIS_COLOR}
+          tick={{ fill: CHART_TEXT_COLOR, fontSize: 10 }}
+          tickMargin={10}
+        />
         <YAxis stroke={CHART_AXIS_COLOR} tick={{ fill: CHART_TEXT_COLOR, fontSize: 11 }} />
         <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-        <Legend wrapperStyle={{ fontSize: 12, color: CHART_TEXT_COLOR }} />
-        {lines.map((line) => (
+        <Legend
+          verticalAlign="top"
+          height={42}
+          onClick={handleLegendClick}
+          wrapperStyle={{ fontSize: 12, color: CHART_TEXT_COLOR, cursor: 'pointer' }}
+          formatter={(value, entry) => {
+            const dataKey = entry?.dataKey;
+            return (
+              <span
+                style={{
+                  opacity: visible[dataKey] ? 1 : 0.42,
+                  color: visible[dataKey] ? CHART_TEXT_COLOR : CHART_MUTED_COLOR,
+                  fontWeight: 600,
+                }}
+              >
+                {value}
+              </span>
+            );
+          }}
+        />
+        {DGA_TREND_LINES.map((line) => (
           <Line
             key={line.dataKey}
             type="monotone"
@@ -673,10 +923,12 @@ function TrendChart({ data, lines }) {
             name={line.name}
             stroke={line.color}
             strokeWidth={2}
-            dot={{ r: 2 }}
+            dot={false}
             activeDot={{ r: 4 }}
             isAnimationActive={false}
             connectNulls
+            hide={!visible[line.dataKey]}
+            strokeDasharray={line.dashed ? '5 5' : undefined}
           />
         ))}
       </LineChart>
@@ -905,7 +1157,7 @@ function TransformerHealthDashboard({
     () => buildActiveDgaLimits(transformer, latest?.raw, assetAge),
     [transformer, latest, assetAge],
   );
-  const { cautionLimits, warningLimits, standardLabel, standardKey } = dgaLimits;
+  const { cautionLimits, warningLimits, standardLabel, standardKey, oilType } = dgaLimits;
 
   const healthScore = useMemo(
     () => computeHealthScore(latest, oilReferences, cautionLimits, warningLimits),
@@ -916,25 +1168,20 @@ function TransformerHealthDashboard({
     [mapped, latest, previous, oilReferences, cautionLimits, warningLimits, standardLabel, supplementaryMetrics],
   );
 
-  const documentCount = useMemo(
-    () => (documents || []).filter((d) => !isImageDocument(d)).length,
-    [documents],
+  const trendData = useMemo(
+    () =>
+      mapped.map((t) => ({
+        date: t.date,
+        H2: t.H2,
+        CH4: t.CH4,
+        C2H6: t.C2H6,
+        C2H4: t.C2H4,
+        C2H2: t.C2H2,
+        CO: t.CO,
+        TDCG: t.TDCG,
+      })),
+    [mapped],
   );
-  const imageCount = useMemo(
-    () => (documents || []).filter((d) => isImageDocument(d)).length,
-    [documents],
-  );
-
-  // Trend metrics for the multi-line chart
-  const trendData = mapped.map((t) => ({
-    date: t.date,
-    H2: t.H2,
-    TDCG: t.TDCG,
-    Moisture: t.Moisture,
-    BDV: t.BDV,
-    Acidity: t.Acidity,
-    Furan: t.Furan,
-  }));
 
   // Dataless state
   if (!latest) {
@@ -962,14 +1209,36 @@ function TransformerHealthDashboard({
   }
 
   const bucket = healthBucket(healthScore);
-  const dpValue = latest.DPFuran ?? latest.DPMethanol ?? null;
-  const dpBadge = (() => {
-    if (dpValue === null) return null;
-    if (dpValue >= 700) return { label: 'New / healthy', tone: 'success' };
-    if (dpValue >= 500) return { label: 'Mid-life', tone: 'success' };
-    if (dpValue >= 350) return { label: 'Aged', tone: 'warning' };
-    return { label: 'End of life', tone: 'danger' };
-  })();
+  const oilSnapshots = {
+    BDV: getMetricSnapshot(mapped, 'BDV'),
+    Moisture: getMetricSnapshot(mapped, 'Moisture'),
+    Acidity: getMetricSnapshot(mapped, 'Acidity'),
+    IFT: getMetricSnapshot(mapped, 'IFT'),
+    PowerFactor: getMetricSnapshot(mapped, 'PowerFactor'),
+    Resistivity: getMetricSnapshot(mapped, 'Resistivity'),
+    DBDS: getMetricSnapshot(mapped, 'DBDS'),
+    Inhibitor: getMetricSnapshot(mapped, 'Inhibitor'),
+    Passivator: getMetricSnapshot(mapped, 'Passivator'),
+    Furan: getMetricSnapshot(mapped, 'Furan'),
+    Methanol: getMetricSnapshot(mapped, 'Methanol'),
+    DPFuran: getMetricSnapshot(mapped, 'DPFuran'),
+    DPMethanol: getMetricSnapshot(mapped, 'DPMethanol'),
+  };
+  const getSupplementaryStatusForRecord = (record, metricKey) => {
+    if (!record) return null;
+    return getSupplementaryStatusSeverity(
+      getOilQualitySupplementaryAssessment(record.raw || record)?.metrics?.[metricKey]?.status,
+    );
+  };
+  const dpFuranValue = oilSnapshots.DPFuran.latestValue;
+  const dpMethanolValue = oilSnapshots.DPMethanol.latestValue;
+  const dpFuranBadge = getDpBadge(dpFuranValue);
+  const dpMethanolBadge = getDpBadge(dpMethanolValue);
+  const lifetimeSnapshotData = mapped.map((test) => ({
+    ...test,
+    LifetimeUsagePct: getLifetimeUsagePctForDate(yearBuilt, test.rawDate),
+  }));
+  const lifetimeSnapshot = getMetricSnapshot(lifetimeSnapshotData, 'LifetimeUsagePct');
 
   return (
     <div className="space-y-5">
@@ -1058,7 +1327,7 @@ function TransformerHealthDashboard({
       </Card>
 
       {/* === DGA Section === */}
-      <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,0.86fr)_280px_minmax(0,0.96fr)]">
         <Card>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
@@ -1075,32 +1344,29 @@ function TransformerHealthDashboard({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <DgaLimitsBars latest={latest} cautionLimits={cautionLimits} warningLimits={warningLimits} />
-            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-[var(--muted)] sm:grid-cols-3">
-              {DGA_GAS_KEYS.map((g) => (
-                <div key={g} className="flex items-center justify-between rounded-md bg-[var(--card-muted)] px-2.5 py-1.5">
-                  <span className="font-semibold">{g}</span>
-                  <span className="font-mono">{formatNumber(latest[g], 1)} / {cautionLimits[g] ?? '-'} ppm</span>
-                </div>
-              ))}
+            <DgaLimitsBars latest={latest} cautionLimits={cautionLimits} warningLimits={warningLimits} height={170} />
+            <div className="mt-4 border-t border-[color:var(--border)] pt-4">
+              <DgaTrendingChart data={trendData} height={214} />
             </div>
-            <p className="mt-3 text-xs text-[var(--muted)]">
-              Caution limits track the workspace standard for this transformer. Change it from the DGA Analysis modal to update markers and this view.
-            </p>
           </CardContent>
         </Card>
+        <LifetimeUsageCard
+          assetAge={assetAge}
+          yearBuilt={yearBuilt}
+          sampleDate={latest.raw?.testDate}
+        />
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-[var(--primary-strong)]" />
-              Fault Methods Radar
+              Latest Fault Snapshot
+              <span className="ml-2 text-xs font-normal text-[var(--muted)]">
+                Latest sample · {formatDate(latest.raw?.testDate)}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <FaultMethodsRadar latest={latest} />
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              Each axis represents one diagnostic method. Score 0 = no data, 1 = low concern, 2 = monitor, 3 = action, 4 = critical.
-            </p>
+            <FaultMethodsRadar latest={latest} standard={standardKey} oilType={oilType} />
           </CardContent>
         </Card>
       </div>
@@ -1119,13 +1385,13 @@ function TransformerHealthDashboard({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             <OilTile
               icon={Zap}
               label="Breakdown Voltage"
               unit="kV"
-              latest={latest.BDV}
-              previous={previous?.BDV}
+              latest={oilSnapshots.BDV.latestValue}
+              previous={oilSnapshots.BDV.previousValue}
               statusKey="breakdown"
               data={mapped}
               dataKey="BDV"
@@ -1136,8 +1402,8 @@ function TransformerHealthDashboard({
               icon={Waves}
               label="Moisture"
               unit="ppm"
-              latest={latest.Moisture}
-              previous={previous?.Moisture}
+              latest={oilSnapshots.Moisture.latestValue}
+              previous={oilSnapshots.Moisture.previousValue}
               statusKey="waterContent"
               data={mapped}
               dataKey="Moisture"
@@ -1149,8 +1415,8 @@ function TransformerHealthDashboard({
               icon={FlaskConical}
               label="Acidity"
               unit="mgKOH/g"
-              latest={latest.Acidity}
-              previous={previous?.Acidity}
+              latest={oilSnapshots.Acidity.latestValue}
+              previous={oilSnapshots.Acidity.previousValue}
               statusKey="acidity"
               data={mapped}
               dataKey="Acidity"
@@ -1162,8 +1428,8 @@ function TransformerHealthDashboard({
               icon={Droplets}
               label="IFT"
               unit="mN/m"
-              latest={latest.IFT}
-              previous={previous?.IFT}
+              latest={oilSnapshots.IFT.latestValue}
+              previous={oilSnapshots.IFT.previousValue}
               statusKey="interfacialTension"
               data={mapped}
               dataKey="IFT"
@@ -1174,8 +1440,8 @@ function TransformerHealthDashboard({
               icon={Gauge}
               label="Tan δ / PF"
               unit=""
-              latest={latest.PowerFactor}
-              previous={previous?.PowerFactor}
+              latest={oilSnapshots.PowerFactor.latestValue}
+              previous={oilSnapshots.PowerFactor.previousValue}
               statusKey="powerFactor"
               data={mapped}
               dataKey="PowerFactor"
@@ -1184,12 +1450,37 @@ function TransformerHealthDashboard({
               oilReferences={oilReferences}
             />
             <OilTile
+              icon={Activity}
+              label="Resistivity"
+              unit={oilReferences.resistivity?.unit || ''}
+              latest={oilSnapshots.Resistivity.latestValue}
+              previous={oilSnapshots.Resistivity.previousValue}
+              statusKey="resistivity"
+              data={mapped}
+              dataKey="Resistivity"
+              referenceValue={getReferenceLineValue(oilReferences.resistivity)}
+              oilReferences={oilReferences}
+            />
+            <OilTile
+              icon={AlertTriangle}
+              label="DBDS"
+              unit={oilReferences.dbds?.unit || 'mg/kg'}
+              latest={oilSnapshots.DBDS.latestValue}
+              previous={oilSnapshots.DBDS.previousValue}
+              statusKey="dbds"
+              data={mapped}
+              dataKey="DBDS"
+              referenceValue={getReferenceLineValue(oilReferences.dbds)}
+              inverse
+              oilReferences={oilReferences}
+            />
+            <OilTile
               icon={Sparkles}
               label="Inhibitor"
               unit="%"
-              latest={latest.Inhibitor}
-              previous={previous?.Inhibitor}
-              statusOverride={getSupplementaryStatusSeverity(supplementaryMetrics.inhibitor?.status)}
+              latest={oilSnapshots.Inhibitor.latestValue}
+              previous={oilSnapshots.Inhibitor.previousValue}
+              statusOverride={getSupplementaryStatusForRecord(oilSnapshots.Inhibitor.latestRecord, 'inhibitor')}
               data={mapped}
               dataKey="Inhibitor"
               referenceValue={getSupplementaryReferenceLineValue('inhibitor')}
@@ -1198,9 +1489,9 @@ function TransformerHealthDashboard({
               icon={ShieldCheck}
               label="Passivator"
               unit="mg/kg"
-              latest={latest.Passivator}
-              previous={previous?.Passivator}
-              statusOverride={getSupplementaryStatusSeverity(supplementaryMetrics.passivator?.status)}
+              latest={oilSnapshots.Passivator.latestValue}
+              previous={oilSnapshots.Passivator.previousValue}
+              statusOverride={getSupplementaryStatusForRecord(oilSnapshots.Passivator.latestRecord, 'passivator')}
               data={mapped}
               dataKey="Passivator"
               referenceValue={getSupplementaryReferenceLineValue('passivator')}
@@ -1209,9 +1500,9 @@ function TransformerHealthDashboard({
               icon={ThermometerSun}
               label="2-FAL (Furan)"
               unit="ppb"
-              latest={latest.Furan}
-              previous={previous?.Furan}
-              statusOverride={getSupplementaryStatusSeverity(supplementaryMetrics.fal2?.status)}
+              latest={oilSnapshots.Furan.latestValue}
+              previous={oilSnapshots.Furan.previousValue}
+              statusOverride={getSupplementaryStatusForRecord(oilSnapshots.Furan.latestRecord, 'fal2')}
               data={mapped}
               dataKey="Furan"
               referenceValue={getSupplementaryReferenceLineValue('fal2')}
@@ -1220,58 +1511,52 @@ function TransformerHealthDashboard({
               icon={FileText}
               label="Methanol"
               unit="ppm"
-              latest={latest.Methanol}
-              previous={previous?.Methanol}
-              statusOverride={getSupplementaryStatusSeverity(supplementaryMetrics.methanol?.status)}
+              latest={oilSnapshots.Methanol.latestValue}
+              previous={oilSnapshots.Methanol.previousValue}
+              statusOverride={getSupplementaryStatusForRecord(oilSnapshots.Methanol.latestRecord, 'methanol')}
               data={mapped}
               dataKey="Methanol"
               referenceValue={getSupplementaryReferenceLineValue('methanol')}
             />
             <OilTile
               icon={HeartPulse}
-              label={dpValue !== null ? 'DP estimate' : 'DP estimate'}
+              label="DP from Furan"
               unit=""
-              latest={dpValue}
-              previous={previous?.DPFuran ?? previous?.DPMethanol}
-              statusOverride={
-                dpValue === null
-                  ? null
-                  : dpValue < 350
-                    ? 90
-                    : dpValue < 500
-                      ? 60
-                      : dpValue < 700
-                        ? 25
-                        : 5
-              }
+              latest={dpFuranValue}
+              previous={oilSnapshots.DPFuran.previousValue}
+              statusOverride={getDpSeverity(dpFuranValue)}
               data={mapped}
-              dataKey={latest.DPFuran !== null ? 'DPFuran' : 'DPMethanol'}
+              dataKey="DPFuran"
               referenceValue={500}
-              extraBadge={dpBadge}
+              extraBadge={dpFuranBadge}
               inverse
+              precision={0}
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* === Records summary === */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-[var(--primary-strong)]" />
-            Records Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryRow icon={FlaskConical} label="Oil tests" value={mapped.length} />
-            <SummaryRow icon={FileText} label="Documents" value={documentCount} />
-            <SummaryRow icon={ImageIcon} label="Images" value={imageCount} />
-            <SummaryRow
-              icon={ThermometerSun}
-              label="Last sample"
-              value={formatDate(latest.raw?.testDate)}
-              helper={formatRelativeDate(latest.raw?.testDate)}
+            <OilTile
+              icon={HeartPulse}
+              label="DP from Methanol"
+              unit=""
+              latest={dpMethanolValue}
+              previous={oilSnapshots.DPMethanol.previousValue}
+              statusOverride={getDpSeverity(dpMethanolValue)}
+              data={mapped}
+              dataKey="DPMethanol"
+              referenceValue={500}
+              extraBadge={dpMethanolBadge}
+              inverse
+              precision={0}
+            />
+            <OilTile
+              icon={Gauge}
+              label="Lifetime Usage"
+              unit="%"
+              latest={lifetimeSnapshot.latestValue}
+              previous={lifetimeSnapshot.previousValue}
+              statusOverride={getLifetimeUsageSeverity(lifetimeSnapshot.latestValue)}
+              data={lifetimeSnapshotData}
+              dataKey="LifetimeUsagePct"
+              referenceValue={75}
+              precision={0}
             />
           </div>
         </CardContent>
@@ -1300,6 +1585,7 @@ function OilTile({
   referenceValue,
   inverse = false,
   extraBadge,
+  precision = 2,
   oilReferences = DEFAULT_ACTIVE_OIL_REFERENCES,
 }) {
   const value = latest;
@@ -1329,7 +1615,7 @@ function OilTile({
       </div>
       <div className="mt-2 flex items-baseline gap-2">
         <p className="text-xl font-semibold text-[var(--foreground)]">
-          {value === null || value === undefined ? '-' : formatNumber(value, 2)}
+          {value === null || value === undefined ? '-' : formatNumber(value, precision)}
         </p>
         {unit ? <p className="text-xs text-[var(--muted)]">{unit}</p> : null}
         {trend === 'up' ? <TrendingUp className="h-4 w-4 text-[#ef4444]" /> : null}
@@ -1347,7 +1633,7 @@ function OilTile({
       </div>
       {previous !== null && previous !== undefined ? (
         <p className="mt-1 text-[11px] text-[var(--muted)]">
-          Prev: {formatNumber(previous, 2)} {unit}
+          Prev: {formatNumber(previous, precision)} {unit}
         </p>
       ) : null}
     </div>
@@ -1365,19 +1651,5 @@ function Mini({ label, value, unit }) {
   );
 }
 
-function SummaryRow({ icon: Icon, label, value, helper }) {
-  return (
-    <div className="flex items-center gap-3 rounded-md bg-[var(--card-muted)] px-4 py-3">
-      <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--muted)]">{label}</p>
-        <p className="text-sm font-semibold">{value}</p>
-        {helper ? <p className="text-[11px] text-[var(--muted)]">{helper}</p> : null}
-      </div>
-    </div>
-  );
-}
 
 export default TransformerHealthDashboard;
