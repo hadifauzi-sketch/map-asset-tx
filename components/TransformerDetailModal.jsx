@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
+  Droplet,
   FileText,
   Gauge,
   Image as ImageIcon,
+  Layers,
   MapPin,
   Shield,
   TestTubeDiagonal,
@@ -30,6 +32,8 @@ import { Input } from './ui/input';
 import { documentService } from '../lib/documentService';
 import { isImageDocument } from '../lib/documentUtils';
 import { getTransformerState } from '../lib/malaysiaStates';
+import { normaliseOilType } from '../lib/oilTypeUtils';
+import { getPaperTypeLabel } from '../lib/paperTypeUtils';
 
 const DEFAULT_COMPARTMENTS = ['Maintank', 'OLTC', 'ETX'];
 const COMPARTMENT_STORAGE_KEY = 'asset-tx-map-compartment-v1';
@@ -496,6 +500,12 @@ function TransformerDetailModal({
     scopedTransformer.loadMVA,
     'MvA'
   );
+  const latestOilTest = filteredOilTests[0] || (transformer.oilTests || [])[0];
+  const oilTypeValue =
+    normaliseOilType(transformer.oilType) ||
+    normaliseOilType(latestOilTest?.oilType) ||
+    '';
+  const paperTypeValue = getPaperTypeLabel(transformer.paperType);
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
@@ -687,14 +697,14 @@ function TransformerDetailModal({
                         value={`${filteredOilTests.length}`}
                       />
                       <SummaryMetric
-                        icon={FileText}
-                        label="Documents"
-                        value={`${filteredDocuments.length}`}
+                        icon={Droplet}
+                        label="Type of oil"
+                        value={oilTypeValue || '-'}
                       />
                       <SummaryMetric
-                        icon={ImageIcon}
-                        label="Images"
-                        value={`${filteredImages.length}`}
+                        icon={Layers}
+                        label="Type of paper"
+                        value={paperTypeValue || '-'}
                       />
                     </CardContent>
                   </Card>

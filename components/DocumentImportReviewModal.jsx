@@ -12,6 +12,7 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
+import { buildImportedOilTestRows } from '../lib/oilTestImportUtils';
 import { TEST_TYPE_OPTIONS } from '../lib/testTypeUtils';
 
 const DEFAULT_TEST_TYPE = 'Routine';
@@ -65,45 +66,6 @@ function getTodayDateString() {
   return new Date().toISOString().split('T')[0];
 }
 
-function buildImportNotes(file, importResult) {
-  const parts = [];
-
-  if (file?.name) {
-    parts.push(`Imported from ${file.name}`);
-  }
-
-  if (importResult?.strategyLabel) {
-    parts.push(importResult.strategyLabel);
-  }
-
-  return parts.join(' - ');
-}
-
-function buildDraftRows(importResult, file) {
-  const samples =
-    importResult?.kind === 'sample-history'
-      ? importResult.samples || []
-      : importResult?.samplePatch
-        ? [importResult.samplePatch]
-        : [];
-
-  return samples.map((sample, index) => {
-    const row = {
-      localId: `${file?.name || 'import'}-${index + 1}`,
-      sampleNumber: index + 1,
-      testDate: sample.date || getTodayDateString(),
-      testType: DEFAULT_TEST_TYPE,
-      notes: buildImportNotes(file, importResult),
-    };
-
-    IMPORT_FIELDS.forEach(({ key }) => {
-      row[key] = sample[key] ?? '';
-    });
-
-    return row;
-  });
-}
-
 function hasAnyImportedValue(row) {
   return IMPORT_FIELDS.some(({ key }) => String(row?.[key] ?? '').trim() !== '');
 }
@@ -139,6 +101,24 @@ function getFileTypeLabel(importResult) {
   }
 }
 
+function normaliseDraftRows(rows, file) {
+  return (Array.isArray(rows) ? rows : []).map((row, index) => {
+    const nextRow = {
+      localId: row?.localId || `${file?.name || 'import'}-${index + 1}`,
+      sampleNumber: row?.sampleNumber || index + 1,
+      testDate: row?.testDate || getTodayDateString(),
+      testType: row?.testType || DEFAULT_TEST_TYPE,
+      notes: row?.notes || '',
+    };
+
+    IMPORT_FIELDS.forEach(({ key }) => {
+      nextRow[key] = row?.[key] ?? '';
+    });
+
+    return nextRow;
+  });
+}
+
 function DocumentImportReviewModal({
   open,
   file,
@@ -146,19 +126,26 @@ function DocumentImportReviewModal({
   errorMessage,
   transformerName,
   isSubmitting,
+  initialRows,
+  mode = 'document',
   onClose,
   onStoreOnly,
   onSubmit,
 }) {
   const [draftRows, setDraftRows] = useState([]);
+  const isTransformerMode = mode === 'transformer';
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    setDraftRows(buildDraftRows(importResult, file));
-  }, [file, importResult, open]);
+    const sourceRows = Array.isArray(initialRows)
+      ? initialRows
+      : buildImportedOilTestRows(importResult, file);
+
+    setDraftRows(normaliseDraftRows(sourceRows, file));
+  }, [file, importResult, initialRows, open]);
 
   const validDraftCount = useMemo(
     () => draftRows.filter((row) => row.testDate && hasAnyImportedValue(row)).length,
@@ -181,8 +168,14 @@ function DocumentImportReviewModal({
     onSubmit(draftRows);
   };
 
-  const submitLabel =
-    validDraftCount > 1 ? `Submit ${validDraftCount} Samples to Oil Test` : 'Submit to Oil Test';
+  const submitLabel = isTransformerMode
+    ? validDraftCount > 1
+      ? `Use ${validDraftCount} Reviewed Samples`
+      : 'Use Reviewed Sample'
+    : validDraftCount > 1
+      ? `Submit ${validDraftCount} Samples to Oil Test`
+      : 'Submit to Oil Test';
+  const storeOnlyLabel = isTransformerMode ? 'Keep PDF Only' : 'Store Document Only';
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen && !isSubmitting ? onClose() : null)}>
@@ -200,11 +193,12 @@ function DocumentImportReviewModal({
                   <Badge variant="success">{importResult.sampleCount} samples found</Badge>
                 ) : null}
               </div>
-              <DialogTitle>Review imported lab report</DialogTitle>
+              <DialogTitle>{isTransformerMode ? 'Review imported oil-test rows' : 'Review imported lab report'}</DialogTitle>
               <DialogDescription className="max-w-3xl leading-6">
                 {transformerName ? `${transformerName}: ` : ''}
-                Review the extracted values before saving them. Submit creates oil-test records and keeps
-                the report in Documents. Store Document Only saves the file without creating oil-test data.
+                {isTransformerMode
+                  ? 'Review the extracted values before saving this transformer. Confirmed rows will sync into Oil Tests after the transformer is saved. Keep PDF Only stores the report in Documents without creating oil-test data.'
+                  : 'Review the extracted values before saving them. Submit creates oil-test records and keeps the report in Documents. Store Document Only saves the file without creating oil-test data.'}
               </DialogDescription>
             </div>
           </div>
@@ -222,7 +216,9 @@ function DocumentImportReviewModal({
               <div className="flex flex-wrap items-center gap-2">
                 {importResult.sourceLabel ? <Badge variant="secondary">{importResult.sourceLabel}</Badge> : null}
                 {importResult.strategyLabel ? <Badge variant="outline">{importResult.strategyLabel}</Badge> : null}
-                <Badge variant="secondary">{validDraftCount} ready to submit</Badge>
+                <Badge variant="secondary">
+                  {validDraftCount} ready {isTransformerMode ? 'for save' : 'to submit'}
+                </Badge>
               </div>
 
               {draftRows.length > 0 ? (
@@ -242,7 +238,9 @@ function DocumentImportReviewModal({
                               <Badge variant="outline">{formatModalDate(row.testDate)}</Badge>
                             </div>
                             <p className="mt-2 text-sm text-[var(--muted)]">
-                              Edit the imported values before sending them into Oil Tests.
+                              {isTransformerMode
+                                ? 'Edit the imported values before confirming them for transformer save.'
+                                : 'Edit the imported values before sending them into Oil Tests.'}
                             </p>
                           </div>
 
@@ -356,16 +354,22 @@ function DocumentImportReviewModal({
         <DialogFooter className="sm:justify-between">
           <p className="text-sm text-[var(--muted)]">
             {canSubmit
-              ? `${validDraftCount} sample${validDraftCount === 1 ? '' : 's'} will be added to Oil Tests.`
-              : 'You can store the report without creating Oil Test records.'}
+              ? isTransformerMode
+                ? `${validDraftCount} sample${validDraftCount === 1 ? '' : 's'} will be synced after the transformer is saved.`
+                : `${validDraftCount} sample${validDraftCount === 1 ? '' : 's'} will be added to Oil Tests.`
+              : isTransformerMode
+                ? 'You can keep the PDF without syncing Oil Test records.'
+                : 'You can store the report without creating Oil Test records.'}
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button variant="secondary" onClick={onStoreOnly} disabled={isSubmitting}>
-              Store Document Only
-            </Button>
+            {typeof onStoreOnly === 'function' ? (
+              <Button variant="secondary" onClick={onStoreOnly} disabled={isSubmitting}>
+                {storeOnlyLabel}
+              </Button>
+            ) : null}
             {importResult ? (
               <Button onClick={handleSubmit} disabled={!canSubmit || isSubmitting}>
                 {submitLabel}

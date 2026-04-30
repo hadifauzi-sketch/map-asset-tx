@@ -23,6 +23,7 @@ function FloorPlanMetadataDialog({
   detectedTransformerIds = [],
   onClose,
   onSave,
+  onShowNotice,
 }) {
   const [formData, setFormData] = useState({
     id: null,
@@ -107,17 +108,38 @@ function FloorPlanMetadataDialog({
     event.preventDefault();
 
     if (!String(formData.name || '').trim()) {
-      window.alert('Please enter an area name.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'Area name required',
+        description: 'Add the area name before saving this floor plan.',
+        detail: 'Use the site area, substation, building, or section name that best identifies this floor boundary.',
+        contextLabel: 'Floor plan',
+        actionLabel: 'Back to form',
+      });
       return;
     }
 
     if (!String(formData.companyName || '').trim()) {
-      window.alert('Please enter a company or parent name.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'Company or parent name required',
+        description: 'Add the company or parent name before saving this floor plan.',
+        detail: 'This helps group the floor plan correctly under the right owner or operating entity.',
+        contextLabel: 'Floor plan',
+        actionLabel: 'Back to form',
+      });
       return;
     }
 
     if (!String(formData.state || '').trim()) {
-      window.alert('Please choose a state.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'State required',
+        description: 'Choose the state or territory before saving this floor plan.',
+        detail: 'The state value is used to keep the floor and its linked assets grouped correctly.',
+        contextLabel: 'Floor plan',
+        actionLabel: 'Back to form',
+      });
       return;
     }
 

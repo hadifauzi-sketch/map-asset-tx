@@ -415,6 +415,7 @@ function DiagramModal({ card, oilType, latestSample, completedSamples, hasRequir
     }
 
     event.preventDefault();
+    event.target.setPointerCapture(event.pointerId);
     ignoreBackdropClickRef.current = false;
     dragStateRef.current = {
       pointerId: event.pointerId,

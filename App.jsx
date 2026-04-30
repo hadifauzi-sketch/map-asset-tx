@@ -27,6 +27,7 @@ import {
 import TransformerMarker from './components/TransformerMarker';
 import TransformerSidebar from './components/TransformerSidebar';
 import TransformerModal from './components/TransformerModal';
+import NoticeDialog from './components/NoticeDialog';
 import TransformerDetailModal from './components/TransformerDetailModal';
 import LocationRegisterModule from './components/location-register/LocationRegisterModule';
 import FloorPlanMapLayer from './components/FloorPlanMapLayer';
@@ -53,6 +54,9 @@ import {
 } from './lib/floorPlanStorage';
 import { floorPlanService } from './lib/floorPlanService';
 import { getTransformerState } from './lib/malaysiaStates';
+import { documentService } from './lib/documentService';
+import { oilTestService } from './lib/oilTestService';
+import { isSameImportedOilTestPayload } from './lib/oilTestImportUtils';
 import { createTransformerDraft } from './lib/transformerDraft';
 import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
@@ -360,6 +364,7 @@ function App() {
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [appNotice, setAppNotice] = useState(null);
   const [mapBaseLayer, setMapBaseLayer] = useState(() => {
     if (typeof window === 'undefined') {
       return 'streets';
@@ -419,13 +424,24 @@ function App() {
     idleSignOutTimerRef.current = null;
   }, []);
 
+  const showAppNotice = useCallback((notice) => {
+    setAppNotice(notice);
+  }, []);
+
   const ensureCanEditAssets = useCallback(() => {
     if (canEditAssets) {
       return true;
     }
-    window.alert('Viewer accounts are read-only. Contact an administrator if you need edit access.');
+    showAppNotice({
+      variant: 'warning',
+      title: 'Read-only access',
+      description: 'Viewer accounts cannot edit assets or floor plans.',
+      detail: 'Contact an administrator if you need edit access.',
+      contextLabel: 'Permissions',
+      actionLabel: 'Close',
+    });
     return false;
-  }, [canEditAssets]);
+  }, [canEditAssets, showAppNotice]);
 
   const activateSidebarInteraction = () => {
     setIsSidebarInteracting(true);
@@ -737,9 +753,15 @@ function App() {
       );
     } catch (err) {
       console.error('Failed to remove transformer from floor:', err);
-      window.alert('Failed to update floor plan. Please try again.');
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to update floor plan',
+        description: 'The transformer assignment could not be updated yet.',
+        detail: err?.message || 'Failed to update floor plan. Please try again.',
+        contextLabel: 'Floor plan',
+      });
     }
-  }, [ensureCanEditAssets, floorPlans]);
+  }, [ensureCanEditAssets, floorPlans, showAppNotice]);
 
   const handleFloorDetailAddTransformer = useCallback((position, floorPlanId) => {
     if (!ensureCanEditAssets()) {
@@ -807,16 +829,85 @@ function App() {
     setIsAddMode(false);
   };
 
+  const syncImportedReportForTransformer = async (transformerId, importSession, existingOilTests = []) => {
+    if (!transformerId || !importSession?.file) {
+      return {
+        documentStored: false,
+        createdCount: 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+      };
+    }
+
+    await documentService.upload(transformerId, importSession.file);
+
+    const payloads = Array.isArray(importSession.oilTestPayloads) ? importSession.oilTestPayloads : [];
+    const existingByDate = new Map();
+
+    existingOilTests.forEach((test) => {
+      if (!test?.testDate || existingByDate.has(test.testDate)) {
+        return;
+      }
+
+      existingByDate.set(test.testDate, test);
+    });
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    let unchangedCount = 0;
+
+    for (const payload of payloads) {
+      const existingTest = existingByDate.get(payload.testDate);
+
+      if (existingTest?.id) {
+        if (isSameImportedOilTestPayload(existingTest, payload)) {
+          unchangedCount += 1;
+          continue;
+        }
+
+        const updatedTest = await oilTestService.update(existingTest.id, payload);
+        updatedCount += 1;
+        existingByDate.set(payload.testDate, updatedTest || { ...existingTest, ...payload });
+        continue;
+      }
+
+      const createdTest = await oilTestService.create(transformerId, payload);
+      createdCount += 1;
+      existingByDate.set(payload.testDate, createdTest || payload);
+    }
+
+    return {
+      documentStored: true,
+      createdCount,
+      updatedCount,
+      unchangedCount,
+    };
+  };
+
   const handleAddTransformer = async (transformerData) => {
     if (!ensureCanEditAssets()) {
       return;
     }
+
+    const isEditingTransformer = Boolean(editingTransformer?.id);
+    const txName = String(transformerData?.txName || editingTransformer?.txName || '').trim();
+    const siteName = String(transformerData?.siteName || editingTransformer?.siteName || '').trim();
+    const recordStatusLabel = isEditingTransformer ? 'Updated' : 'Saved';
+
     try {
       setLoading(true);
+      const { importSession = null, ...transformerPayload } = transformerData;
+      const existingOilTests = Array.isArray(editingTransformer?.oilTests) ? editingTransformer.oilTests : [];
+      let savedTransformerId = editingTransformer?.id || null;
+      let importSummary = null;
+      let postSaveNotice = null;
+
       if (editingTransformer?.id) {
-        await transformerService.update(editingTransformer.id, transformerData);
+        const updatedTransformer = await transformerService.update(editingTransformer.id, transformerPayload);
+        savedTransformerId = updatedTransformer?.id || editingTransformer.id;
       } else {
-        const newTransformer = await transformerService.create(transformerData);
+        const newTransformer = await transformerService.create(transformerPayload);
+        savedTransformerId = newTransformer?.id || null;
         if (currentUser && currentUser.role !== 'admin' && newTransformer?.id) {
           const { error: grantError } = await supabase.rpc('grant_self_transformer_access', {
             p_user_id: currentUser.id,
@@ -840,13 +931,80 @@ function App() {
         }
       }
 
+      if (savedTransformerId && importSession?.file) {
+        try {
+          importSummary = await syncImportedReportForTransformer(savedTransformerId, importSession, existingOilTests);
+        } catch (importError) {
+          console.error('Report import after transformer save failed:', importError);
+          postSaveNotice = {
+            variant: 'warning',
+            title: isEditingTransformer ? 'Transformer updated with import warning' : 'Transformer saved with import warning',
+            description:
+              'The transformer record was saved, but the linked ACTMS report could not fully sync into Documents and Oil Tests automatically.',
+            detail:
+              importError?.message || 'Please retry the PDF sync from the transformer details screen.',
+            txName,
+            siteName,
+            recordStatusLabel,
+            recordLabel: 'Transformer',
+            documentStored: false,
+          };
+        }
+      }
+
       await loadTransformers();
       setIsModalOpen(false);
       setIsLocationRegisterOpen(false);
       setEditingTransformer(null);
+
+      if (!postSaveNotice && importSummary?.documentStored) {
+        postSaveNotice = {
+          variant: 'success',
+          title: isEditingTransformer ? 'Transformer updated successfully' : 'Transformer saved successfully',
+          description:
+            importSummary.createdCount > 0 || importSummary.updatedCount > 0 || importSummary.unchangedCount > 0
+              ? 'The ACTMS report was stored in Documents and the linked oil-test results were synced successfully.'
+              : 'The ACTMS report was stored in Documents successfully.',
+          txName,
+          siteName,
+          recordStatusLabel,
+          recordLabel: 'Transformer',
+          documentStored: true,
+          createdCount: importSummary.createdCount,
+          updatedCount: importSummary.updatedCount,
+          unchangedCount: importSummary.unchangedCount,
+        };
+      }
+
+      if (postSaveNotice) {
+        setAppNotice(postSaveNotice);
+      }
     } catch (err) {
       console.error('Failed to save transformer:', err);
-      window.alert('Failed to save transformer. Please try again.');
+      const errorMessage = err?.message || 'Failed to save transformer. Please try again.';
+      const isDuplicateSerialError = /duplicate serial number|serial number already exists|duplicate key value/i.test(
+        errorMessage
+      );
+
+      setAppNotice({
+        variant: isDuplicateSerialError ? 'warning' : 'error',
+        title: isDuplicateSerialError
+          ? 'Duplicate serial number detected'
+          : isEditingTransformer
+            ? 'Unable to update transformer'
+            : 'Unable to save transformer',
+        description: isDuplicateSerialError
+          ? 'This serial number already belongs to another transformer in the register.'
+          : 'The transformer record could not be saved yet.',
+        detail: isDuplicateSerialError
+          ? `${errorMessage} Open the existing asset and update it instead of creating a duplicate transformer record.`
+          : errorMessage,
+        txName,
+        siteName,
+        recordStatusLabel: isDuplicateSerialError ? undefined : 'Not saved',
+        recordLabel: 'Transformer',
+        actionLabel: isDuplicateSerialError ? 'Back to form' : 'Close',
+      });
     } finally {
       setLoading(false);
     }
@@ -900,7 +1058,13 @@ function App() {
       await loadTransformers();
     } catch (err) {
       console.error('Failed to delete transformer:', err);
-      window.alert('Failed to delete transformer. Please try again.');
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to delete transformer',
+        description: 'The transformer record could not be deleted yet.',
+        detail: err?.message || 'Failed to delete transformer. Please try again.',
+        contextLabel: 'Transformer',
+      });
     } finally {
       setLoading(false);
     }
@@ -922,7 +1086,13 @@ function App() {
       );
     } catch (err) {
       console.error('Failed to update position:', err);
-      window.alert('Failed to update position. Please try again.');
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to update map position',
+        description: 'The new transformer location could not be saved yet.',
+        detail: err?.message || 'Failed to update position. Please try again.',
+        contextLabel: 'Map position',
+      });
     }
   };
 
@@ -1017,7 +1187,14 @@ function App() {
       return false;
     }
     if (!floorPlan || !Array.isArray(nextPoints) || nextPoints.length < 3) {
-      window.alert('A floor boundary needs at least three points.');
+      showAppNotice({
+        variant: 'warning',
+        title: 'More boundary points needed',
+        description: 'A floor boundary needs at least three points before it can be saved.',
+        detail: 'Add more points or continue reshaping the boundary, then try saving again.',
+        contextLabel: 'Floor boundary',
+        actionLabel: 'Back to map',
+      });
       return false;
     }
 
@@ -1035,7 +1212,13 @@ function App() {
       return true;
     } catch (err) {
       console.error('Failed to reshape floor plan:', err);
-      window.alert('Failed to save floor boundary. Please try again.');
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to save floor boundary',
+        description: 'The reshaped floor boundary could not be saved yet.',
+        detail: err?.message || 'Failed to save floor boundary. Please try again.',
+        contextLabel: 'Floor boundary',
+      });
       return false;
     }
   };
@@ -1122,7 +1305,14 @@ function App() {
       return;
     }
     if (!floorPlanDraft || floorPlanDraft.points.length < 3) {
-      window.alert('Draw at least three points on the map to create a floor boundary.');
+      showAppNotice({
+        variant: 'warning',
+        title: 'More boundary points needed',
+        description: 'Draw at least three points on the map to create a floor boundary.',
+        detail: 'Keep clicking on the map until the area has enough points to form a closed boundary.',
+        contextLabel: 'Floor boundary',
+        actionLabel: 'Back to map',
+      });
       return;
     }
 
@@ -1194,7 +1384,13 @@ function App() {
       focusFloorPlan(normalizedFloorPlan);
     } catch (err) {
       console.error('Failed to save floor plan:', err);
-      window.alert('Failed to save floor plan. Please try again.');
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to save floor plan',
+        description: 'The floor plan record could not be saved yet.',
+        detail: err?.message || 'Failed to save floor plan. Please try again.',
+        contextLabel: 'Floor plan',
+      });
     }
   };
 
@@ -1222,7 +1418,13 @@ function App() {
       setFloorPlanDialogDraft(null);
     } catch (err) {
       console.error('Failed to delete floor plan:', err);
-      window.alert('Failed to delete floor plan. Please try again.');
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to delete floor plan',
+        description: 'The floor plan overlay could not be deleted yet.',
+        detail: err?.message || 'Failed to delete floor plan. Please try again.',
+        contextLabel: 'Floor plan',
+      });
     }
   };
 
@@ -1875,8 +2077,16 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <TransformerModal
         open={isModalOpen}
         transformer={editingTransformer}
+        transformers={transformers}
         onSave={handleAddTransformer}
         onClose={closeTransformerModal}
+        onShowNotice={showAppNotice}
+      />
+
+      <NoticeDialog
+        open={Boolean(appNotice)}
+        notice={appNotice}
+        onClose={() => setAppNotice(null)}
       />
 
       <LocationRegisterModule
@@ -1884,6 +2094,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onClose={() => setIsLocationRegisterOpen(false)}
         onSave={handleAddTransformer}
         onFocusPosition={focusLocationPosition}
+        onShowNotice={showAppNotice}
       />
 
       <TransformerDetailModal
@@ -1906,6 +2117,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           setFloorPlanDialogDraft(null);
         }}
         onSave={handleSaveFloorPlan}
+        onShowNotice={showAppNotice}
       />
 
       <FloorPlanDetailModal
@@ -1932,6 +2144,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         }}
         onRemoveFromFloor={handleRemoveTransformerFromFloor}
         onMarkerDragEnd={handleMarkerDragEnd}
+        onShowNotice={showAppNotice}
       />
 
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
@@ -2255,7 +2468,7 @@ function FocusedGasTrendExpandedChart({ trendPoints = [] }) {
           className="h-[40vh] min-h-[240px] w-full"
           role="img"
           aria-label="Expanded focused asset DGA trend chart with date and gas concentration axes"
-          onMouseLeave={() => setHoveredIndex(null)}
+          onPointerLeave={() => setHoveredIndex(null)}
         >
           <rect x="0" y="0" width={chartWidth} height={chartHeight} fill="transparent" />
 
@@ -2342,7 +2555,7 @@ function FocusedGasTrendExpandedChart({ trendPoints = [] }) {
               height={plotHeight + 30}
               fill="transparent"
               className="cursor-pointer"
-              onMouseEnter={() => setHoveredIndex(point.index)}
+              onPointerEnter={() => setHoveredIndex(point.index)}
               onClick={() => handleSelectPoint(point.index)}
             >
               <title>{point.dateLabel}</title>
@@ -2361,7 +2574,7 @@ function FocusedGasTrendExpandedChart({ trendPoints = [] }) {
                 <g
                   key={`expanded-dot-${gas.key}-${point.index}`}
                   className="cursor-pointer"
-                  onMouseEnter={() => setHoveredIndex(point.index)}
+                  onPointerEnter={() => setHoveredIndex(point.index)}
                   onClick={() => handleSelectPoint(point.index)}
                 >
                   {isActive ? (
@@ -2456,7 +2669,7 @@ function FocusedGasTrendExpandedChart({ trendPoints = [] }) {
       </div>
       <div
         className="mt-2 overflow-x-auto rounded-md border border-[color:var(--border)]"
-        onMouseLeave={() => setHoveredIndex(null)}
+        onPointerLeave={() => setHoveredIndex(null)}
       >
         <table className="min-w-full border-collapse text-[11px]">
           <thead>
@@ -2481,7 +2694,7 @@ function FocusedGasTrendExpandedChart({ trendPoints = [] }) {
                   key={`focused-table-row-${point.index}`}
                   className="cursor-pointer"
                   style={{ backgroundColor: isActive ? 'var(--card-muted)' : 'transparent' }}
-                  onMouseEnter={() => setHoveredIndex(point.index)}
+                  onPointerEnter={() => setHoveredIndex(point.index)}
                   onClick={() => handleSelectPoint(point.index)}
                 >
                   <td className="border-b border-[color:var(--border)] px-2.5 py-1.5 font-medium text-[var(--foreground)]">

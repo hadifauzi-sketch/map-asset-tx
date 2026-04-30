@@ -75,6 +75,7 @@ export default function FloorPlanDetailModal({
   isOpen,
   canManageAssets = true,
   onClose,
+  onShowNotice,
   onEditInfo,
   onReshape,
   onSaveReshape,
@@ -146,7 +147,14 @@ export default function FloorPlanDetailModal({
 
   const handleSaveReshape = useCallback(async () => {
     if (reshapePoints.length < 3) {
-      window.alert('A floor boundary needs at least three points.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'More boundary points needed',
+        description: 'A floor boundary needs at least three points before it can be saved.',
+        detail: 'Add more points or continue reshaping the boundary, then try saving again.',
+        contextLabel: 'Floor boundary',
+        actionLabel: 'Back to map',
+      });
       return;
     }
     if (typeof onSaveReshape !== 'function') {
@@ -163,7 +171,7 @@ export default function FloorPlanDetailModal({
     } finally {
       setIsSavingReshape(false);
     }
-  }, [floorPlan, onSaveReshape, reshapePoints]);
+  }, [floorPlan, onSaveReshape, onShowNotice, reshapePoints]);
 
   if (!floorPlan) return null;
 

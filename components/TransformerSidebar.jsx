@@ -22,6 +22,8 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
+import AssetCardGalleryModal from './AssetCardGalleryModal';
+import SidebarAssetContextMenu from './SidebarAssetContextMenu';
 import { compareMalaysianStates, getTransformerState } from '../lib/malaysiaStates';
 
 const EXPANDED_STATES_STORAGE_KEY = 'transformer-asset-map-expanded-states';
@@ -89,6 +91,36 @@ function sortTransformers(transformers) {
     }
     return String(left.txName || '').localeCompare(String(right.txName || ''));
   });
+}
+
+function dedupeAndSortTransformers(transformers) {
+  const registry = new Map();
+  transformers.forEach((transformer) => {
+    if (!transformer?.id) {
+      return;
+    }
+    registry.set(String(transformer.id), transformer);
+  });
+
+  return sortTransformers(Array.from(registry.values()));
+}
+
+function getCompanyGroupAssets(companyGroup) {
+  const floorAssets = companyGroup.floorPlans.flatMap((floorPlan) => floorPlan.transformers || []);
+  return dedupeAndSortTransformers([...floorAssets, ...(companyGroup.ungroupedTransformers || [])]);
+}
+
+function getFloorPlanAssets(floorPlan, transformers) {
+  const transformerIds = new Set((floorPlan?.transformerIds || []).map(String));
+  if (!transformerIds.size) {
+    return [];
+  }
+
+  return sortTransformers(transformers.filter((transformer) => transformerIds.has(String(transformer.id))));
+}
+
+function pluralize(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function buildHierarchy(transformers, floorPlans) {
@@ -311,6 +343,8 @@ function TransformerSidebar({
   const [isAreasModalOpen, setIsAreasModalOpen] = useState(false);
   const [isCompanyParentModalOpen, setIsCompanyParentModalOpen] = useState(false);
   const [isStatesModalOpen, setIsStatesModalOpen] = useState(false);
+  const [assetGroupContextMenu, setAssetGroupContextMenu] = useState(null);
+  const [assetCardGroup, setAssetCardGroup] = useState(null);
 
   const hierarchy = useMemo(() => buildHierarchy(transformers, floorPlans), [floorPlans, transformers]);
   const filteredHierarchy = useMemo(() => filterHierarchy(hierarchy, searchTerm), [hierarchy, searchTerm]);
@@ -458,7 +492,7 @@ function TransformerSidebar({
 
   const openAssetsModal = () => setIsAssetsModalOpen(true);
   const closeAssetsModal = () => setIsAssetsModalOpen(false);
-  const handleAssetSelect = (transformer) => {
+  const focusAssetInHierarchy = (transformer) => {
     const searchToken = String(
       transformer?.txName || transformer?.mnemonic || transformer?.serialNumber || ''
     ).trim();
@@ -488,8 +522,51 @@ function TransformerSidebar({
       }));
     }
 
-    onTransformerClick(transformer);
+    onTransformerClick?.(transformer);
+  };
+  const handleAssetSelect = (transformer) => {
+    focusAssetInHierarchy(transformer);
     closeAssetsModal();
+  };
+  const openAssetGroupContextMenu = (event, group) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const menuWidth = 280;
+    const menuHeight = 174;
+    const x = Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8));
+    const y = Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8));
+
+    setAssetGroupContextMenu({
+      ...group,
+      assets: dedupeAndSortTransformers(group.assets || []),
+      x,
+      y,
+    });
+  };
+  const openAssetCardsFromMenu = (group) => {
+    setAssetCardGroup({
+      ...group,
+      assets: dedupeAndSortTransformers(group.assets || []),
+    });
+    setAssetGroupContextMenu(null);
+  };
+  const closeAssetCards = () => setAssetCardGroup(null);
+  const handleAssetCardFocus = (asset) => {
+    focusAssetInHierarchy(asset);
+    closeAssetCards();
+  };
+  const handleAssetCardDetails = (asset) => {
+    closeAssetCards();
+    onViewDetails?.(asset);
+  };
+  const handleAssetCardEdit = (asset) => {
+    closeAssetCards();
+    onEditClick?.(asset);
+  };
+  const handleAssetCardDelete = (assetId) => {
+    closeAssetCards();
+    onDeleteClick?.(assetId);
   };
   const openAreasModal = () => setIsAreasModalOpen(true);
   const closeAreasModal = () => setIsAreasModalOpen(false);
@@ -509,6 +586,27 @@ function TransformerSidebar({
     setSearchTerm(stateName);
     closeStatesModal();
   };
+
+  const assetCardGalleryOverlay = (
+    <>
+      <SidebarAssetContextMenu
+        menu={assetGroupContextMenu}
+        onClose={() => setAssetGroupContextMenu(null)}
+        onShowCards={openAssetCardsFromMenu}
+      />
+      <AssetCardGalleryModal
+        open={Boolean(assetCardGroup)}
+        group={assetCardGroup}
+        selectedAssetId={selectedTransformerId}
+        canManageAssets={canManageAssets}
+        onClose={closeAssetCards}
+        onFocusAsset={handleAssetCardFocus}
+        onViewDetails={handleAssetCardDetails}
+        onEditAsset={handleAssetCardEdit}
+        onDeleteAsset={handleAssetCardDelete}
+      />
+    </>
+  );
 
   if (collapsed) {
     return (
@@ -705,6 +803,7 @@ function TransformerSidebar({
           onClose={closeStatesModal}
           onSelectState={handleStateSelect}
         />
+        {assetCardGalleryOverlay}
       </div>
     );
   }
@@ -960,17 +1059,27 @@ function TransformerSidebar({
                       {stateGroup.companies.map((companyGroup) => {
                         const companyKey = `company:${stateGroup.state}:${companyGroup.companyName}`;
                         const isCompanyExpanded = Boolean(expandedCompanies[companyKey]);
-                        const companyAssetCount =
-                          companyGroup.floorPlans.reduce(
-                            (sum, floorPlan) => sum + floorPlan.transformers.length,
-                            0
-                          ) + companyGroup.ungroupedTransformers.length;
+                        const sourceStateGroup = hierarchy.find((group) => group.state === stateGroup.state);
+                        const sourceCompanyGroup =
+                          sourceStateGroup?.companies.find(
+                            (group) => group.companyName === companyGroup.companyName
+                          ) || companyGroup;
+                        const companyAssets = getCompanyGroupAssets(sourceCompanyGroup);
+                        const companyAssetCount = companyAssets.length;
 
                         return (
                           <section key={companyKey} className="space-y-3">
                             <button
                               type="button"
                               onClick={() => toggleExpandedValue(setExpandedCompanies, companyKey)}
+                              onContextMenu={(event) => {
+                                openAssetGroupContextMenu(event, {
+                                  typeLabel: 'Company/Parent',
+                                  title: companyGroup.companyName,
+                                  subtitle: `${stateGroup.state} - ${pluralize(companyGroup.floorPlans.length, 'floor')} - ${pluralize(companyAssets.length, 'asset')}`,
+                                  assets: companyAssets,
+                                });
+                              }}
                               aria-expanded={isCompanyExpanded}
                               className="flex w-full items-center justify-between rounded-md border border-sky-300/60 bg-sky-50/65 px-3 py-2 text-left transition-colors hover:bg-sky-100/80 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:bg-sky-900/40"
                             >
@@ -998,10 +1107,21 @@ function TransformerSidebar({
                                   const floorKey = `floor:${floorPlan.id}`;
                                   const isFloorExpanded = Boolean(expandedFloorPlans[floorKey]);
                                   const isFloorSelected = selectedFloorPlanId === floorPlan.id;
+                                  const sourceFloorPlan =
+                                    floorPlans.find((plan) => plan.id === floorPlan.id) || floorPlan;
+                                  const floorAssets = getFloorPlanAssets(sourceFloorPlan, transformers);
 
                                   return (
                                     <article
                                       key={floorPlan.id}
+                                      onContextMenu={(event) =>
+                                        openAssetGroupContextMenu(event, {
+                                          typeLabel: 'Area/Substation',
+                                          title: floorPlan.name || 'Unnamed floor',
+                                          subtitle: `${floorPlan.companyName || companyGroup.companyName || 'Unknown company'} - ${floorPlan.state || stateGroup.state || 'State N/A'} - ${pluralize(floorAssets.length, 'asset')}`,
+                                          assets: floorAssets,
+                                        })
+                                      }
                                       className={`rounded-md border p-3 shadow-[var(--shadow-card)] ${
                                         isFloorSelected
                                           ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
@@ -1178,6 +1298,7 @@ function TransformerSidebar({
         onClose={closeStatesModal}
         onSelectState={handleStateSelect}
       />
+      {assetCardGalleryOverlay}
     </div>
   );
 }

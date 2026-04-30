@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -38,13 +38,21 @@ import { Badge } from './ui/badge';
 import { DuvalDiagram } from './dga-workbench/DuvalDiagram';
 import {
   IEC_60422_VOLTAGE_GROUPS,
+  getActionRangeLabel,
   getHealthyRangeLabel,
+  getMonitorRangeLabel,
 } from '../lib/standards/iec60422Profiles';
 import {
   getOilQualityAssessment,
   getOilQualitySupplementaryAssessment,
 } from '../lib/standards/oilQualityAssessment';
+import { normaliseOilType } from '../lib/oilTypeUtils';
+import { getPaperTypeLabel } from '../lib/paperTypeUtils';
 import {
+  getSupplementaryActionRangeLabel,
+  getSupplementaryHealthyRangeLabel,
+  getSupplementaryMonitorRangeLabel,
+  getSupplementaryReference,
   getSupplementaryReferenceLineValue,
   getSupplementaryStatusSeverity,
 } from '../lib/standards/supplementaryOilReferences';
@@ -249,6 +257,50 @@ function formatRelativeDate(value) {
   return `${(diffDays / 365).toFixed(1)} years ago`;
 }
 
+function getOilTypeSnapshot(latest, transformer) {
+  const sourceValue = latest?.raw?.oilType ?? transformer?.oilType ?? '';
+  const normalized = normaliseOilType(sourceValue);
+  const rawLower = String(sourceValue || normalized).trim().toLowerCase();
+  const normalizedLower = normalized.toLowerCase();
+
+  if (!normalized) {
+    return { value: 'Unknown', helper: 'No oil type recorded' };
+  }
+
+  if (normalizedLower.includes('silicon')) {
+    return { value: 'Silicon Oil', helper: 'Recorded transformer oil type' };
+  }
+
+  if (['soybean', 'rapeseed', 'sunflower'].includes(rawLower)) {
+    return { value: 'Natural Ester', helper: `DGA oil profile: ${normalized}` };
+  }
+
+  if (rawLower === 'synthetic') {
+    return { value: 'Synthetic Ester', helper: 'Ester insulation liquid' };
+  }
+
+  if (
+    normalizedLower.includes('ester') ||
+    ['soybean', 'rapeseed', 'sunflower', 'synthetic'].includes(rawLower)
+  ) {
+    const esterType =
+      normalizedLower.includes('synthetic') ? 'Synthetic Ester'
+        : normalizedLower.includes('modified') ? 'Modified Ester'
+          : normalizedLower.includes('natural') ? 'Natural Ester'
+            : normalized;
+    return {
+      value: esterType,
+      helper: 'Ester insulation liquid',
+    };
+  }
+
+  if (normalizedLower.includes('mineral') || rawLower === 'mineral') {
+    return { value: 'Mineral Oil', helper: 'Mineral insulation oil' };
+  }
+
+  return { value: normalized, helper: 'Recorded transformer oil type' };
+}
+
 function getDpSeverity(dpValue) {
   if (dpValue === null || dpValue === undefined) return null;
   if (dpValue < 350) return 90;
@@ -263,6 +315,28 @@ function getDpBadge(dpValue) {
   if (dpValue >= 500) return { label: 'Mid-life', tone: 'success' };
   if (dpValue >= 350) return { label: 'Aged', tone: 'warning' };
   return { label: 'End of life', tone: 'danger' };
+}
+
+function calcLifeUsedFromDp(...dpValues) {
+  const dp = dpValues
+    .map((value) => toNumber(value))
+    .find((value) => Number.isFinite(value) && value > 0) ?? null;
+  if (dp === null) return null;
+  return Math.min(100, Math.max(0, Math.round(((1000 - dp) / 800) * 100)));
+}
+
+function calculateDpFromFuranValue(fal2) {
+  const val = toNumber(fal2);
+  if (!val || val <= 0) return null;
+  const dp = 402.47 - 220.87 * Math.log10(val);
+  return dp > 0 ? Math.round(dp) : null;
+}
+
+function calculateDpFromMethanolValue(methanol) {
+  const val = toNumber(methanol);
+  if (!val || val <= 0) return null;
+  const dp = (3.837 - Math.log10(val)) / 0.00283;
+  return dp > 0 ? Math.round(dp) : null;
 }
 
 function getLifetimeUsagePctFromAge(ageYears, referenceLifeYears = REFERENCE_LIFE_YEARS) {
@@ -310,6 +384,8 @@ function getMetricSnapshot(records, dataKey) {
 // --- Map a single oil test to chart-friendly object ---
 function mapTest(test) {
   const d = new Date(test?.testDate);
+  const dpFuran = toNumber(test?.estimatedDpFuran) ?? calculateDpFromFuranValue(test?.fal2);
+  const dpMethanol = toNumber(test?.estimatedDpMethanol) ?? calculateDpFromMethanolValue(test?.methanol);
   const tdcg =
     toNumber(test?.tdcg) ??
     [test?.h2, test?.ch4, test?.c2h2, test?.c2h4, test?.c2h6, test?.co]
@@ -349,8 +425,8 @@ function mapTest(test) {
     Passivator: toNumber(test?.passivator),
     Furan: toNumber(test?.fal2),
     Methanol: toNumber(test?.methanol),
-    DPFuran: toNumber(test?.estimatedDpFuran),
-    DPMethanol: toNumber(test?.estimatedDpMethanol),
+    DPFuran: dpFuran,
+    DPMethanol: dpMethanol,
     CopperCorrosive: test?.copperCorrosive,
   };
 }
@@ -469,8 +545,92 @@ function healthBucket(score) {
   return { label: 'Critical', tone: 'danger', color: '#b91c1c' };
 }
 
+function appendUnitToRange(range, unit) {
+  if (!range || range === '-') return '-';
+  if (range === 'Not used') return range;
+  if (!unit || range.includes(unit)) return range;
+  return `${range} ${unit}`;
+}
+
+function buildOilLimitInfo(reference, profileLabel) {
+  if (!reference) return null;
+  return {
+    title: profileLabel || reference.sourceLabel || 'Active oil profile',
+    source: reference.sourceLabel || null,
+    healthy: appendUnitToRange(getHealthyRangeLabel(reference), reference.unit),
+    monitor: appendUnitToRange(getMonitorRangeLabel(reference), reference.unit),
+    action: appendUnitToRange(getActionRangeLabel(reference), reference.unit),
+  };
+}
+
+function buildSupplementaryLimitInfo(reference) {
+  if (!reference) return null;
+  return {
+    title: reference.sourceLabel || `${reference.shortLabel || reference.label} reference`,
+    source: reference.testBasis || null,
+    healthy: appendUnitToRange(getSupplementaryHealthyRangeLabel(reference), reference.unit),
+    monitor: appendUnitToRange(getSupplementaryMonitorRangeLabel(reference), reference.unit),
+    action: appendUnitToRange(getSupplementaryActionRangeLabel(reference), reference.unit),
+  };
+}
+
+function formatTooltipMetricValue(value, unit, precision) {
+  const formatted = formatNumber(value, precision);
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function formatSparklinePointDate(point, fallbackLabel) {
+  const candidate = point?.raw?.testDate ?? point?.rawDate ?? point?.testDate ?? point?.date;
+  const formatted = formatDate(candidate);
+  return formatted !== '-' ? formatted : (fallbackLabel ?? '-');
+}
+
+function SparklineTooltip({ active, payload, label, unit, precision, resultLabel, limitInfo }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  const value = payload[0]?.value;
+  if (value === null || value === undefined) return null;
+
+  return (
+    <div className="min-w-[190px] rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-xs text-[var(--foreground)] shadow-lg">
+      <p className="font-semibold">{formatSparklinePointDate(point, label)}</p>
+      <div className="mt-1 flex items-center justify-between gap-4">
+        <span className="text-[var(--muted)]">{resultLabel || 'Result'}</span>
+        <span className="font-semibold">{formatTooltipMetricValue(value, unit, precision)}</span>
+      </div>
+      {limitInfo ? (
+        <div className="mt-2 border-t border-[color:var(--border)] pt-2">
+          <p className="font-medium text-[var(--foreground)]">{limitInfo.title}</p>
+          {limitInfo.healthy ? (
+            <p className="mt-1 text-[var(--muted)]">Healthy: {limitInfo.healthy}</p>
+          ) : null}
+          {limitInfo.monitor && limitInfo.monitor !== 'Not used' ? (
+            <p className="text-[var(--muted)]">Monitor: {limitInfo.monitor}</p>
+          ) : null}
+          {limitInfo.action ? (
+            <p className="text-[var(--muted)]">Action: {limitInfo.action}</p>
+          ) : null}
+          {limitInfo.source ? (
+            <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">{limitInfo.source}</p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // --- Sparkline component ---
-function Sparkline({ data, dataKey, color = '#0d9488', height = 36, referenceValue }) {
+function Sparkline({
+  data,
+  dataKey,
+  color = '#0d9488',
+  height = 36,
+  referenceValue,
+  unit = '',
+  precision = 2,
+  resultLabel,
+  limitInfo,
+}) {
   if (!data || data.length < 2) {
     return <div style={{ height, fontSize: 11, color: 'var(--muted)' }}>not enough samples</div>;
   }
@@ -486,6 +646,18 @@ function Sparkline({ data, dataKey, color = '#0d9488', height = 36, referenceVal
         {referenceValue !== undefined && referenceValue !== null ? (
           <ReferenceLine y={referenceValue} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.5} />
         ) : null}
+        <Tooltip
+          content={(
+            <SparklineTooltip
+              unit={unit}
+              precision={precision}
+              resultLabel={resultLabel}
+              limitInfo={limitInfo}
+            />
+          )}
+          cursor={{ stroke: CHART_AXIS_COLOR, strokeWidth: 1, strokeDasharray: '3 3' }}
+          wrapperStyle={{ zIndex: 60, outline: 'none' }}
+        />
         <Area
           type="monotone"
           dataKey={dataKey}
@@ -494,6 +666,7 @@ function Sparkline({ data, dataKey, color = '#0d9488', height = 36, referenceVal
           fill={`url(#spark-${dataKey})`}
           isAnimationActive={false}
           dot={false}
+          activeDot={{ r: 3.5, stroke: 'var(--card)', strokeWidth: 2 }}
         />
       </AreaChart>
     </ResponsiveContainer>
@@ -514,8 +687,8 @@ function HealthGauge({ score }) {
   const y = cy - needleLen * Math.sin(rad);
 
   return (
-    <div className="flex flex-col items-center justify-center w-full">
-      <svg viewBox="0 -8 220 188" width="100%" height="auto" style={{ maxWidth: 280 }}>
+    <div className="flex w-full flex-col items-center justify-center">
+      <svg viewBox="0 -8 220 188" width="100%" height="auto" style={{ maxWidth: 210 }}>
         <defs>
           <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#dc2626" />
@@ -565,7 +738,7 @@ function HealthGauge({ score }) {
           x={cx}
           y={cy + 45}
           textAnchor="middle"
-          fontSize="34"
+          fontSize="28"
           fontWeight="700"
           fill={bucket.color}
         >
@@ -575,7 +748,7 @@ function HealthGauge({ score }) {
           out of 100
         </text>
       </svg>
-      <Badge variant={bucket.tone} className="mt-1 text-sm">
+      <Badge variant={bucket.tone} className="mt-0 text-xs">
         {bucket.label}
       </Badge>
     </div>
@@ -672,14 +845,37 @@ function buildLatestDuvalCards(analysis, oilType = 'mineral') {
     });
 }
 
-function LifetimeUsageCard({ assetAge, yearBuilt, sampleDate }) {
+function LifetimeUsageCard({ assetAge, yearBuilt, sampleDate, dpFuran, dpMethanol }) {
+  const [source, setSource] = useState('furan');
   const age = Number.isFinite(assetAge) ? Math.max(assetAge, 0) : null;
-  const usagePct = getLifetimeUsagePctFromAge(age);
-  const remainingYears = age === null ? null : Math.max(0, REFERENCE_LIFE_YEARS - age);
-  const overrunYears = age === null ? null : Math.max(0, age - REFERENCE_LIFE_YEARS);
+  const sourceOptions = [
+    {
+      key: 'furan',
+      label: 'Furan',
+      sourceLabel: 'DP from 2-FAL',
+      summaryLabel: 'DP estimated from 2-FAL',
+      dpLabel: 'DP 2-FAL',
+      missingSummary: 'Add a 2-FAL result or DP from Furan to calculate this estimate.',
+      dp: dpFuran,
+    },
+    {
+      key: 'methanol',
+      label: 'Methanol',
+      sourceLabel: 'DP from Methanol',
+      summaryLabel: 'DP estimated from Methanol',
+      dpLabel: 'DP Methanol',
+      missingSummary: 'Add a Methanol result or DP from Methanol to calculate this estimate.',
+      dp: dpMethanol,
+    },
+  ];
+  const sourceConfig = sourceOptions.find((option) => option.key === source) ?? sourceOptions[0];
+  const selectedDp = toNumber(sourceConfig.dp);
+  const selectedDpValue = Number.isFinite(selectedDp) && selectedDp > 0 ? selectedDp : null;
+  const dpLifePct = calcLifeUsedFromDp(selectedDpValue);
+  const usagePct = dpLifePct;
   const tone =
     usagePct === null
-      ? { label: 'Reference age unavailable', variant: 'secondary', color: '#94a3b8' }
+      ? { label: `${sourceConfig.label} unavailable`, variant: 'secondary', color: '#94a3b8' }
       : usagePct >= 90
         ? { label: 'Near end of reference life', variant: 'danger', color: '#ef4444' }
         : usagePct >= 75
@@ -690,22 +886,62 @@ function LifetimeUsageCard({ assetAge, yearBuilt, sampleDate }) {
   const circumference = 2 * Math.PI * radius;
   const dashoffset = usagePct === null ? circumference : circumference * (1 - usagePct / 100);
   const summary =
-    age === null
-      ? 'Add the built year to estimate transformer lifetime usage.'
-      : overrunYears > 0
-        ? `Operating about ${overrunYears} year${overrunYears === 1 ? '' : 's'} beyond the ${REFERENCE_LIFE_YEARS}-year reference life.`
-        : `Approx. ${remainingYears} year${remainingYears === 1 ? '' : 's'} remaining against a ${REFERENCE_LIFE_YEARS}-year reference life.`;
+    dpLifePct !== null
+      ? `Paper insulation life used based on ${sourceConfig.summaryLabel} (DP approx. ${selectedDpValue}).`
+      : `${sourceConfig.sourceLabel} is unavailable. ${sourceConfig.missingSummary}`;
+
+  const sourceLabel = sourceConfig.sourceLabel;
+  const nextSource = source === 'furan' ? 'methanol' : 'furan';
+  const nextSourceLabel = sourceOptions.find((option) => option.key === nextSource)?.label ?? 'alternate source';
+  const toggleSource = () => setSource((current) => (current === 'furan' ? 'methanol' : 'furan'));
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleSource();
+    }
+  };
 
   return (
-    <Card className="h-full">
-      <CardHeader>
+    <Card
+      className="flex h-full cursor-pointer select-none flex-col transition hover:border-[color:var(--primary)] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[color:var(--primary)] focus:ring-offset-2 focus:ring-offset-[var(--background)]"
+      role="button"
+      tabIndex={0}
+      aria-label={`Estimated lifetime use from ${sourceConfig.label}. Activate to switch to ${nextSourceLabel}.`}
+      onClick={toggleSource}
+      onKeyDown={handleKeyDown}
+    >
+      <CardHeader className="space-y-3 pb-3">
         <CardTitle className="flex items-center gap-2">
           <Gauge className="h-4 w-4 text-[var(--primary-strong)]" />
           Estimated Lifetime Use
         </CardTitle>
+        <div
+          className="grid grid-cols-2 gap-1 rounded-md bg-[var(--card-muted)] p-1 text-[10px] font-semibold uppercase tracking-[0.08em]"
+          aria-hidden="true"
+        >
+          {sourceOptions.map((option) => {
+            const optionDp = toNumber(option.dp);
+            const isAvailable = Number.isFinite(optionDp) && optionDp > 0;
+            const isActive = option.key === source;
+            return (
+              <span
+                key={option.key}
+                className={`rounded px-2 py-1 text-center transition ${
+                  isActive
+                    ? 'bg-[var(--card)] text-[var(--primary-strong)] shadow-sm'
+                    : isAvailable
+                      ? 'text-[var(--muted)]'
+                      : 'text-[var(--muted)] opacity-45'
+                }`}
+              >
+                {option.label}
+              </span>
+            );
+          })}
+        </div>
       </CardHeader>
-      <CardContent className="flex h-full flex-col items-center gap-4">
-        <div className="relative flex h-[172px] w-[172px] items-center justify-center">
+      <CardContent className="flex flex-1 flex-col items-center gap-3">
+        <div className="relative flex h-[160px] w-[160px] items-center justify-center">
           <svg viewBox="0 0 172 172" className="h-full w-full overflow-visible">
             <defs>
               <linearGradient id="lifetime-usage-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -756,13 +992,23 @@ function LifetimeUsageCard({ assetAge, yearBuilt, sampleDate }) {
         </p>
 
         <div className="grid w-full grid-cols-2 gap-2">
+          <Mini label={sourceConfig.dpLabel} value={selectedDpValue ?? '-'} unit="" />
           <Mini label="Age" value={age !== null ? age : '-'} unit={age !== null ? 'yrs' : ''} />
-          <Mini label="Built" value={yearBuilt ?? '-'} unit="" />
           <div className="col-span-2 rounded-md bg-[var(--card)] px-2 py-1.5">
             <div className="flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+              <span>Source</span>
+              <span>{sourceLabel}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
               <span>Reference life</span>
               <span>{REFERENCE_LIFE_YEARS} yrs</span>
             </div>
+            {yearBuilt ? (
+              <div className="mt-1 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+                <span>Built</span>
+                <span>{yearBuilt}</span>
+              </div>
+            ) : null}
             {sampleDate ? (
               <p className="mt-1 text-[11px] text-[var(--muted)]">As of {formatDate(sampleDate)}</p>
             ) : null}
@@ -873,8 +1119,9 @@ function DgaLimitsBars({ latest, cautionLimits = DGA_CAUTION_LIMITS, warningLimi
 }
 // --- DGA trending chart with clickable legend ---
 function DgaTrendingChart({ data, height = 220 }) {
+  const HIDDEN_BY_DEFAULT = new Set(['CO', 'TDCG']);
   const [visible, setVisible] = React.useState(() =>
-    Object.fromEntries(DGA_TREND_LINES.map((line) => [line.dataKey, true])),
+    Object.fromEntries(DGA_TREND_LINES.map((line) => [line.dataKey, !HIDDEN_BY_DEFAULT.has(line.dataKey)])),
   );
 
   const handleLegendClick = (entry) => {
@@ -1147,7 +1394,18 @@ function TransformerHealthDashboard({
     [latest],
   );
   const supplementaryMetrics = supplementaryAssessment?.metrics || {};
+  const supplementaryReferences = {
+    inhibitor: getSupplementaryReference('inhibitor'),
+    passivator: getSupplementaryReference('passivator'),
+    fal2: getSupplementaryReference('fal2'),
+    methanol: getSupplementaryReference('methanol'),
+  };
   const oilReferences = iecAssessment?.profile?.limits || DEFAULT_ACTIVE_OIL_REFERENCES;
+  const activeOilProfileLabel = [
+    iecAssessment?.standard?.label || 'Active oil profile',
+    iecAssessment?.limitProfile?.shortLabel,
+    iecAssessment?.profile?.shortLabel,
+  ].filter(Boolean).join(' - ');
 
   // Compartment name and asset age
   const yearBuilt = toNumber(transformer?.yearBuilt);
@@ -1208,7 +1466,7 @@ function TransformerHealthDashboard({
     );
   }
 
-  const bucket = healthBucket(healthScore);
+  const oilTypeSnapshot = getOilTypeSnapshot(latest, transformer);
   const oilSnapshots = {
     BDV: getMetricSnapshot(mapped, 'BDV'),
     Moisture: getMetricSnapshot(mapped, 'Moisture'),
@@ -1236,7 +1494,9 @@ function TransformerHealthDashboard({
   const dpMethanolBadge = getDpBadge(dpMethanolValue);
   const lifetimeSnapshotData = mapped.map((test) => ({
     ...test,
-    LifetimeUsagePct: getLifetimeUsagePctForDate(yearBuilt, test.rawDate),
+    LifetimeUsagePct:
+      calcLifeUsedFromDp(test.DPFuran, test.DPMethanol) ??
+      getLifetimeUsagePctForDate(yearBuilt, test.rawDate),
   }));
   const lifetimeSnapshot = getMetricSnapshot(lifetimeSnapshotData, 'LifetimeUsagePct');
 
@@ -1244,13 +1504,13 @@ function TransformerHealthDashboard({
     <div className="space-y-5">
       {/* === Hero banner === */}
       <Card>
-        <CardContent className="grid gap-5 p-5 md:grid-cols-[280px_1fr]">
-          <div className="flex flex-col items-center justify-center gap-2 rounded-md bg-[var(--card-muted)] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+        <CardContent className="grid gap-4 p-5 md:grid-cols-[220px_1fr]">
+          <div className="flex flex-col items-center justify-center gap-1.5 rounded-md bg-[var(--card-muted)] p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
               Health Index
             </p>
             <HealthGauge score={healthScore} />
-            <p className="mt-1 text-center text-xs text-[var(--muted)]">
+            <p className="mt-1 max-w-[180px] text-center text-[11px] leading-4 text-[var(--muted)]">
               Composite of DGA, oil quality and paper aging
             </p>
           </div>
@@ -1273,14 +1533,10 @@ function TransformerHealthDashboard({
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <KpiTile
-                icon={Sparkles}
-                label="Status"
-                value={bucket.label}
-                helper={
-                  healthScore !== null && healthScore !== undefined
-                    ? `Score ${healthScore}/100`
-                    : 'Insufficient data'
-                }
+                icon={Droplets}
+                label="Oil type"
+                value={oilTypeSnapshot.value}
+                helper={oilTypeSnapshot.helper}
               />
               <KpiTile
                 icon={Layers}
@@ -1289,11 +1545,10 @@ function TransformerHealthDashboard({
                 helper={`Latest ${formatRelativeDate(latest.raw?.testDate)}`}
               />
               <KpiTile
-                icon={ThermometerSun}
-                label="Asset age"
-                value={assetAge !== null ? assetAge.toString() : '-'}
-                unit={assetAge !== null ? 'yrs' : ''}
-                helper={yearBuilt ? `Built ${yearBuilt}` : 'Year unknown'}
+                icon={FileText}
+                label="Type of paper"
+                value={getPaperTypeLabel(transformer?.paperType) || '-'}
+                helper={transformer?.paperType ? 'Insulation paper' : 'Not specified'}
               />
               <KpiTile
                 icon={Zap}
@@ -1301,6 +1556,12 @@ function TransformerHealthDashboard({
                 value={`${transformer?.voltage || '-'} · ${transformer?.loadMVA || '-'} MVA`}
                 helper={transformer?.maker ? `Maker: ${transformer.maker}` : ''}
               />
+            </div>
+            <div className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-2 text-xs leading-5 text-[var(--muted)]">
+              <span className="font-semibold text-[var(--foreground)]">Disclaimer:</span>{' '}
+              The Health Index is an advisory calculation from DGA, oil quality and paper aging data. It is not an
+              official TNB Labs test certificate; always refer to the signed original certificate and verify
+              authenticity with TNB Labs.
             </div>
           </div>
         </CardContent>
@@ -1327,8 +1588,8 @@ function TransformerHealthDashboard({
       </Card>
 
       {/* === DGA Section === */}
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,0.86fr)_280px_minmax(0,0.96fr)]">
-        <Card>
+      <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,0.86fr)_280px_minmax(0,0.96fr)]">
+        <Card className="flex h-full flex-col">
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
               <FlaskConical className="h-4 w-4 text-[var(--primary-strong)]" />
@@ -1343,7 +1604,7 @@ function TransformerHealthDashboard({
               ) : null}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1">
             <DgaLimitsBars latest={latest} cautionLimits={cautionLimits} warningLimits={warningLimits} height={170} />
             <div className="mt-4 border-t border-[color:var(--border)] pt-4">
               <DgaTrendingChart data={trendData} height={214} />
@@ -1354,8 +1615,10 @@ function TransformerHealthDashboard({
           assetAge={assetAge}
           yearBuilt={yearBuilt}
           sampleDate={latest.raw?.testDate}
+          dpFuran={latest.DPFuran}
+          dpMethanol={latest.DPMethanol}
         />
-        <Card>
+        <Card className="flex h-full flex-col">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-[var(--primary-strong)]" />
@@ -1365,7 +1628,7 @@ function TransformerHealthDashboard({
               </span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1">
             <FaultMethodsRadar latest={latest} standard={standardKey} oilType={oilType} />
           </CardContent>
         </Card>
@@ -1397,6 +1660,7 @@ function TransformerHealthDashboard({
               dataKey="BDV"
               referenceValue={getReferenceLineValue(oilReferences.breakdown)}
               oilReferences={oilReferences}
+              referenceProfileLabel={activeOilProfileLabel}
             />
             <OilTile
               icon={Waves}
@@ -1410,6 +1674,7 @@ function TransformerHealthDashboard({
               referenceValue={getReferenceLineValue(oilReferences.waterContent)}
               inverse
               oilReferences={oilReferences}
+              referenceProfileLabel={activeOilProfileLabel}
             />
             <OilTile
               icon={FlaskConical}
@@ -1423,6 +1688,7 @@ function TransformerHealthDashboard({
               referenceValue={getReferenceLineValue(oilReferences.acidity)}
               inverse
               oilReferences={oilReferences}
+              referenceProfileLabel={activeOilProfileLabel}
             />
             <OilTile
               icon={Droplets}
@@ -1435,6 +1701,7 @@ function TransformerHealthDashboard({
               dataKey="IFT"
               referenceValue={getReferenceLineValue(oilReferences.interfacialTension)}
               oilReferences={oilReferences}
+              referenceProfileLabel={activeOilProfileLabel}
             />
             <OilTile
               icon={Gauge}
@@ -1448,6 +1715,7 @@ function TransformerHealthDashboard({
               referenceValue={getReferenceLineValue(oilReferences.powerFactor)}
               inverse
               oilReferences={oilReferences}
+              referenceProfileLabel={activeOilProfileLabel}
             />
             <OilTile
               icon={Activity}
@@ -1460,6 +1728,7 @@ function TransformerHealthDashboard({
               dataKey="Resistivity"
               referenceValue={getReferenceLineValue(oilReferences.resistivity)}
               oilReferences={oilReferences}
+              referenceProfileLabel={activeOilProfileLabel}
             />
             <OilTile
               icon={AlertTriangle}
@@ -1473,6 +1742,7 @@ function TransformerHealthDashboard({
               referenceValue={getReferenceLineValue(oilReferences.dbds)}
               inverse
               oilReferences={oilReferences}
+              referenceProfileLabel={activeOilProfileLabel}
             />
             <OilTile
               icon={Sparkles}
@@ -1484,6 +1754,7 @@ function TransformerHealthDashboard({
               data={mapped}
               dataKey="Inhibitor"
               referenceValue={getSupplementaryReferenceLineValue('inhibitor')}
+              tooltipReference={supplementaryReferences.inhibitor}
             />
             <OilTile
               icon={ShieldCheck}
@@ -1495,6 +1766,7 @@ function TransformerHealthDashboard({
               data={mapped}
               dataKey="Passivator"
               referenceValue={getSupplementaryReferenceLineValue('passivator')}
+              tooltipReference={supplementaryReferences.passivator}
             />
             <OilTile
               icon={ThermometerSun}
@@ -1506,6 +1778,7 @@ function TransformerHealthDashboard({
               data={mapped}
               dataKey="Furan"
               referenceValue={getSupplementaryReferenceLineValue('fal2')}
+              tooltipReference={supplementaryReferences.fal2}
             />
             <OilTile
               icon={FileText}
@@ -1517,6 +1790,7 @@ function TransformerHealthDashboard({
               data={mapped}
               dataKey="Methanol"
               referenceValue={getSupplementaryReferenceLineValue('methanol')}
+              tooltipReference={supplementaryReferences.methanol}
             />
             <OilTile
               icon={HeartPulse}
@@ -1529,6 +1803,13 @@ function TransformerHealthDashboard({
               dataKey="DPFuran"
               referenceValue={500}
               extraBadge={dpFuranBadge}
+              tooltipLimitInfo={{
+                title: 'DP interpretation',
+                healthy: '>= 700',
+                monitor: '500 to < 700',
+                action: '< 500',
+                source: 'DP estimated from 2-FAL',
+              }}
               inverse
               precision={0}
             />
@@ -1543,6 +1824,13 @@ function TransformerHealthDashboard({
               dataKey="DPMethanol"
               referenceValue={500}
               extraBadge={dpMethanolBadge}
+              tooltipLimitInfo={{
+                title: 'DP interpretation',
+                healthy: '>= 700',
+                monitor: '500 to < 700',
+                action: '< 500',
+                source: 'DP estimated from Methanol',
+              }}
               inverse
               precision={0}
             />
@@ -1556,6 +1844,13 @@ function TransformerHealthDashboard({
               data={lifetimeSnapshotData}
               dataKey="LifetimeUsagePct"
               referenceValue={75}
+              tooltipLimitInfo={{
+                title: 'Lifetime usage bands',
+                healthy: '< 75 %',
+                monitor: '75 to < 90 %',
+                action: '>= 90 %',
+                source: 'Calculated from selected DP estimate where available',
+              }}
               precision={0}
             />
           </div>
@@ -1587,6 +1882,9 @@ function OilTile({
   extraBadge,
   precision = 2,
   oilReferences = DEFAULT_ACTIVE_OIL_REFERENCES,
+  referenceProfileLabel,
+  tooltipReference,
+  tooltipLimitInfo,
 }) {
   const value = latest;
   let severity = null;
@@ -1603,6 +1901,13 @@ function OilTile({
   }
 
   const tone = severityLabel(severity);
+  const activeReference = tooltipReference ?? (statusKey ? oilReferences?.[statusKey] : null);
+  const sparklineLimitInfo =
+    tooltipLimitInfo ??
+    buildOilLimitInfo(activeReference, referenceProfileLabel) ??
+    (referenceValue !== undefined && referenceValue !== null
+      ? { title: 'Reference line', healthy: formatTooltipMetricValue(referenceValue, unit, precision) }
+      : null);
 
   return (
     <div className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
@@ -1629,7 +1934,15 @@ function OilTile({
         </div>
       ) : null}
       <div className="mt-2">
-        <Sparkline data={data} dataKey={dataKey} referenceValue={referenceValue} />
+        <Sparkline
+          data={data}
+          dataKey={dataKey}
+          referenceValue={referenceValue}
+          unit={unit}
+          precision={precision}
+          resultLabel={label}
+          limitInfo={sparklineLimitInfo}
+        />
       </div>
       {previous !== null && previous !== undefined ? (
         <p className="mt-1 text-[11px] text-[var(--muted)]">

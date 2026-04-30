@@ -595,8 +595,8 @@ export default function HeptagonDGA({ initialGases, initialTransformer, darkMode
                       cursor: "pointer", letterSpacing: "0.5px", transition: "transform 0.15s, box-shadow 0.15s",
                       boxShadow: "0 4px 12px rgba(59,130,246,0.3)",
                     }}
-                    onMouseDown={(e) => (e.target.style.transform = "scale(0.98)")}
-                    onMouseUp={(e) => (e.target.style.transform = "scale(1)")}
+                    onPointerDown={(e) => (e.target.style.transform = "scale(0.98)")}
+                    onPointerUp={(e) => (e.target.style.transform = "scale(1)")}
                   >
                     ▶ ANALYZE
                   </button>

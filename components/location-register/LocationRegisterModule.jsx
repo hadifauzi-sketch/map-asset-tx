@@ -103,7 +103,7 @@ function PreviewMapUpdater({ center, zoom }) {
   return null;
 }
 
-function LocationRegisterModule({ open, onClose, onSave, onFocusPosition }) {
+function LocationRegisterModule({ open, onClose, onSave, onFocusPosition, onShowNotice }) {
   const watchIdRef = useRef(null);
   const liveSyncRef = useRef(true);
   const [formData, setFormData] = useState(() => createTransformerDraft());
@@ -251,19 +251,47 @@ function LocationRegisterModule({ open, onClose, onSave, onFocusPosition }) {
     event.preventDefault();
 
     if (!formData.siteName.trim()) {
-      window.alert('Please enter a site name.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'Site name required',
+        description: 'Add the site name before saving this GPS-registered asset.',
+        detail: 'The site name helps keep the asset register grouped correctly and avoids ambiguous entries.',
+        contextLabel: 'Location register',
+        actionLabel: 'Back to form',
+      });
       return;
     }
     if (!formData.txName.trim()) {
-      window.alert('Please enter a transformer name.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'Transformer name required',
+        description: 'Add the transformer name before saving this GPS-registered asset.',
+        detail: 'Use the local transformer identifier used at site, for example T1, TX-001, or the equipment tag.',
+        contextLabel: 'Location register',
+        actionLabel: 'Back to form',
+      });
       return;
     }
     if (!formData.voltage.trim()) {
-      window.alert('Please enter a voltage.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'Voltage required',
+        description: 'Enter the transformer voltage before saving this GPS-registered asset.',
+        detail: 'This field is required so the asset can be tracked and compared correctly in the register.',
+        contextLabel: 'Location register',
+        actionLabel: 'Back to form',
+      });
       return;
     }
     if (!hasValidPosition(formData.position)) {
-      window.alert('Wait for a valid GPS fix before saving this asset.');
+      onShowNotice?.({
+        variant: 'warning',
+        title: 'GPS fix still needed',
+        description: 'Wait for a valid GPS position before saving this asset.',
+        detail: 'Keep the live GPS running until latitude and longitude are locked to your current location.',
+        contextLabel: 'Location register',
+        actionLabel: 'Back to GPS',
+      });
       return;
     }
 

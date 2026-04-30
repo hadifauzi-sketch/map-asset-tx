@@ -602,8 +602,8 @@ export default function DGAWorkbenchModal({
                 key={sample.id}
                 type="button"
                 onClick={() => setSelectedSampleId(sample.id)}
-                onMouseEnter={(event) => showTooltip(event, sample)}
-                onMouseLeave={hideTooltip}
+                onPointerEnter={(event) => showTooltip(event, sample)}
+                onPointerLeave={hideTooltip}
                 onFocus={(event) => showTooltip(event, sample)}
                 onBlur={hideTooltip}
                 className={`min-w-[168px] rounded-md border px-3 py-3 text-left transition ${

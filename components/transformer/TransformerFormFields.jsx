@@ -1,5 +1,6 @@
 import React from 'react';
 import { MALAYSIA_STATES } from '../../lib/malaysiaStates';
+import { PAPER_TYPE_OPTIONS } from '../../lib/paperTypeUtils';
 import { Input } from '../ui/input';
 
 function Field({ label, name, required = false, ...props }) {
@@ -30,7 +31,44 @@ function SelectField({ label, name, hint, children, ...props }) {
   );
 }
 
-function TransformerFormFields({ formData, onChange }) {
+function buildSerialConflictMessage(serialConflicts) {
+  if (!serialConflicts?.length) {
+    return '';
+  }
+
+  if (serialConflicts.length === 1) {
+    const conflict = serialConflicts[0];
+    const location = [conflict.siteName, conflict.txName].filter(Boolean).join(' / ');
+    const mnemonicLabel = conflict.mnemonic ? ` (${conflict.mnemonic})` : '';
+
+    return `This serial number is already registered to ${location || 'another asset'}${mnemonicLabel}. Update that record instead of creating a duplicate serial number.`;
+  }
+
+  return `This serial number is already registered on ${serialConflicts.length} assets. Review the register before saving.`;
+}
+
+function buildSuggestionMeta(suggestion) {
+  return [suggestion.reason, suggestion.siteName, suggestion.txName, suggestion.serialNumber ? `SN ${suggestion.serialNumber}` : '']
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function TransformerFormFields({
+  formData,
+  onChange,
+  mnemonicSuggestions = [],
+  serialConflicts = [],
+  mnemonicSuggestionListId,
+  onMnemonicSuggestionPick,
+}) {
+  const currentMnemonic = String(formData.mnemonic || '').trim();
+  const hasLookupInput = Boolean(
+    String(formData.serialNumber || '').trim() ||
+      String(formData.siteName || '').trim() ||
+      String(formData.txName || '').trim()
+  );
+  const serialConflictMessage = buildSerialConflictMessage(serialConflicts);
+
   return (
     <section className="grid gap-4 sm:grid-cols-2">
       <Field
@@ -63,20 +101,84 @@ function TransformerFormFields({ formData, onChange }) {
         onChange={onChange}
         placeholder="TX-001"
       />
-      <Field
-        label="Mnemonic"
-        name="mnemonic"
-        value={formData.mnemonic || ''}
-        onChange={onChange}
-        placeholder="TXALP01"
-      />
-      <Field
-        label="Serial number"
-        name="serialNumber"
-        value={formData.serialNumber || ''}
-        onChange={onChange}
-        placeholder="SN-2024-001"
-      />
+      <label className="space-y-2">
+        <span className="text-sm font-medium text-[var(--foreground)]">Serial number</span>
+        <Input
+          name="serialNumber"
+          value={formData.serialNumber || ''}
+          onChange={onChange}
+          placeholder="SN-2024-001"
+        />
+        {serialConflictMessage ? (
+          <span className="block rounded-md border border-[color:var(--danger-soft)] bg-[var(--danger-soft)]/60 px-3 py-2 text-xs leading-5 text-[var(--danger-strong)]">
+            {serialConflictMessage}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--muted)]">
+            Entering a serial number will search the existing asset register so the mnemonic can be reused
+            accurately.
+          </span>
+        )}
+      </label>
+      <label className="space-y-2 sm:col-span-2">
+        <span className="text-sm font-medium text-[var(--foreground)]">Mnemonic</span>
+        <Input
+          name="mnemonic"
+          value={formData.mnemonic || ''}
+          onChange={onChange}
+          placeholder="TXALP01"
+          list={mnemonicSuggestionListId}
+          autoComplete="off"
+        />
+        {mnemonicSuggestions.length ? (
+          <datalist id={mnemonicSuggestionListId}>
+            {mnemonicSuggestions.map((suggestion) => (
+              <option
+                key={`${suggestion.transformerId}-${suggestion.mnemonic}`}
+                value={suggestion.mnemonic}
+              >
+                {buildSuggestionMeta(suggestion)}
+              </option>
+            ))}
+          </datalist>
+        ) : null}
+        {mnemonicSuggestions.length ? (
+          <div className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted)]">
+              Suggested from existing assets
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {mnemonicSuggestions.map((suggestion) => {
+                const isSelected = currentMnemonic === suggestion.mnemonic;
+
+                return (
+                  <button
+                    key={`${suggestion.transformerId}-${suggestion.mnemonic}-button`}
+                    type="button"
+                    className={`rounded-md border px-3 py-3 text-left transition-colors ${
+                      isSelected
+                        ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]/70 text-[var(--foreground)]'
+                        : 'border-[color:var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--card-strong)]'
+                    }`}
+                    onClick={() => onMnemonicSuggestionPick?.(suggestion.mnemonic)}
+                  >
+                    <span className="block text-sm font-semibold">{suggestion.mnemonic}</span>
+                    <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">
+                      {buildSuggestionMeta(suggestion)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <span className="text-xs text-[var(--muted)]">
+            {hasLookupInput
+              ? 'No registered mnemonic matches yet. You can type a new mnemonic manually for this asset.'
+              : 'Serial number, site, and transformer name will search existing mnemonics here. You can still type a new mnemonic manually.'}
+          </span>
+        )}
+      </label>
       <Field
         label="Voltage"
         name="voltage"
@@ -106,6 +208,20 @@ function TransformerFormFields({ formData, onChange }) {
         onChange={onChange}
         placeholder="2020"
       />
+      <SelectField
+        label="Type of paper"
+        name="paperType"
+        value={formData.paperType || ''}
+        onChange={onChange}
+        hint="Insulation paper used inside the transformer."
+      >
+        <option value="">Not specified</option>
+        {PAPER_TYPE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </SelectField>
     </section>
   );
 }
