@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import {
   Building2,
@@ -345,6 +345,8 @@ function TransformerSidebar({
   const [isStatesModalOpen, setIsStatesModalOpen] = useState(false);
   const [assetGroupContextMenu, setAssetGroupContextMenu] = useState(null);
   const [assetCardGroup, setAssetCardGroup] = useState(null);
+  const [isMobileTopHidden, setIsMobileTopHidden] = useState(false);
+  const lastSidebarScrollTopRef = useRef(0);
 
   const hierarchy = useMemo(() => buildHierarchy(transformers, floorPlans), [floorPlans, transformers]);
   const filteredHierarchy = useMemo(() => filterHierarchy(hierarchy, searchTerm), [hierarchy, searchTerm]);
@@ -608,6 +610,30 @@ function TransformerSidebar({
     </>
   );
 
+  useEffect(() => {
+    setIsMobileTopHidden(false);
+    lastSidebarScrollTopRef.current = 0;
+  }, [searchTerm, filteredHierarchy.length]);
+
+  const handleHierarchyScroll = (event) => {
+    const scrollElement = event.currentTarget;
+    const nextScrollTop = Math.max(0, scrollElement.scrollTop);
+    const previousScrollTop = lastSidebarScrollTopRef.current;
+    const scrollDelta = nextScrollTop - previousScrollTop;
+    const hasScrollableContent = scrollElement.scrollHeight > scrollElement.clientHeight + 24;
+
+    if (!hasScrollableContent || nextScrollTop <= 12) {
+      setIsMobileTopHidden(false);
+      lastSidebarScrollTopRef.current = nextScrollTop;
+      return;
+    }
+
+    if (Math.abs(scrollDelta) >= 8) {
+      setIsMobileTopHidden(scrollDelta > 0);
+      lastSidebarScrollTopRef.current = nextScrollTop;
+    }
+  };
+
   if (collapsed) {
     return (
       <div className="h-full">
@@ -827,185 +853,191 @@ function TransformerSidebar({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[color:var(--sidebar)]/88 backdrop-blur-xl">
-      <header className="shrink-0 border-b border-[color:var(--border)] px-5 py-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-2">
-            <Badge
-              variant="secondary"
-              className="max-w-full truncate px-2.5 py-1 text-[11px] font-medium tracking-[0.02em]"
-              title={currentUser?.username || currentUser?.full_name || 'Asset map'}
-            >
-              {currentUser?.full_name || currentUser?.username || 'Asset map'}
-            </Badge>
-            <div>
-              <h1 className="text-2xl font-semibold">TX Asset Management</h1>
+      <div className={`sidebar-mobile-chrome${isMobileTopHidden ? ' is-hidden' : ''}`}>
+        <header className="border-b border-[color:var(--border)] px-4 py-3 lg:px-5 lg:py-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1.5 lg:space-y-2">
+              <Badge
+                variant="secondary"
+                className="max-w-full truncate px-2.5 py-1 text-[11px] font-medium tracking-[0.02em]"
+                title={currentUser?.username || currentUser?.full_name || 'Asset map'}
+              >
+                {currentUser?.full_name || currentUser?.username || 'Asset map'}
+              </Badge>
+              <div>
+                <h1 className="text-xl font-semibold leading-tight lg:text-2xl">TX Asset Management</h1>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5 lg:gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="hidden lg:inline-flex"
+                onClick={onToggleCollapsed}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 lg:h-10 lg:w-10"
+                onClick={onOpenSettings}
+                aria-label="Open settings"
+                title={currentUser ? `Open settings for ${currentUser.username}` : 'Open settings'}
+              >
+                <SettingsIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 lg:h-10 lg:w-10"
+                onClick={onToggleTheme}
+                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 lg:hidden"
+                onClick={onCloseMobile}
+                aria-label="Close sidebar"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="hidden lg:inline-flex"
-              onClick={onToggleCollapsed}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onOpenSettings}
-              aria-label="Open settings"
-              title={currentUser ? `Open settings for ${currentUser.username}` : 'Open settings'}
-            >
-              <SettingsIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onToggleTheme}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {theme === 'dark' ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              onClick={onCloseMobile}
-              aria-label="Close sidebar"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+          <div className="mt-3 grid grid-cols-4 gap-1.5 lg:mt-4 lg:grid-cols-2 lg:gap-2">
+            {quickStats.map((stat) => {
+              const Icon = stat.icon;
+              const isAssetsStat = stat.key === 'assets';
+              const isAreasStat = stat.key === 'areas';
+              const isCompanyParentStat = stat.key === 'companies';
+              const isStatesStat = stat.key === 'states';
+              const cardBody = (
+                <CardContent className="flex min-h-[58px] flex-col justify-center gap-1 px-2 py-2 lg:block lg:min-h-0 lg:space-y-1.5 lg:p-3">
+                  <div className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)] lg:h-7 lg:w-7">
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <p className="text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)] lg:text-[11px] lg:tracking-[0.12em]">
+                      <span className="lg:hidden">{getCollapsedStatLabel(stat.key, stat.label)}</span>
+                      <span className="hidden lg:inline">{stat.label}</span>
+                    </p>
+                    <p className="text-base font-semibold leading-none lg:text-xl">{stat.value}</p>
+                  </div>
+                </CardContent>
+              );
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {quickStats.map((stat) => {
-            const Icon = stat.icon;
-            const isAssetsStat = stat.key === 'assets';
-            const isAreasStat = stat.key === 'areas';
-            const isCompanyParentStat = stat.key === 'companies';
-            const isStatesStat = stat.key === 'states';
-            const cardBody = (
-              <CardContent className="space-y-1.5 p-3">
-                <div className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                  <Icon className="h-3.5 w-3.5" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-                    {stat.label}
-                  </p>
-                  <p className="text-xl font-semibold leading-none">{stat.value}</p>
-                </div>
-              </CardContent>
-            );
+              if (isAssetsStat || isAreasStat || isCompanyParentStat || isStatesStat) {
+                const onClick = isAssetsStat
+                  ? openAssetsModal
+                  : isAreasStat
+                    ? openAreasModal
+                    : isCompanyParentStat
+                      ? openCompanyParentModal
+                      : openStatesModal;
+                const ariaLabel = isAssetsStat
+                  ? `Assets: ${stat.value}. Open assets list`
+                  : isAreasStat
+                    ? `Areas/Substation: ${stat.value}. Open areas list`
+                    : isCompanyParentStat
+                      ? `Company/Parent: ${stat.value}. Open company/parent list`
+                      : `States: ${stat.value}. Open states list`;
+                const title = isAssetsStat
+                  ? 'Open assets list'
+                  : isAreasStat
+                    ? 'Open areas/substation list'
+                    : isCompanyParentStat
+                      ? 'Open company/parent list'
+                      : 'Open states list';
+                return (
+                  <Card key={stat.key} className="bg-[var(--card-elevated)]">
+                    <button
+                      type="button"
+                      className="w-full rounded-[inherit] text-left transition-colors hover:bg-[var(--card-muted)]"
+                      onClick={onClick}
+                      aria-label={ariaLabel}
+                      title={title}
+                    >
+                      {cardBody}
+                    </button>
+                  </Card>
+                );
+              }
 
-            if (isAssetsStat || isAreasStat || isCompanyParentStat || isStatesStat) {
-              const onClick = isAssetsStat
-                ? openAssetsModal
-                : isAreasStat
-                  ? openAreasModal
-                  : isCompanyParentStat
-                    ? openCompanyParentModal
-                    : openStatesModal;
-              const ariaLabel = isAssetsStat
-                ? `Assets: ${stat.value}. Open assets list`
-                : isAreasStat
-                  ? `Areas/Substation: ${stat.value}. Open areas list`
-                  : isCompanyParentStat
-                    ? `Company/Parent: ${stat.value}. Open company/parent list`
-                    : `States: ${stat.value}. Open states list`;
-              const title = isAssetsStat
-                ? 'Open assets list'
-                : isAreasStat
-                  ? 'Open areas/substation list'
-                  : isCompanyParentStat
-                    ? 'Open company/parent list'
-                    : 'Open states list';
               return (
                 <Card key={stat.key} className="bg-[var(--card-elevated)]">
-                  <button
-                    type="button"
-                    className="w-full rounded-[inherit] text-left transition-colors hover:bg-[var(--card-muted)]"
-                    onClick={onClick}
-                    aria-label={ariaLabel}
-                    title={title}
-                  >
-                    {cardBody}
-                  </button>
+                  {cardBody}
                 </Card>
               );
-            }
+            })}
+          </div>
+        </header>
 
-            return (
-              <Card key={stat.key} className="bg-[var(--card-elevated)]">
-                {cardBody}
-              </Card>
-            );
-          })}
-        </div>
-      </header>
-
-      <section className="shrink-0 border-b border-[color:var(--border)] px-5 py-4">
-        <div className="flex flex-col gap-3">
-          {canManageAssets ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Button
-                className="w-full justify-center"
-                variant={isAddMode ? 'secondary' : 'default'}
-                onClick={onAddClick}
-              >
-                <Plus className="h-4 w-4" />
-                {isAddMode ? 'Map placement armed' : 'Transformer'}
-              </Button>
-              <Button
-                className="w-full justify-center"
-                variant={isLocationRegisterOpen ? 'secondary' : 'outline'}
-                onClick={onLocationRegisterClick}
-              >
-                <MapPin className="h-4 w-4" />
-                {isLocationRegisterOpen ? 'Location register open' : 'GPS register'}
-              </Button>
-            </div>
-          ) : (
-            <Badge variant="outline" className="justify-center px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em]">
-              Viewer mode
-            </Badge>
-          )}
-
-          <label className="space-y-2">
-            <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-              Find an asset or floor
-            </span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-              <Input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by floor, company, or transformer"
-                className="pl-9 pr-9"
-              />
-              {searchTerm ? (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-xs font-semibold text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-                  aria-label="Clear search"
-                  title="Clear search"
+        <section className="border-b border-[color:var(--border)] px-4 py-3 lg:px-5 lg:py-4">
+          <div className="flex flex-col gap-3">
+            {canManageAssets ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  className="h-10 w-full justify-center lg:h-11"
+                  variant={isAddMode ? 'secondary' : 'default'}
+                  onClick={onAddClick}
                 >
-                  X
-                </button>
-              ) : null}
-            </div>
-          </label>
-        </div>
-      </section>
+                  <Plus className="h-4 w-4" />
+                  <span className="truncate">{isAddMode ? 'Placement armed' : 'Transformer'}</span>
+                </Button>
+                <Button
+                  className="h-10 w-full justify-center lg:h-11"
+                  variant={isLocationRegisterOpen ? 'secondary' : 'outline'}
+                  onClick={onLocationRegisterClick}
+                >
+                  <MapPin className="h-4 w-4" />
+                  <span className="truncate">{isLocationRegisterOpen ? 'GPS active' : 'GPS register'}</span>
+                </Button>
+              </div>
+            ) : (
+              <Badge variant="outline" className="justify-center px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em]">
+                Viewer mode
+              </Badge>
+            )}
+
+            <label className="space-y-2">
+              <span className="hidden text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)] lg:inline">
+                Find an asset or floor
+              </span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search by floor, company, or transformer"
+                  className="pl-9 pr-9"
+                />
+                {searchTerm ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-xs font-semibold text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    X
+                  </button>
+                ) : null}
+              </div>
+            </label>
+          </div>
+        </section>
+      </div>
 
       <div
-        className="sidebar-scroll min-h-0 flex-1 overflow-y-scroll overscroll-contain px-5 py-5"
+        className="sidebar-scroll min-h-0 flex-1 overflow-y-scroll overscroll-contain px-4 py-3 lg:px-5 lg:py-5"
+        onScroll={handleHierarchyScroll}
         onWheelCapture={(event) => {
           event.stopPropagation();
           if (typeof event.nativeEvent.stopImmediatePropagation === 'function') {
@@ -1013,10 +1045,10 @@ function TransformerSidebar({
           }
         }}
       >
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="mb-2 flex items-center justify-between gap-3 lg:mb-3">
           <div>
             <p className="text-sm font-medium">Floor hierarchy</p>
-            <p className="text-sm text-[var(--muted)]">
+            <p className="text-xs leading-4 text-[var(--muted)] lg:text-sm">
               {visibleAssetCount} assets and {visibleFloorCount} floors visible in {filteredHierarchy.length} state groups
             </p>
           </div>
@@ -1042,13 +1074,13 @@ function TransformerSidebar({
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2 lg:space-y-3">
             {filteredHierarchy.map((stateGroup) => {
               const stateKey = `state:${stateGroup.state}`;
               const isStateExpanded = Boolean(expandedStates[stateKey]);
 
               return (
-                <section key={stateGroup.state} className="space-y-3">
+                <section key={stateGroup.state} className="space-y-2 lg:space-y-3">
                   <button
                     type="button"
                     onClick={() => toggleExpandedValue(setExpandedStates, stateKey)}
@@ -1072,7 +1104,7 @@ function TransformerSidebar({
                   </button>
 
                   {isStateExpanded ? (
-                    <div className="space-y-3 pl-1">
+                    <div className="space-y-2 pl-1 lg:space-y-3">
                       {stateGroup.companies.map((companyGroup) => {
                         const companyKey = `company:${stateGroup.state}:${companyGroup.companyName}`;
                         const isCompanyExpanded = Boolean(expandedCompanies[companyKey]);
@@ -1085,7 +1117,7 @@ function TransformerSidebar({
                         const companyAssetCount = companyAssets.length;
 
                         return (
-                          <section key={companyKey} className="space-y-3">
+                          <section key={companyKey} className="space-y-2 lg:space-y-3">
                             <button
                               type="button"
                               onClick={() => toggleExpandedValue(setExpandedCompanies, companyKey)}
@@ -1119,7 +1151,7 @@ function TransformerSidebar({
                             </button>
 
                             {isCompanyExpanded ? (
-                              <div className="space-y-3 pl-2">
+                              <div className="space-y-2 pl-1 lg:space-y-3 lg:pl-2">
                                 {companyGroup.floorPlans.map((floorPlan) => {
                                   const floorKey = `floor:${floorPlan.id}`;
                                   const isFloorExpanded = Boolean(expandedFloorPlans[floorKey]);
@@ -1139,7 +1171,7 @@ function TransformerSidebar({
                                           assets: floorAssets,
                                         })
                                       }
-                                      className={`rounded-md border p-3 shadow-[var(--shadow-card)] ${
+                                      className={`rounded-md border p-2.5 shadow-[var(--shadow-card)] lg:p-3 ${
                                         isFloorSelected
                                           ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
                                           : 'border-violet-300/60 bg-violet-50/45 dark:border-violet-900/50 dark:bg-violet-950/20'
@@ -1153,7 +1185,7 @@ function TransformerSidebar({
                                         >
                                           <div className="flex items-center gap-2">
                                             <div
-                                              className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
+                                              className={`inline-flex h-7 w-7 items-center justify-center rounded-md lg:h-8 lg:w-8 ${
                                                 isFloorSelected
                                                   ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                                                   : 'bg-[var(--primary-soft)] text-[var(--primary-strong)]'
@@ -1201,7 +1233,7 @@ function TransformerSidebar({
                                             onClick={() => toggleExpandedValue(setExpandedFloorPlans, floorKey)}
                                             aria-label={isFloorExpanded ? 'Collapse floor contents' : 'Expand floor contents'}
                                             aria-expanded={isFloorExpanded}
-                                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--border)] text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border)] text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] lg:h-9 lg:w-9"
                                           >
                                             <ChevronDown
                                               className={`h-4 w-4 transition-transform duration-200 ${
@@ -1213,7 +1245,7 @@ function TransformerSidebar({
                                       </div>
 
                                       {isFloorExpanded ? (
-                                        <div className="mt-3 space-y-3 border-t border-[color:var(--border)] pt-3">
+                                        <div className="mt-2.5 space-y-2 border-t border-[color:var(--border)] pt-2.5 lg:mt-3 lg:space-y-3 lg:pt-3">
                                           {floorPlan.transformers.length ? (
                                             floorPlan.transformers.map((transformer) => (
                                               <TransformerListCard
@@ -1241,7 +1273,7 @@ function TransformerSidebar({
                                 })}
 
                                 {companyGroup.ungroupedTransformers.length ? (
-                                  <section className="space-y-2 rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card)]/65 p-3">
+                                  <section className="space-y-2 rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card)]/65 p-2.5 lg:p-3">
                                     <div className="flex items-center justify-between gap-3">
                                       <div>
                                         <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -1706,7 +1738,7 @@ function TransformerListCard({
 
   return (
     <article
-      className={`group rounded-md border p-3 transition-all duration-200 hover:-translate-y-0.5 ${
+      className={`group rounded-md border p-2.5 transition-all duration-200 hover:-translate-y-0.5 lg:p-3 ${
         isSelected
           ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
           : 'border-[color:var(--border)] bg-[var(--card)]'
@@ -1716,7 +1748,7 @@ function TransformerListCard({
         <button type="button" className="min-w-0 flex-1 text-left" onClick={onClick}>
           <div className="flex items-center gap-2">
             <div
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-md lg:h-8 lg:w-8 ${
                 isSelected
                   ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                   : 'bg-[var(--primary-soft)] text-[var(--primary-strong)]'
@@ -1740,7 +1772,7 @@ function TransformerListCard({
           onClick={onToggleExpanded}
           aria-label={isExpanded ? 'Collapse transformer details' : 'Expand transformer details'}
           aria-expanded={isExpanded}
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors lg:h-9 lg:w-9 ${
             isSelected
               ? 'border-[color:var(--primary)] text-[var(--primary-strong)] hover:bg-[var(--card)]'
               : 'border-[color:var(--border)] text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
@@ -1752,19 +1784,19 @@ function TransformerListCard({
 
       {isExpanded ? (
         <>
-          <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="mt-2.5 flex items-center justify-between gap-2 lg:mt-3 lg:gap-3">
             <Badge variant="outline">{transformer.voltage || 'Voltage N/A'}</Badge>
             <Badge variant="secondary">{transformerState}</Badge>
           </div>
 
-          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <dl className="mt-2.5 grid grid-cols-2 gap-2 text-sm lg:mt-3 lg:gap-3">
             <InfoPair label="Mnemonic" value={transformer.mnemonic || '-'} />
             <InfoPair label="Serial" value={transformer.serialNumber || '-'} />
             <InfoPair label="Load" value={transformer.loadMVA ? `${transformer.loadMVA} MVA` : '-'} />
             <InfoPair label="Year" value={transformer.yearBuilt || '-'} />
           </dl>
 
-          <div className="mt-3 flex items-center justify-between gap-3 border-t border-[color:var(--border)] pt-3">
+          <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-[color:var(--border)] pt-2.5 lg:mt-3 lg:gap-3 lg:pt-3">
             <div className="flex items-center gap-1">
               <IconAction label="View details" onClick={onViewDetails}>
                 <MapPin className="h-4 w-4" />
@@ -1789,7 +1821,7 @@ function TransformerListCard({
 
 function InfoPair({ label, value }) {
   return (
-    <div className="space-y-1 rounded-md bg-[var(--card-muted)] px-3 py-2">
+    <div className="space-y-1 rounded-md bg-[var(--card-muted)] px-2.5 py-2 lg:px-3">
       <dt className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">{label}</dt>
       <dd className="truncate text-sm font-medium text-[var(--foreground)]">{value}</dd>
     </div>
@@ -1803,7 +1835,7 @@ function IconAction({ label, onClick, destructive = false, children }) {
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors lg:h-9 lg:w-9 ${
         destructive
           ? 'border-[color:var(--danger-soft)] text-[var(--danger-strong)] hover:bg-[var(--danger-soft)]'
           : 'border-[color:var(--border)] text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'

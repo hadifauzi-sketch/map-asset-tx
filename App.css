@@ -69,12 +69,16 @@
 
 html {
   height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   -webkit-text-size-adjust: 100%;
 }
 
 body,
 #root {
+  max-width: 100%;
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -85,6 +89,31 @@ body {
   color: var(--foreground);
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
   overscroll-behavior: none;
+}
+
+.test-view-overlay {
+  width: 100%;
+  width: 100dvw;
+  max-width: 100dvw;
+}
+
+.test-view-modal {
+  inline-size: 100%;
+  max-inline-size: 100%;
+}
+
+.test-view-body {
+  scrollbar-gutter: stable;
+}
+
+@supports (overflow: clip) {
+  html,
+  body,
+  #root,
+  .test-view-overlay,
+  .test-view-body {
+    overflow-x: clip;
+  }
 }
 
 .app-shell,
@@ -202,6 +231,40 @@ textarea {
 
 .sidebar-scroll {
   scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sidebar-mobile-chrome {
+  flex-shrink: 0;
+  max-height: 420px;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height 280ms ease,
+    opacity 180ms ease,
+    transform 280ms ease;
+  will-change: max-height, opacity, transform;
+}
+
+.sidebar-mobile-chrome.is-hidden {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+}
+
+@media (min-width: 1024px) {
+  .sidebar-mobile-chrome,
+  .sidebar-mobile-chrome.is-hidden {
+    max-height: none;
+    overflow: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
 }
 
 .sidebar-scroll::-webkit-scrollbar {
@@ -473,6 +536,51 @@ textarea {
 
 .detail-scroll {
   overscroll-behavior: contain;
+}
+
+.transformer-detail-mobile-chrome {
+  transition:
+    max-height 220ms ease,
+    opacity 180ms ease,
+    transform 220ms ease,
+    margin 220ms ease,
+    padding 220ms ease,
+    border-color 180ms ease;
+}
+
+@media (max-width: 640px) {
+  .transformer-detail-record-header {
+    max-height: 320px;
+    overflow: hidden;
+  }
+
+  .transformer-detail-mobile-toolbar {
+    max-height: 720px;
+  }
+
+  .transformer-detail-mobile-tabs {
+    max-height: 80px;
+  }
+
+  .mobile-detail-chrome-hidden .transformer-detail-record-header,
+  .mobile-detail-chrome-hidden .transformer-detail-mobile-toolbar,
+  .mobile-detail-chrome-hidden .transformer-detail-mobile-tabs {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-10px);
+    overflow: hidden;
+    pointer-events: none;
+    border-color: transparent;
+  }
+
+  .mobile-detail-chrome-hidden .transformer-detail-record-header {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .mobile-detail-chrome-hidden .detail-scroll {
+    padding-top: 4px;
+  }
 }
 
 .oil-test-section,
@@ -1108,6 +1216,7 @@ textarea {
 .test-view-overlay {
   align-items: stretch;
   justify-content: stretch;
+  overflow-x: hidden;
   padding: 0;
 }
 
@@ -1125,7 +1234,8 @@ textarea {
 }
 
 .test-view-modal {
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
   height: 100vh;
   height: 100dvh;
   max-height: none;
@@ -1152,6 +1262,7 @@ textarea {
 
 .test-view-header {
   flex-shrink: 0;
+  position: relative;
 }
 
 .heptagon-fullscreen-title,
@@ -1164,6 +1275,7 @@ textarea {
 .test-view-heading {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .test-view-heading-main {
@@ -1212,6 +1324,7 @@ textarea {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .iec-limits-toggle-row {
@@ -1373,9 +1486,29 @@ textarea {
 
 .test-view-body,
 .heptagon-fullscreen-body {
-  overflow: auto;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.test-view-body {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.heptagon-fullscreen-body {
+  overflow: auto;
+}
+
+.test-view-body .test-results,
+.test-view-body .result-section,
+.test-view-body .test-overview-grid,
+.test-view-body .result-grid,
+.test-view-body .test-overview-card,
+.test-view-body .result-item {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .trending-asset-info {
@@ -1602,9 +1735,81 @@ textarea {
     padding: 14px 16px;
   }
 
+  .test-view-header {
+    flex-direction: row;
+    padding-right: max(64px, calc(var(--safe-right) + 56px));
+  }
+
+  .test-view-header .close-btn {
+    position: absolute;
+    top: 14px;
+    right: max(12px, var(--safe-right));
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+  }
+
   .heptagon-fullscreen-title,
   .test-view-title {
+    min-width: 0;
     width: 100%;
+  }
+
+  .test-view-heading-main {
+    gap: 8px;
+  }
+
+  .test-view-date,
+  .test-type-badge {
+    max-width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .test-view-body {
+    padding-right: max(18px, calc(var(--safe-right) + 16px));
+    padding-left: max(16px, calc(var(--safe-left) + 16px));
+  }
+
+  .test-view-body .test-results {
+    gap: 14px;
+  }
+
+  .test-view-body .test-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+  }
+
+  .test-view-body .test-overview-card {
+    align-content: center;
+    min-height: 86px;
+    gap: 8px;
+    border-radius: 12px;
+    padding: 14px;
+    background: color-mix(in srgb, var(--card-muted), var(--card) 42%);
+  }
+
+  .test-view-body .test-overview-label {
+    font-size: 10px;
+    letter-spacing: 0.09em;
+  }
+
+  .test-view-body .test-overview-value {
+    font-size: 21px;
+  }
+
+  .test-view-body .result-section {
+    padding: 16px;
+  }
+
+  .test-view-body .result-meta {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .test-view-body .result-chip-row {
+    justify-content: flex-start;
   }
 
   input:not([type='checkbox']):not([type='radio']):not([type='range']),
@@ -1616,6 +1821,10 @@ textarea {
   .test-overview-grid,
   .result-grid {
     grid-template-columns: 1fr;
+  }
+
+  .test-view-body .test-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .result-section-header,

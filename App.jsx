@@ -1578,7 +1578,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <div className="app-frame flex overflow-hidden">
         <aside
           className={cn(
-            'app-sidebar fixed inset-y-0 left-0 z-[1200] w-[92vw] max-w-[380px] shrink-0 overflow-hidden transition-all duration-300 lg:static',
+            'app-sidebar fixed inset-y-0 left-0 z-[1200] w-screen max-w-none shrink-0 overflow-hidden transition-all duration-300 sm:w-[430px] sm:max-w-[430px] lg:static',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
             isDesktopSidebarCollapsed
               ? 'border-r border-[color:var(--border)] lg:w-[84px] lg:max-w-[84px]'

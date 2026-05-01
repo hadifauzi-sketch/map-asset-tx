@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Building2,
@@ -159,10 +159,17 @@ function TransformerDetailModal({
   const [newCompartmentName, setNewCompartmentName] = useState('');
   const [newCompartmentError, setNewCompartmentError] = useState('');
   const [isCompartmentPanelOpen, setIsCompartmentPanelOpen] = useState(false);
+  const [isMobileChromeHidden, setIsMobileChromeHidden] = useState(false);
+  const lastDetailScrollTopRef = useRef(0);
 
   useEffect(() => {
     setActiveTab('info');
   }, [transformer?.id]);
+
+  useEffect(() => {
+    setIsMobileChromeHidden(false);
+    lastDetailScrollTopRef.current = 0;
+  }, [activeTab, open, transformer?.id]);
 
   useEffect(() => {
     if (!transformer?.id) {
@@ -493,6 +500,29 @@ function TransformerDetailModal({
     });
   };
 
+  const handleDetailScroll = (event) => {
+    const scrollTop = event.currentTarget.scrollTop;
+    const previousScrollTop = lastDetailScrollTopRef.current;
+    const delta = scrollTop - previousScrollTop;
+    const isPhoneViewport =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 640px)').matches;
+
+    if (!isPhoneViewport) {
+      setIsMobileChromeHidden(false);
+      lastDetailScrollTopRef.current = scrollTop;
+      return;
+    }
+
+    if (scrollTop <= 12 || delta < -8) {
+      setIsMobileChromeHidden(false);
+    } else if (delta > 8 && scrollTop > 40) {
+      setIsMobileChromeHidden(true);
+    }
+
+    lastDetailScrollTopRef.current = scrollTop;
+  };
+
   if (!transformer) {
     return null;
   }
@@ -522,8 +552,12 @@ function TransformerDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
-      <DialogContent className="mobile-fullscreen-dialog !fixed !inset-0 flex !h-screen !max-h-none !w-screen !max-w-none flex-col gap-0 overflow-hidden !rounded-none !border-0 !p-0 sm:!rounded-none">
-        <DialogHeader className="shrink-0 bg-[var(--card-elevated)]">
+      <DialogContent
+        className={`mobile-fullscreen-dialog ${
+          isMobileChromeHidden ? 'mobile-detail-chrome-hidden' : ''
+        } !fixed !inset-0 flex !h-screen !max-h-none !w-screen !max-w-none flex-col gap-0 overflow-hidden !rounded-none !border-0 !p-0 sm:!rounded-none`}
+      >
+        <DialogHeader className="transformer-detail-mobile-chrome transformer-detail-record-header shrink-0 bg-[var(--card-elevated)]">
           <div className="flex flex-col gap-4 pr-10 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
               <Badge variant="secondary">Transformer record</Badge>
@@ -549,7 +583,7 @@ function TransformerDetailModal({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-4 pb-4 sm:px-5 sm:pb-5">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
-            <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[var(--card-muted)] shadow-sm">
+            <div className="transformer-detail-mobile-chrome transformer-detail-mobile-toolbar overflow-hidden rounded-lg border border-[color:var(--border)] bg-[var(--card-muted)] shadow-sm">
               <button
                 type="button"
                 onClick={() => setIsCompartmentPanelOpen((v) => !v)}
@@ -720,7 +754,7 @@ function TransformerDetailModal({
             </div>
 
             {/* Tab bar — single scrollable row so all tabs are reachable on any screen size */}
-            <div className="-mx-4 overflow-x-auto border-b border-[color:var(--border)] sm:-mx-5">
+            <div className="transformer-detail-mobile-chrome transformer-detail-mobile-tabs -mx-4 overflow-x-auto border-b border-[color:var(--border)] sm:-mx-5">
               <div className="px-4 pb-3 pt-3 sm:px-5">
                 <TabsList className="flex w-max min-w-full gap-1">
                   <TabsTrigger value="info" className="shrink-0">
@@ -760,7 +794,10 @@ function TransformerDetailModal({
               </div>
             </div>
 
-            <div className="detail-scroll min-h-0 flex-1 overflow-y-auto py-4 pr-2 sm:py-5 sm:pr-3">
+            <div
+              className="detail-scroll min-h-0 flex-1 overflow-y-auto py-4 pr-2 sm:py-5 sm:pr-3"
+              onScroll={handleDetailScroll}
+            >
               <TabsContent value="info" className="mt-0 space-y-5">
                 <section className="grid gap-4 lg:grid-cols-[1.3fr_0.9fr]">
                   <Card>
