@@ -1,13 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
+  Building2,
+  ChevronDown,
+  ChevronUp,
   Droplet,
   FileText,
   Gauge,
   Image as ImageIcon,
   Layers,
   MapPin,
+  Plus,
+  RotateCcw,
+  Save,
   Shield,
+  Sliders,
   TestTubeDiagonal,
   Zap,
 } from 'lucide-react';
@@ -146,10 +153,12 @@ function TransformerDetailModal({
   const [compartmentMetricForm, setCompartmentMetricForm] = useState({
     voltage: '',
     loadMVA: '',
+    manufacturer: '',
   });
   const [isCreateCompartmentOpen, setIsCreateCompartmentOpen] = useState(false);
   const [newCompartmentName, setNewCompartmentName] = useState('');
   const [newCompartmentError, setNewCompartmentError] = useState('');
+  const [isCompartmentPanelOpen, setIsCompartmentPanelOpen] = useState(false);
 
   useEffect(() => {
     setActiveTab('info');
@@ -162,7 +171,7 @@ function TransformerDetailModal({
       setOilTestAssignments({});
       setDocumentAssignments({});
       setCompartmentMetrics({});
-      setCompartmentMetricForm({ voltage: '', loadMVA: '' });
+      setCompartmentMetricForm({ voltage: '', loadMVA: '', manufacturer: '' });
       setIsCreateCompartmentOpen(false);
       setNewCompartmentName('');
       setNewCompartmentError('');
@@ -174,7 +183,7 @@ function TransformerDetailModal({
     setOilTestAssignments(storedConfig.oilTestAssignments || {});
     setDocumentAssignments(storedConfig.documentAssignments || {});
     setCompartmentMetrics(storedConfig.compartmentMetrics || {});
-    setCompartmentMetricForm({ voltage: '', loadMVA: '' });
+    setCompartmentMetricForm({ voltage: '', loadMVA: '', manufacturer: '' });
     setIsCreateCompartmentOpen(false);
     setNewCompartmentName('');
     setNewCompartmentError('');
@@ -297,6 +306,7 @@ function TransformerDetailModal({
     setCompartmentMetricForm({
       voltage: sanitizeMetricValue(overrides.voltage),
       loadMVA: sanitizeMetricValue(overrides.loadMVA),
+      manufacturer: sanitizeMetricValue(overrides.manufacturer),
     });
   }, [compartmentMetrics, selectedCompartmentKey]);
 
@@ -453,10 +463,11 @@ function TransformerDetailModal({
     }
     const voltage = sanitizeMetricValue(compartmentMetricForm.voltage);
     const loadMVA = sanitizeMetricValue(compartmentMetricForm.loadMVA);
+    const manufacturer = sanitizeMetricValue(compartmentMetricForm.manufacturer);
 
     setCompartmentMetrics((current) => {
       const next = { ...current };
-      if (!voltage && !loadMVA) {
+      if (!voltage && !loadMVA && !manufacturer) {
         delete next[selectedCompartmentKey];
         return next;
       }
@@ -464,6 +475,7 @@ function TransformerDetailModal({
       next[selectedCompartmentKey] = {
         voltage,
         loadMVA,
+        manufacturer,
       };
       return next;
     });
@@ -473,7 +485,7 @@ function TransformerDetailModal({
     if (readOnly) {
       return;
     }
-    setCompartmentMetricForm({ voltage: '', loadMVA: '' });
+    setCompartmentMetricForm({ voltage: '', loadMVA: '', manufacturer: '' });
     setCompartmentMetrics((current) => {
       const next = { ...current };
       delete next[selectedCompartmentKey];
@@ -491,6 +503,7 @@ function TransformerDetailModal({
     ...transformer,
     voltage: sanitizeMetricValue(selectedCompartmentMetrics.voltage) || transformer.voltage,
     loadMVA: sanitizeMetricValue(selectedCompartmentMetrics.loadMVA) || transformer.loadMVA,
+    maker: sanitizeMetricValue(selectedCompartmentMetrics.manufacturer) || transformer.maker,
   };
   const voltageValue = formatValueWithUnit(
     scopedTransformer.voltage,
@@ -509,13 +522,13 @@ function TransformerDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
-      <DialogContent className="mobile-fullscreen-dialog h-full w-full max-h-full max-w-full border-0 p-0">
-        <DialogHeader className="bg-[var(--card-elevated)]">
+      <DialogContent className="mobile-fullscreen-dialog !fixed !inset-0 flex !h-screen !max-h-none !w-screen !max-w-none flex-col gap-0 overflow-hidden !rounded-none !border-0 !p-0 sm:!rounded-none">
+        <DialogHeader className="shrink-0 bg-[var(--card-elevated)]">
           <div className="flex flex-col gap-4 pr-10 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
               <Badge variant="secondary">Transformer record</Badge>
               <div>
-                <DialogTitle className="text-2xl">{transformer.txName || 'Transformer details'}</DialogTitle>
+                <DialogTitle className="text-xl sm:text-2xl">{transformer.txName || 'Transformer details'}</DialogTitle>
                 <DialogDescription className="mt-1">
                   {transformer.siteName || 'Unknown site'}
                   {transformer.mnemonic ? ` - ${transformer.mnemonic}` : ''}
@@ -536,136 +549,218 @@ function TransformerDetailModal({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-4 pb-4 sm:px-5 sm:pb-5">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
-            <div className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
-              <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
-                  Compartments
-                </p>
-                {availableCompartments.map((compartmentName) => {
-                  const isActive =
-                    normalizeCompartmentName(compartmentName) ===
-                    normalizeCompartmentName(selectedCompartmentName);
-
-                  return (
-                    <button
-                      key={compartmentName}
-                      type="button"
-                      onClick={() => setSelectedCompartment(compartmentName)}
-                      className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-strong)]'
-                          : 'border-[color:var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--card-elevated)]'
-                      }`}
-                    >
-                      {compartmentName}
-                    </button>
-                  );
-                })}
-                {!readOnly ? (
-                  <button
-                    type="button"
-                    onClick={openCreateCompartmentModal}
-                    className="inline-flex items-center rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--card-elevated)]"
-                  >
-                    + Add compartment
-                  </button>
-                ) : null}
-              </div>
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                Oil tests, documents, images, trending, and snapshot counts below are filtered by the selected
-                compartment.
-              </p>
-              {readOnly ? (
-                <p className="mt-2 text-xs font-medium text-[var(--muted)]">
-                  Viewer mode: asset details are read-only.
-                </p>
-              ) : null}
-
-              <div className="mt-3 rounded-md border border-[color:var(--border)] bg-[var(--card)] p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
-                  {selectedCompartmentName} rating
-                </p>
-                <div className="mt-2 grid gap-2 md:grid-cols-[1fr_1fr_auto_auto]">
-                  <input
-                    type="text"
-                    name="voltage"
-                    value={compartmentMetricForm.voltage}
-                    onChange={handleCompartmentMetricInputChange}
-                    disabled={readOnly}
-                    placeholder={transformer.voltage ? `Voltage (default: ${transformer.voltage})` : 'Voltage'}
-                    className="h-10 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 text-sm text-[var(--foreground)] outline-none ring-0 transition-colors focus:border-[color:var(--primary)]"
-                  />
-                  <input
-                    type="text"
-                    name="loadMVA"
-                    value={compartmentMetricForm.loadMVA}
-                    onChange={handleCompartmentMetricInputChange}
-                    disabled={readOnly}
-                    placeholder={transformer.loadMVA ? `Load (default: ${transformer.loadMVA})` : 'Load (MVA)'}
-                    className="h-10 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 text-sm text-[var(--foreground)] outline-none ring-0 transition-colors focus:border-[color:var(--primary)]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveCompartmentMetrics}
-                    disabled={readOnly}
-                    className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:bg-[var(--primary-strong)]"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResetCompartmentMetrics}
-                    disabled={readOnly}
-                    className="inline-flex h-10 items-center justify-center rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-4 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--card-elevated)]"
-                  >
-                    Use default
-                  </button>
+            <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[var(--card-muted)] shadow-sm">
+              <button
+                type="button"
+                onClick={() => setIsCompartmentPanelOpen((v) => !v)}
+                className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 sm:px-5 transition-colors ${
+                  isCompartmentPanelOpen
+                    ? 'hover:bg-[var(--card-elevated)]'
+                    : 'bg-[var(--primary-soft)] hover:bg-[var(--primary-soft)]/80 border-b-0'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                    isCompartmentPanelOpen ? 'text-[var(--muted)]' : 'text-[var(--primary-strong)]'
+                  }`}>
+                    Compartment
+                  </p>
+                  {!isCompartmentPanelOpen ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-[var(--primary-strong)]">·</span>
+                      <span className="inline-flex items-center rounded-full bg-[var(--primary)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--primary-foreground)]">
+                        {selectedCompartmentName}
+                      </span>
+                      {Object.keys(compartmentMetrics).length > 0 ? (
+                        <span className="inline-flex items-center rounded-full border border-[color:var(--primary)]/30 bg-[var(--card)] px-2 py-0.5 text-[11px] font-medium text-[var(--primary-strong)]">
+                          {Object.keys(compartmentMetrics).length} override{Object.keys(compartmentMetrics).length !== 1 ? 's' : ''}
+                        </span>
+                      ) : null}
+                      <span className="text-[11px] text-[var(--primary-strong)]/70">· click to expand</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-[var(--muted)]">· select to filter records</span>
+                  )}
                 </div>
-                <p className="mt-2 text-xs text-[var(--muted)]">
-                  Leave one or both fields empty to inherit transformer values.
-                </p>
+                <div className="flex items-center gap-2">
+                  {readOnly ? (
+                    <span className="inline-flex items-center rounded-full bg-[var(--card)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted)]">
+                      Viewer mode · read-only
+                    </span>
+                  ) : null}
+                  {isCompartmentPanelOpen
+                    ? <ChevronUp className="h-4 w-4 text-[var(--muted)]" />
+                    : <ChevronDown className="h-4 w-4 text-[var(--primary-strong)]" />}
+                </div>
+              </button>
+
+              {isCompartmentPanelOpen ? (
+                <div>
+                  <div className="px-4 pb-3 sm:px-5">
+                    <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:gap-2">
+                      {availableCompartments.map((compartmentName) => {
+                        const compartmentKey = normalizeCompartmentName(compartmentName);
+                        const isActive = compartmentKey === selectedCompartmentKey;
+                        const hasOverrides = Boolean(compartmentMetrics[compartmentKey]);
+
+                        return (
+                          <button
+                            key={compartmentName}
+                            type="button"
+                            onClick={() => setSelectedCompartment(compartmentName)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all ${
+                              isActive
+                                ? 'border-[color:var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm'
+                                : 'border-[color:var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[color:var(--primary)]/40 hover:bg-[var(--card-elevated)]'
+                            }`}
+                          >
+                            <span>{compartmentName}</span>
+                            {hasOverrides ? (
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  isActive ? 'bg-[var(--primary-foreground)]' : 'bg-[var(--primary)]'
+                                }`}
+                                title="Has compartment overrides"
+                              />
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                      {!readOnly ? (
+                        <button
+                          type="button"
+                          onClick={openCreateCompartmentModal}
+                          className="inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm font-medium text-[var(--muted)] transition-colors hover:border-[color:var(--primary)] hover:text-[var(--foreground)]"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Add compartment
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <p className="mt-2.5 text-[11px] text-[var(--muted)]">
+                      Oil tests, documents, images, trending, and snapshot counts below are filtered by the selected
+                      compartment.
+                    </p>
+                  </div>
+
+                  <div className="border-t border-[color:var(--border)] bg-[var(--card)] px-4 py-4 sm:px-5">
+                    <div className="flex items-start gap-2.5 mb-3">
+                      <div className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                        <Sliders className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--foreground)]">
+                          {selectedCompartmentName} specifications
+                        </p>
+                        <p className="text-xs text-[var(--muted)]">
+                          Override values for this compartment. Leave a field empty to inherit from the transformer record.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2.5 md:grid-cols-3">
+                      <CompartmentOverrideField
+                        icon={Zap}
+                        label="Voltage"
+                        name="voltage"
+                        value={compartmentMetricForm.voltage}
+                        onChange={handleCompartmentMetricInputChange}
+                        disabled={readOnly}
+                        placeholder="e.g. 33/11"
+                        defaultValue={transformer.voltage}
+                        defaultUnit="kV"
+                      />
+                      <CompartmentOverrideField
+                        icon={Shield}
+                        label="Load"
+                        name="loadMVA"
+                        value={compartmentMetricForm.loadMVA}
+                        onChange={handleCompartmentMetricInputChange}
+                        disabled={readOnly}
+                        placeholder="e.g. 30"
+                        defaultValue={transformer.loadMVA}
+                        defaultUnit="MVA"
+                      />
+                      <CompartmentOverrideField
+                        icon={Building2}
+                        label="Manufacturer"
+                        name="manufacturer"
+                        value={compartmentMetricForm.manufacturer}
+                        onChange={handleCompartmentMetricInputChange}
+                        disabled={readOnly}
+                        placeholder="e.g. MR Reinhausen"
+                        defaultValue={transformer.maker}
+                      />
+                    </div>
+
+                    {!readOnly ? (
+                      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={handleResetCompartmentMetrics}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--card-elevated)]"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Reset to defaults
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveCompartmentMetrics}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] shadow-sm transition-colors hover:bg-[var(--primary-strong)]"
+                        >
+                          <Save className="h-3.5 w-3.5" />
+                          Save changes
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Tab bar — single scrollable row so all tabs are reachable on any screen size */}
+            <div className="-mx-4 overflow-x-auto border-b border-[color:var(--border)] sm:-mx-5">
+              <div className="px-4 pb-3 pt-3 sm:px-5">
+                <TabsList className="flex w-max min-w-full gap-1">
+                  <TabsTrigger value="info" className="shrink-0">
+                    <Shield className="h-4 w-4" />
+                    <span className="hidden sm:inline">Information</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="dashboard" className="shrink-0">
+                    <Gauge className="h-4 w-4" />
+                    <span className="hidden sm:inline">Dashboard</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="oilTests" className="shrink-0">
+                    <TestTubeDiagonal className="h-4 w-4" />
+                    <span className="hidden sm:inline">Oil tests</span>
+                    <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
+                      {filteredOilTests.length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="documents" className="shrink-0">
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Documents</span>
+                    <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
+                      {filteredDocuments.length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="images" className="shrink-0">
+                    <ImageIcon className="h-4 w-4" />
+                    <span className="hidden sm:inline">Image</span>
+                    <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
+                      {filteredImages.length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="dataTrending" className="shrink-0">
+                    <BarChart3 className="h-4 w-4" />
+                    <span className="hidden sm:inline">Trending</span>
+                  </TabsTrigger>
+                </TabsList>
               </div>
             </div>
 
-            <div className="border-b border-[color:var(--border)] py-4">
-              <TabsList className="grid w-full grid-cols-2 gap-1 md:grid-cols-6">
-                <TabsTrigger value="info">
-                  <Shield className="h-4 w-4" />
-                  Information
-                </TabsTrigger>
-                <TabsTrigger value="dashboard">
-                  <Gauge className="h-4 w-4" />
-                  Dashboard
-                </TabsTrigger>
-                <TabsTrigger value="oilTests">
-                  <TestTubeDiagonal className="h-4 w-4" />
-                  Oil tests
-                  <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
-                    {filteredOilTests.length}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="documents">
-                  <FileText className="h-4 w-4" />
-                  Documents
-                  <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
-                    {filteredDocuments.length}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="images">
-                  <ImageIcon className="h-4 w-4" />
-                  Image
-                  <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
-                    {filteredImages.length}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="dataTrending">
-                  <BarChart3 className="h-4 w-4" />
-                  Trending
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <div className="detail-scroll min-h-0 flex-1 overflow-y-auto py-4 pr-1 sm:py-5">
+            <div className="detail-scroll min-h-0 flex-1 overflow-y-auto py-4 pr-2 sm:py-5 sm:pr-3">
               <TabsContent value="info" className="mt-0 space-y-5">
                 <section className="grid gap-4 lg:grid-cols-[1.3fr_0.9fr]">
                   <Card>
@@ -678,7 +773,7 @@ function TransformerDetailModal({
                       <DetailField label="Transformer name" value={transformer.txName} />
                       <DetailField label="Mnemonic" value={transformer.mnemonic} />
                       <DetailField label="Serial number" value={transformer.serialNumber} />
-                      <DetailField label="Manufacturer" value={transformer.maker} />
+                      <DetailField label="Manufacturer" value={scopedTransformer.maker} />
                       <DetailField label="Year built" value={transformer.yearBuilt} />
                       <DetailField label="Compartment" value={selectedCompartmentName} />
                     </CardContent>
@@ -860,6 +955,62 @@ function TransformerDetailModal({
         </DialogContent>
       </Dialog>
     </Dialog>
+  );
+}
+
+function CompartmentOverrideField({
+  icon: Icon,
+  label,
+  name,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  defaultValue,
+  defaultUnit,
+}) {
+  const trimmedDefault = defaultValue !== undefined && defaultValue !== null
+    ? String(defaultValue).trim()
+    : '';
+  const defaultLabel = trimmedDefault
+    ? `Default: ${trimmedDefault}${defaultUnit ? ` ${defaultUnit}` : ''}`
+    : 'No default value';
+  const isOverridden = String(value || '').trim().length > 0;
+
+  return (
+    <div
+      className={`group rounded-md border bg-[var(--card-muted)] px-3 py-2 transition-colors focus-within:border-[color:var(--primary)] focus-within:bg-[var(--card)] ${
+        isOverridden ? 'border-[color:var(--primary)]/50' : 'border-[color:var(--border)]'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          {Icon ? <Icon className="h-3.5 w-3.5 text-[var(--muted)]" /> : null}
+          <label
+            htmlFor={`compartment-field-${name}`}
+            className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]"
+          >
+            {label}
+          </label>
+        </div>
+        {isOverridden ? (
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--primary-strong)]">
+            Override
+          </span>
+        ) : null}
+      </div>
+      <input
+        id={`compartment-field-${name}`}
+        type="text"
+        name={name}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="mt-1 w-full bg-transparent text-sm font-medium text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]/70 disabled:cursor-not-allowed disabled:opacity-60"
+      />
+      <p className="mt-0.5 text-[10px] text-[var(--muted)]">{defaultLabel}</p>
+    </div>
   );
 }
 

@@ -610,8 +610,9 @@ function TransformerSidebar({
 
   if (collapsed) {
     return (
-      <div className="flex h-full flex-col items-center justify-between bg-[color:var(--sidebar)]/88 px-3 py-4 backdrop-blur-xl">
-        <div className="flex w-full flex-col items-center gap-3">
+      <div className="h-full">
+        {/* Mobile (< lg): show expand + close only */}
+        <div className="flex h-full flex-col items-center justify-between bg-[color:var(--sidebar)]/88 px-4 py-4 backdrop-blur-xl lg:hidden">
           <Button
             variant="outline"
             size="icon"
@@ -622,107 +623,150 @@ function TransformerSidebar({
           >
             <PanelLeftOpen className="h-4 w-4" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onCloseMobile}
+            aria-label="Close sidebar"
+            title="Close sidebar"
+            className="h-11 w-11"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
 
-          <div className="flex w-full flex-col items-center gap-2 border-y border-[color:var(--border)] py-3">
-            {canManageAssets ? (
-              <>
-                <button
-                  type="button"
-                  className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-                  onClick={onAddClick}
-                  aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
-                  title={isAddMode ? 'Map placement armed' : 'Add transformer'}
-                >
-                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                    <Plus className="h-4 w-4" />
-                  </div>
-                  <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                    {isAddMode ? 'Place' : 'Add'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-                  onClick={onLocationRegisterClick}
-                  aria-label={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
-                  title={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
-                >
-                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                    <MapPin className="h-4 w-4" />
-                  </div>
-                  <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                    {isLocationRegisterOpen ? 'GPS On' : 'GPS'}
-                  </span>
-                </button>
-              </>
-            ) : (
-              <Badge variant="outline" className="justify-center px-2 py-1 text-[10px]">
-                Viewer
-              </Badge>
-            )}
-
+        {/* Desktop (lg+): icon-only collapsed sidebar */}
+        <div className="hidden h-full flex-col items-center justify-between bg-[color:var(--sidebar)]/88 px-3 py-4 backdrop-blur-xl lg:flex">
+          <div className="flex w-full flex-col items-center gap-3">
             <Button
               variant="outline"
               size="icon"
+              onClick={onToggleCollapsed}
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
               className="h-11 w-11"
-              onClick={onToggleTheme}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
-              {theme === 'dark' ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <PanelLeftOpen className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-11 w-11"
-              onClick={onOpenSettings}
-              aria-label="Open settings"
-              title={currentUser ? `Open settings for ${currentUser.username}` : 'Open settings'}
-            >
-              <SettingsIcon className="h-4 w-4" />
-            </Button>
-          </div>
 
-          <div className="flex w-full flex-col gap-2">
-            {quickStats.map((stat) => {
-              const Icon = stat.icon;
-              const isAssetsStat = stat.key === 'assets';
-              const isAreasStat = stat.key === 'areas';
-              const isCompanyParentStat = stat.key === 'companies';
-              const isStatesStat = stat.key === 'states';
-              const sharedClassName =
-                'flex w-full flex-col items-center gap-1 overflow-hidden rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-2 text-center transition-colors hover:bg-[var(--card-muted)]';
-
-              if (isAssetsStat || isAreasStat || isCompanyParentStat || isStatesStat) {
-                const onClick = isAssetsStat
-                  ? openAssetsModal
-                  : isAreasStat
-                    ? openAreasModal
-                    : isCompanyParentStat
-                      ? openCompanyParentModal
-                      : openStatesModal;
-                const ariaLabel = isAssetsStat
-                  ? `Assets: ${stat.value}. Open assets list`
-                  : isAreasStat
-                    ? `Areas/Substation: ${stat.value}. Open areas list`
-                    : isCompanyParentStat
-                      ? `Company/Parent: ${stat.value}. Open company/parent list`
-                      : `States: ${stat.value}. Open states list`;
-                const title = isAssetsStat
-                  ? 'Open assets list'
-                  : isAreasStat
-                    ? 'Open areas/substation list'
-                    : isCompanyParentStat
-                      ? 'Open company/parent list'
-                      : 'Open states list';
-                return (
+            <div className="flex w-full flex-col items-center gap-2 border-y border-[color:var(--border)] py-3">
+              {canManageAssets ? (
+                <>
                   <button
-                    key={stat.key}
                     type="button"
-                    className={`${sharedClassName} cursor-pointer`}
-                    onClick={onClick}
-                    aria-label={ariaLabel}
-                    title={title}
+                    className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                    onClick={onAddClick}
+                    aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
+                    title={isAddMode ? 'Map placement armed' : 'Add transformer'}
+                  >
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                      <Plus className="h-4 w-4" />
+                    </div>
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                      {isAddMode ? 'Place' : 'Add'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                    onClick={onLocationRegisterClick}
+                    aria-label={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
+                    title={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
+                  >
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                      <MapPin className="h-4 w-4" />
+                    </div>
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                      {isLocationRegisterOpen ? 'GPS On' : 'GPS'}
+                    </span>
+                  </button>
+                </>
+              ) : (
+                <Badge variant="outline" className="justify-center px-2 py-1 text-[10px]">
+                  Viewer
+                </Badge>
+              )}
+
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-11 w-11"
+                onClick={onToggleTheme}
+                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-11 w-11"
+                onClick={onOpenSettings}
+                aria-label="Open settings"
+                title={currentUser ? `Open settings for ${currentUser.username}` : 'Open settings'}
+              >
+                <SettingsIcon className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex w-full flex-col gap-2">
+              {quickStats.map((stat) => {
+                const Icon = stat.icon;
+                const isAssetsStat = stat.key === 'assets';
+                const isAreasStat = stat.key === 'areas';
+                const isCompanyParentStat = stat.key === 'companies';
+                const isStatesStat = stat.key === 'states';
+                const sharedClassName =
+                  'flex w-full flex-col items-center gap-1 overflow-hidden rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 py-2 text-center transition-colors hover:bg-[var(--card-muted)]';
+
+                if (isAssetsStat || isAreasStat || isCompanyParentStat || isStatesStat) {
+                  const onClick = isAssetsStat
+                    ? openAssetsModal
+                    : isAreasStat
+                      ? openAreasModal
+                      : isCompanyParentStat
+                        ? openCompanyParentModal
+                        : openStatesModal;
+                  const ariaLabel = isAssetsStat
+                    ? `Assets: ${stat.value}. Open assets list`
+                    : isAreasStat
+                      ? `Areas/Substation: ${stat.value}. Open areas list`
+                      : isCompanyParentStat
+                        ? `Company/Parent: ${stat.value}. Open company/parent list`
+                        : `States: ${stat.value}. Open states list`;
+                  const title = isAssetsStat
+                    ? 'Open assets list'
+                    : isAreasStat
+                      ? 'Open areas/substation list'
+                      : isCompanyParentStat
+                        ? 'Open company/parent list'
+                        : 'Open states list';
+                  return (
+                    <button
+                      key={stat.key}
+                      type="button"
+                      className={`${sharedClassName} cursor-pointer`}
+                      onClick={onClick}
+                      aria-label={ariaLabel}
+                      title={title}
+                    >
+                      <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <span className="text-sm font-semibold text-[var(--foreground)]">{stat.value}</span>
+                      <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
+                        {getCollapsedStatLabel(stat.key, stat.label)}
+                      </span>
+                    </button>
+                  );
+                }
+
+                return (
+                  <div
+                    key={stat.key}
+                    className={sharedClassName}
+                    aria-label={`${stat.label}: ${stat.value}`}
+                    title={`${stat.label}: ${stat.value}`}
                   >
                     <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
                       <Icon className="h-4 w-4" />
@@ -731,79 +775,52 @@ function TransformerSidebar({
                     <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
                       {getCollapsedStatLabel(stat.key, stat.label)}
                     </span>
-                  </button>
-                );
-              }
-
-              return (
-                <div
-                  key={stat.key}
-                  className={sharedClassName}
-                  aria-label={`${stat.label}: ${stat.value}`}
-                  title={`${stat.label}: ${stat.value}`}
-                >
-                  <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                    <Icon className="h-4 w-4" />
                   </div>
-                  <span className="text-sm font-semibold text-[var(--foreground)]">{stat.value}</span>
-                  <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
-                    {getCollapsedStatLabel(stat.key, stat.label)}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        <div className="flex w-full flex-col items-center gap-2">
-          {loading ? (
-            <Badge variant="secondary" className="justify-center px-2 py-1 text-[10px]">
-              Sync
-            </Badge>
-          ) : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11 lg:hidden"
-            onClick={onCloseMobile}
-            aria-label="Close sidebar"
-            title="Close sidebar"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+          <div className="flex w-full flex-col items-center gap-2">
+            {loading ? (
+              <Badge variant="secondary" className="justify-center px-2 py-1 text-[10px]">
+                Sync
+              </Badge>
+            ) : null}
+          </div>
 
-        <AssetsListDialog
-          open={isAssetsModalOpen}
-          assets={areaSubstationAssets}
-          selectedAssetId={selectedTransformerId}
-          onClose={closeAssetsModal}
-          onSelectAsset={handleAssetSelect}
-          canManageAssets={canManageAssets}
-          onViewDetails={(asset) => { onViewDetails(asset); closeAssetsModal(); }}
-          onEdit={(asset) => { onEditClick(asset); closeAssetsModal(); }}
-          onDelete={(assetId) => { onDeleteClick(assetId); closeAssetsModal(); }}
-        />
-        <AreasListDialog
-          open={isAreasModalOpen}
-          areas={sortedAreas}
-          selectedAreaId={selectedFloorPlanId}
-          onClose={closeAreasModal}
-          onSelectArea={handleAreaSelect}
-        />
-        <CompanyParentListDialog
-          open={isCompanyParentModalOpen}
-          companyParents={companyParentList}
-          onClose={closeCompanyParentModal}
-          onSelectCompanyParent={handleCompanyParentSelect}
-        />
-        <StatesListDialog
-          open={isStatesModalOpen}
-          states={statesList}
-          onClose={closeStatesModal}
-          onSelectState={handleStateSelect}
-        />
-        {assetCardGalleryOverlay}
+          <AssetsListDialog
+            open={isAssetsModalOpen}
+            assets={areaSubstationAssets}
+            selectedAssetId={selectedTransformerId}
+            onClose={closeAssetsModal}
+            onSelectAsset={handleAssetSelect}
+            canManageAssets={canManageAssets}
+            onViewDetails={(asset) => { onViewDetails(asset); closeAssetsModal(); }}
+            onEdit={(asset) => { onEditClick(asset); closeAssetsModal(); }}
+            onDelete={(assetId) => { onDeleteClick(assetId); closeAssetsModal(); }}
+          />
+          <AreasListDialog
+            open={isAreasModalOpen}
+            areas={sortedAreas}
+            selectedAreaId={selectedFloorPlanId}
+            onClose={closeAreasModal}
+            onSelectArea={handleAreaSelect}
+          />
+          <CompanyParentListDialog
+            open={isCompanyParentModalOpen}
+            companyParents={companyParentList}
+            onClose={closeCompanyParentModal}
+            onSelectCompanyParent={handleCompanyParentSelect}
+          />
+          <StatesListDialog
+            open={isStatesModalOpen}
+            states={statesList}
+            onClose={closeStatesModal}
+            onSelectState={handleStateSelect}
+          />
+          {assetCardGalleryOverlay}
+        </div>
       </div>
     );
   }

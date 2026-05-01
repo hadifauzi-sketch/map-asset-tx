@@ -166,6 +166,7 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -288,7 +289,82 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
         >
           Accounts are created by an administrator in Settings.
         </div>
+
+        <div className="relative mt-4 space-y-2 text-center text-xs text-white/55">
+          <p>
+            Developed by{' '}
+            <a
+              href="https://www.linkedin.com/in/chm-hadi-fauzi/"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-white/85 underline-offset-4 hover:text-white hover:underline"
+            >
+              ChM. Ts. Hadi Fauzi, MRSC
+            </a>
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsTermsOpen(true)}
+            className="text-white/75 underline-offset-4 hover:text-white hover:underline"
+          >
+            Terms & Conditions
+          </button>
+        </div>
       </form>
+
+      {isTermsOpen ? (
+        <div className="auth-terms-overlay" role="presentation" onClick={() => setIsTermsOpen(false)}>
+          <div
+            className="auth-terms-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auth-terms-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="auth-terms-header">
+              <div>
+                <p className="auth-terms-eyebrow">Beta notice</p>
+                <h2 id="auth-terms-title">Terms & Conditions</h2>
+              </div>
+              <button
+                type="button"
+                className="auth-terms-close"
+                onClick={() => setIsTermsOpen(false)}
+                aria-label="Close terms and conditions"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="auth-terms-body">
+              <p>
+                This app is a beta/trial version and is still under testing. If you find any issue or
+                bug, please contact the developer.
+              </p>
+              <p>
+                This app is built with open-source technologies, including JavaScript, TypeScript, SQL
+                databases, OpenStreetMap, and Leaflet. IEC, IEEE, and journal-based methods remain
+                subject to their original licensed or paid sources.
+              </p>
+              <p>
+                The app design and workflow were developed by{' '}
+                <a
+                  href="https://www.linkedin.com/in/chm-hadi-fauzi/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  ChM. Ts. Hadi Fauzi, MRSC
+                </a>
+                .
+              </p>
+              <p>
+                This app is still being verified and tested by engineers, chemists, and technical
+                experts before release.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <style>{`
         .auth-shell {
@@ -301,8 +377,8 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
           padding: 24px;
           background:
             radial-gradient(circle at 15% 20%, rgba(52,177,155,0.22), transparent 55%),
-            radial-gradient(circle at 85% 80%, rgba(120,20,60,0.32), transparent 55%),
-            linear-gradient(135deg, #141614 0%, #1a2a25 55%, #2a0f1f 100%);
+            radial-gradient(circle at 85% 80%, rgba(0,94,166,0.34), transparent 55%),
+            linear-gradient(135deg, #101715 0%, #15342a 52%, #062a4b 100%);
         }
         .auth-shell::before {
           content: '';
@@ -314,6 +390,84 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
             radial-gradient(1px 1px at 40% 75%, rgba(255,255,255,0.2), transparent 50%),
             radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,0.18), transparent 50%);
           pointer-events: none;
+          }
+        .auth-terms-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 70;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: rgba(0,0,0,0.56);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+        .auth-terms-modal {
+          position: relative;
+          width: min(92vw, 560px);
+          border: 1px solid rgba(255,255,255,0.16);
+          border-radius: 18px;
+          background: rgba(20,28,25,0.92);
+          box-shadow: 0 24px 80px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+          color: rgba(255,255,255,0.86);
+          overflow: hidden;
+        }
+        .auth-terms-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          border-bottom: 1px solid rgba(255,255,255,0.10);
+          padding: 20px 22px 16px;
+        }
+        .auth-terms-eyebrow {
+          margin: 0 0 6px;
+          color: rgba(255,255,255,0.50);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+        .auth-terms-header h2 {
+          margin: 0;
+          color: rgba(255,255,255,0.95);
+          font-size: 20px;
+          font-weight: 700;
+        }
+        .auth-terms-close {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 10px;
+          background: rgba(255,255,255,0.08);
+          color: rgba(255,255,255,0.82);
+          cursor: pointer;
+          font-size: 18px;
+          line-height: 1;
+        }
+        .auth-terms-close:hover {
+          background: rgba(255,255,255,0.14);
+          color: #fff;
+        }
+        .auth-terms-body {
+          display: grid;
+          gap: 12px;
+          padding: 18px 22px 22px;
+          font-size: 13px;
+          line-height: 1.65;
+        }
+        .auth-terms-body p {
+          margin: 0;
+        }
+        .auth-terms-body a {
+          color: rgba(255,255,255,0.95);
+          font-weight: 600;
+          text-decoration: underline;
+          text-underline-offset: 3px;
         }
       `}</style>
     </div>

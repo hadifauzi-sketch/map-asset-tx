@@ -26,7 +26,21 @@
       "mcp__plugin_supabase_supabase__list_projects",
       "mcp__plugin_supabase_supabase__list_migrations",
       "mcp__plugin_supabase_supabase__apply_migration",
-      "mcp__plugin_serena_serena__find_symbol"
+      "mcp__plugin_serena_serena__find_symbol",
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(npx eslint *)",
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('components/TransformerHealthDashboard.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\); console.log\\('OK'\\)\")",
+      "Bash(node -e ' *)",
+      "mcp__serena__replace_content",
+      "Bash(uvx --version)",
+      "Bash(uvx --from \"git+https://github.com/oraios/serena\" serena start-mcp-server --help)",
+      "mcp__serena__insert_before_symbol",
+      "mcp__serena__replace_symbol_body",
+      "Bash(curl -s -w \"\\\\n---HTTP %{http_code}---\\\\n\" \"http://localhost:3000/components/TransformerDetailModal.jsx\" -o /tmp/modal_response.txt)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:3000/components/TransformerDetailModal.jsx\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:3000/components/TransformerHealthDashboard.jsx\")"
     ]
   },
   "enabledMcpjsonServers": [

@@ -1657,60 +1657,63 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           <div className="app-top-overlay absolute inset-x-0 top-0 z-[1000] pointer-events-none">
             <div className="flex items-start justify-between gap-3">
               <div className="pointer-events-auto flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                {!sidebarOpen ? (
-                  <div className="flex items-center gap-2 lg:hidden">
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="bg-[color:var(--card-elevated)]/90 backdrop-blur"
-                      onClick={() => {
-                        setSidebarOpen(true);
-                      }}
-                      aria-label="Open sidebar"
-                    >
-                      <Menu className="h-4 w-4" />
-                    </Button>
-                    {isAddMode ? (
-                      <Badge variant="warning" className="shadow-sm">
-                        Map placement active
-                      </Badge>
-                    ) : floorPlanDraft ? (
-                      <Badge variant="secondary" className="shadow-sm">
-                        Floor pen active
-                      </Badge>
-                    ) : isViewer ? (
-                      <Badge variant="outline" className="shadow-sm">
-                        Viewer mode
-                      </Badge>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <div className="mobile-control-strip flex items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
-                  {Object.entries(MAP_BASE_LAYERS).map(([layerKey, layer]) => {
-                    const isActive = mapBaseLayer === layerKey;
-                    const LayerIcon = layer.icon;
-
-                    return (
-                      <button
-                        key={layerKey}
-                        type="button"
-                        onClick={() => setMapBaseLayer(layerKey)}
-                        className={cn(
-                          'inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent transition-colors',
-                          isActive
-                            ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm'
-                            : 'text-[var(--foreground)]/80 hover:border-[color:var(--border)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
-                        )}
-                        aria-label={layer.label}
-                        aria-pressed={isActive}
-                        title={layer.label}
+                {/* On mobile: hamburger + base-layer selector share one row to save vertical space */}
+                <div className="flex items-center gap-2">
+                  {!sidebarOpen ? (
+                    <div className="flex items-center gap-2 lg:hidden">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="bg-[color:var(--card-elevated)]/90 backdrop-blur"
+                        onClick={() => {
+                          setSidebarOpen(true);
+                        }}
+                        aria-label="Open sidebar"
                       >
-                        <LayerIcon className="h-4 w-4" />
-                        <span className="sr-only">{layer.label}</span>
-                      </button>
-                    );
-                  })}
+                        <Menu className="h-4 w-4" />
+                      </Button>
+                      {isAddMode ? (
+                        <Badge variant="warning" className="shadow-sm">
+                          Map placement active
+                        </Badge>
+                      ) : floorPlanDraft ? (
+                        <Badge variant="secondary" className="shadow-sm">
+                          Floor pen active
+                        </Badge>
+                      ) : isViewer ? (
+                        <Badge variant="outline" className="shadow-sm">
+                          Viewer mode
+                        </Badge>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="flex shrink-0 items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
+                    {Object.entries(MAP_BASE_LAYERS).map(([layerKey, layer]) => {
+                      const isActive = mapBaseLayer === layerKey;
+                      const LayerIcon = layer.icon;
+
+                      return (
+                        <button
+                          key={layerKey}
+                          type="button"
+                          onClick={() => setMapBaseLayer(layerKey)}
+                          className={cn(
+                            'inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent transition-colors',
+                            isActive
+                              ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm'
+                              : 'text-[var(--foreground)]/80 hover:border-[color:var(--border)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
+                          )}
+                          aria-label={layer.label}
+                          aria-pressed={isActive}
+                          title={layer.label}
+                        >
+                          <LayerIcon className="h-4 w-4" />
+                          <span className="sr-only">{layer.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">

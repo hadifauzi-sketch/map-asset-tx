@@ -124,8 +124,42 @@ const TEST_DETAIL_SECTIONS = [
   },
 ];
 
+const DGA_RESULT_LIMITS = {
+  h2: { caution: 100, warning: 700 },
+  ch4: { caution: 120, warning: 400 },
+  c2h6: { caution: 65, warning: 100 },
+  c2h4: { caution: 50, warning: 100 },
+  c2h2: { caution: 1, warning: 9 },
+  co: { caution: 350, warning: 570 },
+  tdcg: { caution: 720, warning: 1920 },
+};
+
 function hasResultValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function getStatusTone(status) {
+  if (status === 'healthy' || status === 'good') return 'good';
+  if (status === 'monitor' || status === 'fair') return 'fair';
+  if (status === 'action' || status === 'poor' || status === 'critical') return 'poor';
+  return null;
+}
+
+function getStatusLabelFromTone(tone) {
+  if (tone === 'good') return 'Good';
+  if (tone === 'fair') return 'Fair';
+  if (tone === 'poor') return 'Poor';
+  return '';
+}
+
+function getDgaResultStatus(metricKey, value) {
+  if (!hasResultValue(value) || !DGA_RESULT_LIMITS[metricKey]) return null;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return null;
+  const { caution, warning } = DGA_RESULT_LIMITS[metricKey];
+  if (numericValue > warning) return 'action';
+  if (numericValue > caution) return 'monitor';
+  return 'healthy';
 }
 
 function calcLifeUsed(dpFuran, dpMethanol) {
@@ -669,6 +703,19 @@ function OilTestSection({
   );
 
   const renderTestDetails = (test) => {
+    const oilQualityAssessment = getOilQualityAssessment(test, transformer);
+    const supplementaryAssessment = getOilQualitySupplementaryAssessment(test);
+    const resultStatusByKey = new Map();
+
+    [
+      ...(oilQualityAssessment?.items || []),
+      ...(supplementaryAssessment?.items || []),
+    ].forEach((item) => {
+      if (item?.key && hasResultValue(item.value)) {
+        resultStatusByKey.set(item.key, item.status);
+      }
+    });
+
     const overviewMetrics = [
       { label: 'Breakdown Voltage', value: test.breakdown, unit: 'kV' },
       { label: 'Water Content', value: test.waterContent, unit: 'ppm' },
@@ -703,8 +750,8 @@ function OilTestSection({
         </div>
 
         <Iec60422Panel
-          assessment={getOilQualityAssessment(test, transformer)}
-          supplementaryAssessment={getOilQualitySupplementaryAssessment(test)}
+          assessment={oilQualityAssessment}
+          supplementaryAssessment={supplementaryAssessment}
           title="Oil quality sample assessment"
           description="The result is checked against the selected oil type, test type, and transformer voltage group so the same limit logic can drive the dashboard."
         />
@@ -731,6 +778,11 @@ function OilTestSection({
 
               <div className="result-grid">
                 {section.metrics.map((metric) => {
+                  const resultStatus = resultStatusByKey.get(metric.key) || getDgaResultStatus(metric.key, test[metric.key]);
+                  const resultTone = getStatusTone(resultStatus);
+                  const resultStatusLabel = getStatusLabelFromTone(resultTone);
+                  const resultStatusClass = resultTone ? ` result-item-${resultTone}` : '';
+
                   if (metric.key === 'waterContent') {
                     const waterInfo = describeWaterContent({
                       value: test.waterContent,
@@ -747,10 +799,17 @@ function OilTestSection({
                       ? `${fmt(waterInfo.samplingTemperatureC)} °C`
                       : 'no temp';
                     return (
-                      <div key={metric.key} className="result-item">
+                      <div key={metric.key} className={`result-item${resultStatusClass}`}>
                         <div className="result-meta">
                           <span className="result-label">{metric.label}</span>
-                          {metric.unit ? <span className="result-unit">{metric.unit}</span> : null}
+                          <div className="result-chip-row">
+                            {resultTone ? (
+                              <span className={`result-status-pill result-status-${resultTone}`}>
+                                {resultStatusLabel}
+                              </span>
+                            ) : null}
+                            {metric.unit ? <span className="result-unit">{metric.unit}</span> : null}
+                          </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -801,10 +860,17 @@ function OilTestSection({
                   }
 
                   return (
-                    <div key={metric.key} className="result-item">
+                    <div key={metric.key} className={`result-item${resultStatusClass}`}>
                       <div className="result-meta">
                         <span className="result-label">{metric.label}</span>
-                        {metric.unit ? <span className="result-unit">{metric.unit}</span> : null}
+                        <div className="result-chip-row">
+                          {resultTone ? (
+                            <span className={`result-status-pill result-status-${resultTone}`}>
+                              {resultStatusLabel}
+                            </span>
+                          ) : null}
+                          {metric.unit ? <span className="result-unit">{metric.unit}</span> : null}
+                        </div>
                       </div>
                       <span className="result-value">{getResultValue(test[metric.key])}</span>
                     </div>

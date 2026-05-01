@@ -42,6 +42,13 @@ function getSummaryTileLabel(tile, limitProfile) {
   return limitProfile?.statusLabels?.[tile.key] || tile.fallbackLabel;
 }
 
+function getSummaryTileDescription(key) {
+  if (key === 'healthy') return 'Within active IEC basis';
+  if (key === 'monitor') return 'Between good and poor';
+  if (key === 'action') return 'Outside active IEC basis';
+  return 'No result captured';
+}
+
 function formatValueWithUnit(value, limit) {
   const formattedValue = formatIecValue(value, limit);
   return limit?.unit ? `${formattedValue} ${limit.unit}` : formattedValue;
@@ -155,6 +162,7 @@ function Iec60422Panel({
     monitor: 'Monitor',
     action: 'Action',
   };
+  const selectedStandardLabel = standard?.label || 'the selected IEC standard';
 
   return (
     <Card className={className}>
@@ -177,55 +185,36 @@ function Iec60422Panel({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="grid gap-3 xl:grid-cols-[1.2fr_1fr]">
-          <div className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
-            <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-[var(--primary-strong)]" />
-              <p className="text-sm font-semibold text-[var(--foreground)]">Active transformer class</p>
-            </div>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-md border border-[color:var(--border)] bg-[var(--card)] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-                  Voltage basis
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                  {voltageInput || 'Not set'}
-                </p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  Highest winding: {highestVoltageKv !== null ? `${formatVoltage(highestVoltageKv)} kV` : 'Not resolved'}
-                </p>
-              </div>
-
-              <div className="rounded-md border border-[color:var(--border)] bg-[var(--card)] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-                  IEC group
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">{profile.label}</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">{profile.description}</p>
-              </div>
-
-              <div className="rounded-md border border-[color:var(--border)] bg-[var(--card)] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-                  Test basis
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                  {limitProfile?.label || 'Routine / in-service oil'}
-                </p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  {testType ? `${testType} - ` : ''}{limitProfile?.sourceLabel || 'IEC 60422:2024'}
-                </p>
-              </div>
-            </div>
-
-            {sampleDate ? (
-              <p className="mt-3 text-xs text-[var(--muted)]">
-                Assessed sample date: {formatDate(sampleDate)}
+        <div className="grid items-start gap-3 xl:grid-cols-[1.2fr_1fr]">
+          <div className="iec-class-snapshot">
+            <div className="iec-class-tile">
+              <p className="iec-summary-label">
+                <Layers className="h-3.5 w-3.5 text-[var(--primary-strong)]" />
+                Voltage basis
               </p>
-            ) : null}
+              <p className="iec-class-value">{voltageInput || 'Not set'}</p>
+              <p className="iec-summary-helper">
+                Highest winding: {highestVoltageKv !== null ? `${formatVoltage(highestVoltageKv)} kV` : 'Not resolved'}
+                {sampleDate ? ` - ${formatDate(sampleDate)}` : ''}
+              </p>
+            </div>
+
+            <div className="iec-class-tile">
+              <p className="iec-summary-label">IEC group</p>
+              <p className="iec-class-value">{profile.label}</p>
+              <p className="iec-summary-helper">{profile.description}</p>
+            </div>
+
+            <div className="iec-class-tile">
+              <p className="iec-summary-label">Test basis</p>
+              <p className="iec-class-value">{limitProfile?.label || 'Routine / in-service oil'}</p>
+              <p className="iec-summary-helper">
+                {testType ? `${testType} - ` : ''}{limitProfile?.sourceLabel || 'IEC 60422:2024'}
+              </p>
+            </div>
 
             {usedFallback ? (
-              <div className="mt-3 flex items-start gap-2 rounded-md border border-[color:var(--border)] bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--warning-strong)]">
+              <div className="iec-class-warning">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>
                   The app could not parse the transformer voltage, so it is using the 72.5-170 kV profile until a rated voltage is entered.
@@ -234,27 +223,20 @@ function Iec60422Panel({
             ) : null}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
+          <div className="grid self-start gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {SUMMARY_TILES.map((tile) => {
               const label = getSummaryTileLabel(tile, limitProfile);
               return (
               <div
                 key={tile.key}
-                className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4"
+                className={`iec-summary-tile iec-summary-tile-${tile.key}`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-                    {label}
-                  </p>
-                  <Badge variant={tile.variant}>{summary[tile.key]}</Badge>
+                <div className="min-w-0">
+                  <p className="iec-summary-label">{label}</p>
+                  <p className="iec-summary-value">{summary[tile.key]}</p>
                 </div>
-                <p className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{summary[tile.key]}</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">
-                  {tile.key === 'healthy' ? 'Within the active IEC basis' : null}
-                  {tile.key === 'monitor' ? 'Between good and poor bands' : null}
-                  {tile.key === 'action' ? 'Outside the active IEC basis' : null}
-                  {tile.key === 'noData' ? 'No result captured yet' : null}
-                </p>
+                <Badge className="iec-summary-badge" variant={tile.variant}>{summary[tile.key]}</Badge>
+                <p className="iec-summary-helper">{getSummaryTileDescription(tile.key)}</p>
               </div>
             );
             })}
@@ -264,13 +246,16 @@ function Iec60422Panel({
         <div className="overflow-hidden rounded-md border border-[color:var(--border)]">
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-sm">
-              <thead className="bg-[var(--card-muted)] text-left">
+              <thead className="text-left">
                 <tr
-                  className="cursor-pointer select-none hover:bg-[var(--card-hover,var(--card-muted))] transition-colors"
+                  className={`iec-limits-toggle-row cursor-pointer select-none transition-colors ${
+                    tableCollapsed ? 'is-collapsed' : 'is-expanded'
+                  }`}
                   onClick={() => setTableCollapsed((c) => !c)}
                   title={tableCollapsed ? 'Show parameters' : 'Hide parameters'}
+                  aria-expanded={!tableCollapsed}
                 >
-                  <th className="px-4 py-3 font-semibold text-[var(--foreground)]">
+                  <th className="px-4 py-3 font-semibold">
                     <span className="flex items-center gap-2">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -286,7 +271,6 @@ function Iec60422Panel({
                           flexShrink: 0,
                           transition: 'transform 0.2s',
                           transform: tableCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                          color: 'var(--muted)',
                         }}
                       >
                         <polyline points="6 9 12 15 18 9" />
@@ -294,10 +278,10 @@ function Iec60422Panel({
                       Parameter
                     </span>
                   </th>
-                  <th className="px-4 py-3 font-semibold text-[var(--foreground)]">Latest</th>
-                  <th className="px-4 py-3 font-semibold text-[var(--foreground)]">{columnLabels.healthy}</th>
-                  <th className="px-4 py-3 font-semibold text-[var(--foreground)]">{columnLabels.monitor}</th>
-                  <th className="px-4 py-3 font-semibold text-[var(--foreground)]">{columnLabels.action}</th>
+                  <th className="px-4 py-3 font-semibold">Latest</th>
+                  <th className="px-4 py-3 font-semibold">{columnLabels.healthy}</th>
+                  <th className="px-4 py-3 font-semibold">{columnLabels.monitor}</th>
+                  <th className="px-4 py-3 font-semibold">{columnLabels.action}</th>
                 </tr>
               </thead>
               {!tableCollapsed && <tbody>
@@ -456,7 +440,10 @@ function Iec60422Panel({
           </div>
         ) : null}
 
-        <p className="text-xs text-[var(--muted)]">{standard.validationNote}</p>
+        <p className="text-xs text-[var(--muted)]">
+          Disclaimer: Limits follow {selectedStandardLabel} for the selected oil and test type. Data is
+          synced from the certificate; verify it against the signed original with TNB Labs.
+        </p>
       </CardContent>
     </Card>
   );

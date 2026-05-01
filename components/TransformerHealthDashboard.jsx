@@ -688,7 +688,7 @@ function HealthGauge({ score }) {
 
   return (
     <div className="flex w-full flex-col items-center justify-center">
-      <svg viewBox="0 -8 220 188" width="100%" height="auto" style={{ maxWidth: 210 }}>
+      <svg viewBox="0 -8 220 188" width="100%" style={{ maxWidth: 210, display: 'block' }}>
         <defs>
           <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#dc2626" />
@@ -1047,33 +1047,51 @@ function FaultMethodsRadar({ latest, standard, oilType = 'mineral' }) {
   const completedSamples = [{ id: sampleId, analysis }];
 
   return (
-    <div className="grid gap-4 xl:grid-cols-3">
-      {cards.map((card) => (
-        <div key={card.id} className="rounded-xl border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
-          <div className="mb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-              {card.title}
-            </p>
-            <p className="mt-2 text-base font-semibold text-[var(--foreground)]">{card.label}</p>
-            <p className="mt-1 text-xs text-[var(--muted)]">{card.zone ? `Zone ${card.zone}` : 'Pending'}</p>
-          </div>
+    <div className="space-y-3">
+      <div className="grid gap-4 xl:grid-cols-3">
+        {cards.map((card) => (
+          <div key={card.id} className="rounded-xl border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
+            <div className="mb-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                {card.title}
+              </p>
+              <p className="mt-2 text-base font-semibold text-[var(--foreground)]">{card.label}</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">{card.zone ? `Zone ${card.zone}` : 'Pending'}</p>
+            </div>
 
-          <div className="rounded-lg border border-[color:var(--border)] bg-[var(--card)] p-2">
-            <div className="flex justify-center">
-              <DuvalDiagram
-                type={card.type}
-                diagramKey={card.diagramKey ?? undefined}
-                oilType={oilType}
-                currentZone={card.zone}
-                completedSamples={completedSamples}
-                latestId={sampleId}
-                selectedId={sampleId}
-                size="default"
-              />
+            <div className="rounded-lg border border-[color:var(--border)] bg-[var(--card)] p-2">
+              <div className="flex justify-center">
+                <DuvalDiagram
+                  type={card.type}
+                  diagramKey={card.diagramKey ?? undefined}
+                  oilType={oilType}
+                  currentZone={card.zone}
+                  completedSamples={completedSamples}
+                  latestId={sampleId}
+                  selectedId={sampleId}
+                  size="default"
+                />
+              </div>
             </div>
           </div>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-[color:var(--warning)]/30 bg-[var(--warning-soft,#fefce8)] px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 text-sm leading-none text-[var(--warning-strong,#a16207)]">⚠</span>
+          <div className="space-y-1.5">
+            <p className="text-[11px] leading-relaxed text-[var(--warning-strong,#a16207)]">
+              <span className="font-semibold">Disclaimer:</span>{' '}
+              This snapshot reflects the Duval fault zone based on the <span className="font-medium">most recent DGA result</span> from ongoing annual monitoring.
+              A definitive fault diagnosis requires reviewing the <span className="font-medium">gas trend across multiple results</span> before any formal recommendation is made.
+            </p>
+            <p className="text-[11px] leading-relaxed text-[var(--warning-strong,#a16207)]">
+              Always refer to the signed original test certificate and verify its authenticity with TNB Labs before taking any action.
+            </p>
+          </div>
         </div>
-      ))}
+      </div>
     </div>
   );
 }
@@ -1197,8 +1215,8 @@ function buildInsights(
   if (!latest) return [];
   const items = [];
 
-  // DGA gas alerts
-  DGA_GAS_KEYS.forEach((gas) => {
+  // DGA gas alerts — CO and CO2 excluded (normal by-products of paper degradation)
+  DGA_GAS_KEYS.filter((gas) => gas !== 'CO' && gas !== 'CO2').forEach((gas) => {
     const value = latest[gas];
     if (value === null || value === undefined) return;
     const caution = cautionLimits[gas];
@@ -1236,21 +1254,66 @@ function buildInsights(
     });
   }
 
-  // Oil quality alerts
+  // Oil quality alerts — critical (>=80) and caution (>=49) tiers
   [
-    { key: 'breakdown', value: latest.BDV, title: 'Low breakdown voltage', label: 'Breakdown voltage', unit: 'kV' },
-    { key: 'waterContent', value: latest.Moisture, title: 'High moisture', label: 'Water content', unit: 'ppm' },
-    { key: 'acidity', value: latest.Acidity, title: 'Elevated acidity', label: 'Acidity', unit: 'mg KOH/g' },
-  ].forEach(({ key, value, title, label, unit }) => {
+    { key: 'breakdown',          value: latest.BDV,         criticalTitle: 'Low breakdown voltage',  cautionTitle: 'Breakdown voltage declining',  label: 'Breakdown voltage', unit: 'kV' },
+    { key: 'waterContent',       value: latest.Moisture,    criticalTitle: 'High moisture',           cautionTitle: 'Moisture elevated',            label: 'Moisture',          unit: 'ppm' },
+    { key: 'acidity',            value: latest.Acidity,     criticalTitle: 'Elevated acidity',        cautionTitle: 'Acidity rising',               label: 'Acidity',           unit: 'mg KOH/g' },
+    { key: 'interfacialTension', value: latest.IFT,         criticalTitle: 'Low IFT',                 cautionTitle: 'IFT declining',                label: 'IFT',               unit: 'mN/m' },
+    { key: 'powerFactor',        value: latest.PowerFactor, criticalTitle: 'High Tan δ / PF',         cautionTitle: 'Tan δ / PF elevated',          label: 'Tan δ / PF',        unit: '%' },
+  ].forEach(({ key, value, criticalTitle, cautionTitle, label, unit }) => {
+    if (value === null || value === undefined) return;
     const severity = oilParamSeverity(key, value, oilReferences);
-    if (severity !== null && severity >= 80) {
+    if (severity === null) return;
+    if (severity >= 80) {
+      items.push({
+        tone: 'critical',
+        title: criticalTitle,
+        message: `${label} ${value} ${unit} is outside the active IEC oil limit (${formatOilReferenceLimit(oilReferences[key])}).`,
+      });
+    } else if (severity >= 49) {
       items.push({
         tone: 'caution',
-        title,
-        message: `${label} ${value} ${unit} is outside the active IEC oil limit (${formatOilReferenceLimit(oilReferences[key])}).`,
+        title: cautionTitle,
+        message: `${label} ${value} ${unit} is approaching the IEC limit (${formatOilReferenceLimit(oilReferences[key])}). Monitor trend.`,
       });
     }
   });
+
+  // DBDS — corrosive sulphur marker (IEC 62697)
+  if (latest.DBDS !== null && latest.DBDS !== undefined) {
+    if (latest.DBDS > 50) {
+      items.push({
+        tone: 'critical',
+        title: 'DBDS above action limit',
+        message: `DBDS ${latest.DBDS} mg/kg exceeds the 50 mg/kg IEC 62697-1 threshold. Oil treatment or replacement required.`,
+      });
+    } else if (latest.DBDS > 20) {
+      items.push({
+        tone: 'caution',
+        title: 'DBDS elevated',
+        message: `DBDS ${latest.DBDS} mg/kg is above 20 mg/kg. Monitor for further increase toward the 50 mg/kg action limit.`,
+      });
+    }
+  }
+
+  // Resistivity — lower is worse (IEC 60422)
+  if (latest.Resistivity !== null && latest.Resistivity !== undefined) {
+    const resSeverity = oilParamSeverity('resistivity', latest.Resistivity, oilReferences);
+    if (resSeverity !== null && resSeverity >= 80) {
+      items.push({
+        tone: 'critical',
+        title: 'Very low oil resistivity',
+        message: `Resistivity ${latest.Resistivity} GΩ·m is below the IEC action limit (${formatOilReferenceLimit(oilReferences['resistivity'])}). Oil conductivity is critically high.`,
+      });
+    } else if (resSeverity !== null && resSeverity >= 49) {
+      items.push({
+        tone: 'caution',
+        title: 'Oil resistivity declining',
+        message: `Resistivity ${latest.Resistivity} GΩ·m is approaching the IEC caution limit (${formatOilReferenceLimit(oilReferences['resistivity'])}). Monitor trend.`,
+      });
+    }
+  }
 
   const inhibitorMetric = supplementaryMetrics?.inhibitor;
   if (inhibitorMetric?.status === 'action') {
