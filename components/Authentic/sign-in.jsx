@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, Loader2, AlertTriangle } from 'lucide-react';
+import { Lock, User, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
 import { cn } from '../../lib/utils';
 
@@ -164,9 +164,40 @@ export function clearSession() {
 function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [disclaimerMode, setDisclaimerMode] = useState(null);
+  const [pendingUser, setPendingUser] = useState(null);
+
+  const isDisclaimerOpen = disclaimerMode !== null;
+  const isDisclaimerRequired = disclaimerMode === 'post-login';
+
+  const openDisclaimerPreview = () => {
+    setPendingUser(null);
+    setDisclaimerMode('preview');
+  };
+
+  const closeDisclaimer = () => {
+    if (isDisclaimerRequired) {
+      return;
+    }
+
+    setPendingUser(null);
+    setDisclaimerMode(null);
+  };
+
+  const acknowledgeDisclaimer = () => {
+    const acknowledgedUser = pendingUser;
+
+    setPendingUser(null);
+    setDisclaimerMode(null);
+
+    if (acknowledgedUser) {
+      persistSession(acknowledgedUser);
+      onSuccess?.(acknowledgedUser);
+    }
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -175,8 +206,8 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
     setSubmitting(true);
     try {
       const user = await authenticate(username.trim(), password);
-      persistSession(user);
-      onSuccess?.(user);
+      setPendingUser(user);
+      setDisclaimerMode('post-login');
     } catch (err) {
       setError(err.message || 'Unable to sign in.');
     } finally {
@@ -236,7 +267,7 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
             <Lock className="h-4 w-4" />
           </span>
           <input
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             name="password"
             autoComplete="current-password"
             required
@@ -245,6 +276,15 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
             placeholder="Password"
             className="h-11 flex-1 bg-transparent px-3 text-sm text-white placeholder:text-white/40 focus:outline-none"
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword((current) => !current)}
+            className="flex w-11 items-center justify-center text-white/60 transition-colors hover:text-white"
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            aria-pressed={showPassword}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
         </div>
 
         {infoMessage ? (
@@ -304,16 +344,20 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
           </p>
           <button
             type="button"
-            onClick={() => setIsTermsOpen(true)}
+            onClick={openDisclaimerPreview}
             className="text-white/75 underline-offset-4 hover:text-white hover:underline"
           >
-            Terms & Conditions
+            Disclaimer
           </button>
         </div>
       </form>
 
-      {isTermsOpen ? (
-        <div className="auth-terms-overlay" role="presentation" onClick={() => setIsTermsOpen(false)}>
+      {isDisclaimerOpen ? (
+        <div
+          className="auth-terms-overlay"
+          role="presentation"
+          onClick={isDisclaimerRequired ? undefined : closeDisclaimer}
+        >
           <div
             className="auth-terms-modal"
             role="dialog"
@@ -323,26 +367,31 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
           >
             <div className="auth-terms-header">
               <div>
-                <p className="auth-terms-eyebrow">Beta notice</p>
-                <h2 id="auth-terms-title">Terms & Conditions</h2>
+                <p className="auth-terms-eyebrow">
+                  {isDisclaimerRequired ? 'Login successful' : 'Important notice'}
+                </p>
+                <h2 id="auth-terms-title">Disclaimer</h2>
               </div>
-              <button
-                type="button"
-                className="auth-terms-close"
-                onClick={() => setIsTermsOpen(false)}
-                aria-label="Close terms and conditions"
-              >
-                x
-              </button>
+              {!isDisclaimerRequired ? (
+                <button
+                  type="button"
+                  className="auth-terms-close"
+                  onClick={closeDisclaimer}
+                  aria-label="Close disclaimer"
+                >
+                  x
+                </button>
+              ) : null}
             </div>
 
             <div className="auth-terms-body">
               <p>
-                This app is a beta/trial version and is still under testing. If you find any issue or
-                bug, please contact the developer.
+                This application is a beta or trial release and is still under active testing. Any
+                calculations, analysis results, and recommendations should be independently reviewed
+                before operational use.
               </p>
               <p>
-                This app is built with open-source technologies, including JavaScript, TypeScript, SQL
+                The app is built with open-source technologies, including JavaScript, TypeScript, SQL
                 databases, OpenStreetMap, and Leaflet. IEC, IEEE, and journal-based methods remain
                 subject to their original licensed or paid sources.
               </p>
@@ -358,9 +407,15 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
                 .
               </p>
               <p>
-                This app is still being verified and tested by engineers, chemists, and technical
-                experts before release.
+                This application is still being verified by engineers, chemists, and technical experts
+                before release. If you find any issue or bug, please contact the developer.
               </p>
+            </div>
+
+            <div className="auth-terms-footer">
+              <button type="button" className="auth-terms-action" onClick={acknowledgeDisclaimer}>
+                Okay
+              </button>
             </div>
           </div>
         </div>
@@ -468,6 +523,31 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
           font-weight: 600;
           text-decoration: underline;
           text-underline-offset: 3px;
+        }
+        .auth-terms-footer {
+          display: flex;
+          justify-content: flex-end;
+          padding: 0 22px 22px;
+        }
+        .auth-terms-action {
+          min-width: 110px;
+          border: 1px solid rgba(255,255,255,0.14);
+          border-radius: 12px;
+          background: linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(220,240,235,0.92) 100%);
+          color: #14211b;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          padding: 11px 18px;
+          text-transform: uppercase;
+          transition: transform 120ms ease, filter 120ms ease;
+        }
+        .auth-terms-action:hover {
+          filter: brightness(1.05);
+        }
+        .auth-terms-action:active {
+          transform: scale(0.98);
         }
       `}</style>
     </div>
