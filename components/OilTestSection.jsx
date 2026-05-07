@@ -7,6 +7,7 @@ import { Input } from './ui/input';
 import { normaliseTestTypeForStorage, TEST_TYPE_OPTIONS } from '../lib/testTypeUtils';
 import { normaliseOilTypeForStorage, OIL_TYPE_OPTIONS } from '../lib/oilTypeUtils';
 import Iec60422Panel from './standards/Iec60422Panel';
+import DgaAssessmentPanel from './standards/DgaAssessmentPanel';
 import {
   getHealthyRangeLabel,
 } from '../lib/standards/iec60422Profiles';
@@ -591,16 +592,23 @@ function OilTestSection({
 
   // Helper to get a compact summary of key test values
   const getTestSummary = (test) => {
-    const items = [];
-    if (test.breakdown) items.push({ label: 'BDV', value: `${test.breakdown} kV` });
-    if (test.acidity) items.push({ label: 'Acidity', value: `${test.acidity}` });
-    if (test.waterContent) items.push({ label: 'Water', value: `${test.waterContent} ppm` });
-    if (test.h2) items.push({ label: 'H₂', value: `${test.h2}` });
-    if (test.co) items.push({ label: 'CO', value: `${test.co}` });
-    if (test.tdcg) items.push({ label: 'TDCG', value: `${test.tdcg}` });
-    if (test.fal2) items.push({ label: '2-FAL', value: `${test.fal2}` });
-    if (test.estimatedDpFuran) items.push({ label: 'DP(FAL)', value: `${test.estimatedDpFuran}` });
-    return items.slice(0, 6); // Show max 6 key values
+    const estimatedDpFuran = hasResultValue(test.estimatedDpFuran)
+      ? test.estimatedDpFuran
+      : calculateDpFromFuran(test.fal2);
+    const estimatedDpMethanol = hasResultValue(test.estimatedDpMethanol)
+      ? test.estimatedDpMethanol
+      : calculateDpFromMethanol(test.methanol);
+    const dpEstimate = hasResultValue(estimatedDpFuran) ? estimatedDpFuran : estimatedDpMethanol;
+    const lifeUsedPct = calcLifeUsed(estimatedDpFuran, estimatedDpMethanol);
+
+    return [
+      { label: 'BDV', value: hasResultValue(test.breakdown) ? `${test.breakdown} kV` : '-' },
+      { label: 'Water', value: hasResultValue(test.waterContent) ? `${test.waterContent} ppm` : '-' },
+      { label: 'Acid', value: hasResultValue(test.acidity) ? `${test.acidity} mgKOH/g` : '-' },
+      { label: 'IFT', value: hasResultValue(test.interfacialTension) ? `${test.interfacialTension} mN/m` : '-' },
+      { label: 'DP', value: hasResultValue(dpEstimate) ? String(dpEstimate) : '-' },
+      { label: 'Life', value: hasResultValue(lifeUsedPct) ? `${lifeUsedPct}%` : '-' },
+    ];
   };
 
   // Render full test detail (reused in both collapse and modal)
@@ -805,16 +813,6 @@ function OilTestSection({
       }
     });
 
-    const overviewMetrics = [
-      { label: 'Breakdown Voltage', value: test.breakdown, unit: 'kV' },
-      { label: 'Water Content', value: test.waterContent, unit: 'ppm' },
-      { label: 'TDCG', value: test.tdcg, unit: 'ppm' },
-      {
-        label: 'DP Estimate',
-        value: hasResultValue(test.estimatedDpFuran) ? test.estimatedDpFuran : test.estimatedDpMethanol,
-      },
-    ];
-
     return (
       <div className="test-results">
         <section className="result-section result-section-notes">
@@ -826,23 +824,16 @@ function OilTestSection({
           <p className="test-notes">{test.notes || 'No assessment recorded for this sample.'}</p>
         </section>
 
-        <div className="test-overview-grid">
-          {overviewMetrics.map((metric) => (
-            <div key={metric.label} className="test-overview-card">
-              <span className="test-overview-label">{metric.label}</span>
-              <div className="test-overview-value-row">
-                <span className="test-overview-value">{getResultValue(metric.value)}</span>
-                {metric.unit ? <span className="test-overview-unit">{metric.unit}</span> : null}
-              </div>
-            </div>
-          ))}
-        </div>
-
         <Iec60422Panel
           assessment={oilQualityAssessment}
           supplementaryAssessment={supplementaryAssessment}
           title="Oil quality sample assessment"
           description="The result is checked against the selected oil type, test type, and transformer voltage group so the same limit logic can drive the dashboard."
+        />
+
+        <DgaAssessmentPanel
+          sample={test}
+          transformer={transformer}
         />
 
         {TEST_DETAIL_SECTIONS.map((section) => {

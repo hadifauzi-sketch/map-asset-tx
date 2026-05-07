@@ -15,6 +15,7 @@ import {
   TrendingDown,
   TrendingUp,
   Waves,
+  ZoomIn,
   Zap,
 } from 'lucide-react';
 import {
@@ -35,6 +36,13 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 import { DuvalDiagram } from './dga-workbench/DuvalDiagram';
 import {
   IEC_60422_VOLTAGE_GROUPS,
@@ -1020,6 +1028,8 @@ function LifetimeUsageCard({ assetAge, yearBuilt, sampleDate, dpFuran, dpMethano
 }
 
 function FaultMethodsRadar({ latest, standard, oilType = 'mineral' }) {
+  const [expandedCardId, setExpandedCardId] = useState(null);
+
   if (!latest) return null;
 
   let analysis;
@@ -1045,54 +1055,121 @@ function FaultMethodsRadar({ latest, standard, oilType = 'mineral' }) {
   const cards = buildLatestDuvalCards(analysis, oilType);
   const sampleId = 'latest';
   const completedSamples = [{ id: sampleId, analysis }];
+  const expandedCard = cards.find((card) => card.id === expandedCardId) ?? null;
+  const latestSampleDate = formatDate(latest?.raw?.testDate || latest?.testDate);
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-4 xl:grid-cols-3">
-        {cards.map((card) => (
-          <div key={card.id} className="rounded-xl border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
-            <div className="mb-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                {card.title}
-              </p>
-              <p className="mt-2 text-base font-semibold text-[var(--foreground)]">{card.label}</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">{card.zone ? `Zone ${card.zone}` : 'Pending'}</p>
-            </div>
-
-            <div className="rounded-lg border border-[color:var(--border)] bg-[var(--card)] p-2">
-              <div className="flex justify-center">
-                <DuvalDiagram
-                  type={card.type}
-                  diagramKey={card.diagramKey ?? undefined}
-                  oilType={oilType}
-                  currentZone={card.zone}
-                  completedSamples={completedSamples}
-                  latestId={sampleId}
-                  selectedId={sampleId}
-                  size="default"
-                />
+    <>
+      <div className="space-y-3">
+        <div className="grid gap-4 xl:grid-cols-3">
+          {cards.map((card) => (
+            <div key={card.id} className="rounded-xl border border-[color:var(--border)] bg-[var(--card-muted)] p-3">
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  {card.title}
+                </p>
+                <p className="mt-2 text-base font-semibold text-[var(--foreground)]">{card.label}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{card.zone ? `Zone ${card.zone}` : 'Pending'}</p>
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
 
-      <div className="rounded-lg border border-[color:var(--warning)]/30 bg-[var(--warning-soft,#fefce8)] px-3 py-2.5">
-        <div className="flex items-start gap-2">
-          <span className="mt-0.5 text-sm leading-none text-[var(--warning-strong,#a16207)]">⚠</span>
-          <div className="space-y-1.5">
-            <p className="text-[11px] leading-relaxed text-[var(--warning-strong,#a16207)]">
-              <span className="font-semibold">Disclaimer:</span>{' '}
-              This snapshot reflects the Duval fault zone based on the <span className="font-medium">most recent DGA result</span> from ongoing annual monitoring.
-              A definitive fault diagnosis requires reviewing the <span className="font-medium">gas trend across multiple results</span> before any formal recommendation is made.
-            </p>
-            <p className="text-[11px] leading-relaxed text-[var(--warning-strong,#a16207)]">
-              Always refer to the signed original test certificate and verify its authenticity with TNB Labs before taking any action.
-            </p>
+              <button
+                type="button"
+                onClick={() => setExpandedCardId(card.id)}
+                className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border border-[color:var(--border)] bg-[var(--card)] p-2 text-left transition hover:border-[color:var(--primary)]/40 hover:bg-[var(--card-hover,var(--card))] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                aria-label={`Open larger ${card.title} diagram`}
+              >
+                <span className="pointer-events-none absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border)] bg-[var(--card)]/95 text-[var(--muted)] shadow-sm transition group-hover:border-[color:var(--primary)]/40 group-hover:text-[var(--primary-strong)]">
+                  <ZoomIn className="h-4 w-4" />
+                </span>
+                <div className="flex justify-center">
+                  <DuvalDiagram
+                    type={card.type}
+                    diagramKey={card.diagramKey ?? undefined}
+                    oilType={oilType}
+                    currentZone={card.zone}
+                    completedSamples={completedSamples}
+                    latestId={sampleId}
+                    selectedId={sampleId}
+                    size="default"
+                  />
+                </div>
+                <p className="mt-2 text-center text-[11px] font-medium text-[var(--muted)] transition group-hover:text-[var(--foreground)]">
+                  Click to enlarge
+                </p>
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-lg border border-[color:var(--warning)]/30 bg-[var(--warning-soft,#fefce8)] px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 text-sm leading-none text-[var(--warning-strong,#a16207)]">⚠</span>
+            <div className="space-y-1.5">
+              <p className="text-[11px] leading-relaxed text-[var(--warning-strong,#a16207)]">
+                <span className="font-semibold">Disclaimer:</span>{' '}
+                This snapshot reflects the Duval fault zone based on the <span className="font-medium">most recent DGA result</span> from ongoing annual monitoring.
+                A definitive fault diagnosis requires reviewing the <span className="font-medium">gas trend across multiple results</span> before any formal recommendation is made.
+              </p>
+              <p className="text-[11px] leading-relaxed text-[var(--warning-strong,#a16207)]">
+                Always refer to the signed original test certificate and verify its authenticity with TNB Labs before taking any action.
+              </p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      <Dialog open={Boolean(expandedCard)} onOpenChange={(open) => { if (!open) setExpandedCardId(null); }}>
+        <DialogContent className="max-w-5xl overflow-hidden">
+          {expandedCard ? (
+            <>
+              <DialogHeader className="pr-12">
+                <DialogTitle>{expandedCard.title}</DialogTitle>
+                <DialogDescription>
+                  Enlarged latest fault snapshot for the sample dated {latestSampleDate}.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="rounded-xl border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
+                  <div className="flex justify-center">
+                    <DuvalDiagram
+                      type={expandedCard.type}
+                      diagramKey={expandedCard.diagramKey ?? undefined}
+                      oilType={oilType}
+                      currentZone={expandedCard.zone}
+                      completedSamples={completedSamples}
+                      latestId={sampleId}
+                      selectedId={sampleId}
+                      size="modal"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4 rounded-xl border border-[color:var(--border)] bg-[var(--card-muted)] p-5">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Fault result
+                    </div>
+                    <div className="mt-2 text-xl font-semibold text-[var(--foreground)]">
+                      {expandedCard.label}
+                    </div>
+                    <div className="mt-1 text-sm text-[var(--muted)]">
+                      {expandedCard.zone ? `Zone ${expandedCard.zone}` : 'Pending'}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-[color:var(--border)] bg-[var(--card)] px-4 py-3 text-sm text-[var(--muted)]">
+                    <div>Sample date: {latestSampleDate}</div>
+                    <div className="mt-1">Source: latest dashboard fault snapshot</div>
+                    <div className="mt-1">This enlarged view matches the dashboard card and does not change the separate DGA Analysis section.</div>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 // --- DGA limits bar (latest vs caution / warning) ---
