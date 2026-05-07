@@ -795,7 +795,7 @@ function TransformerDetailModal({
             </div>
 
             <div
-              className="detail-scroll min-h-0 flex-1 overflow-y-auto py-4 pr-2 sm:py-5 sm:pr-3"
+              className="detail-scroll min-h-0 flex-1 overflow-y-auto py-2 pr-2 sm:py-2 sm:pr-3" //adjust the gap of oil test
               onScroll={handleDetailScroll}
             >
               <TabsContent value="info" className="mt-0 space-y-5">

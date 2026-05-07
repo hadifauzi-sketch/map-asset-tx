@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDownNarrowWide, ArrowUpNarrowWide, CalendarRange, Check, ChevronDown, X } from 'lucide-react';
 import { oilTestService } from '../lib/oilTestService';
 import DGAWorkbenchModal from './DGAWorkbenchModal';
 import { Button } from './ui/button';
@@ -28,6 +29,29 @@ import {
 } from './ui/dialog';
 
 const DELETE_ALL_CONFIRM_PHRASE = 'DELETE ALL';
+const DEFAULT_SORT_ORDER = 'latest';
+
+function getOilTestYear(testDate) {
+  if (typeof testDate === 'string') {
+    const match = testDate.match(/^(\d{4})/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  const parsedDate = new Date(testDate ?? '');
+  return Number.isNaN(parsedDate.getTime()) ? '' : String(parsedDate.getFullYear());
+}
+
+function getOilTestSortTimestamp(test) {
+  const parsedTestDate = Date.parse(test?.testDate ?? '');
+  if (!Number.isNaN(parsedTestDate)) {
+    return parsedTestDate;
+  }
+
+  const parsedCreatedAt = Date.parse(test?.createdAt ?? '');
+  return Number.isNaN(parsedCreatedAt) ? 0 : parsedCreatedAt;
+}
 
 // DP estimation formulas
 function calculateDpFromFuran(fal2) {
@@ -209,6 +233,10 @@ function OilTestSection({
   const [pendingDeleteAllTestIds, setPendingDeleteAllTestIds] = useState([]);
   const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
   const [isDeletingAllTests, setIsDeletingAllTests] = useState(false);
+  const [sortOrder, setSortOrder] = useState(DEFAULT_SORT_ORDER);
+  const [yearFilter, setYearFilter] = useState('');
+  const [isYearMenuOpen, setIsYearMenuOpen] = useState(false);
+  const yearMenuRef = useRef(null);
   const [formData, setFormData] = useState({
     testDate: new Date().toISOString().split('T')[0],
     testType: 'Routine',
@@ -268,6 +296,67 @@ function OilTestSection({
     setIsAddingTest(false);
     setEditingTest(null);
   }, [readOnly]);
+
+  useEffect(() => {
+    setSortOrder(DEFAULT_SORT_ORDER);
+    setYearFilter('');
+    setIsYearMenuOpen(false);
+  }, [transformerId, activeCompartment]);
+
+  useEffect(() => {
+    if (!isYearMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (yearMenuRef.current && !yearMenuRef.current.contains(event.target)) {
+        setIsYearMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsYearMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isYearMenuOpen]);
+
+  const normalizedYearFilter = yearFilter.trim();
+  const hasYearFilter = normalizedYearFilter !== '';
+  const selectedYearLabel = hasYearFilter ? normalizedYearFilter : 'All years';
+
+  const availableYears = useMemo(
+    () =>
+      Array.from(new Set(oilTests.map((test) => getOilTestYear(test?.testDate)).filter(Boolean))).sort(
+        (left, right) => Number(right) - Number(left)
+      ),
+    [oilTests]
+  );
+
+  const visibleOilTests = useMemo(() => {
+    const filteredTests = hasYearFilter
+      ? oilTests.filter((test) => getOilTestYear(test?.testDate).startsWith(normalizedYearFilter))
+      : [...oilTests];
+
+    return filteredTests.sort((left, right) => {
+      const direction = sortOrder === 'oldest' ? 1 : -1;
+      const timestampDifference = getOilTestSortTimestamp(left) - getOilTestSortTimestamp(right);
+
+      if (timestampDifference !== 0) {
+        return timestampDifference * direction;
+      }
+
+      return String(left?.id ?? '').localeCompare(String(right?.id ?? '')) * direction;
+    });
+  }, [hasYearFilter, normalizedYearFilter, oilTests, sortOrder]);
 
   // Auto-calculate TDCG and DP estimates when relevant fields change
   const computedTdcg = useMemo(() => calculateTdcg(formData), [formData.h2, formData.ch4, formData.c2h2, formData.c2h4, formData.c2h6, formData.co]);
@@ -1102,7 +1191,107 @@ function OilTestSection({
                 {activeCompartment}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {oilTests.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-1 rounded-md border border-[color:var(--border)] bg-[var(--card)] px-1.5 py-1 shadow-sm">
+                    <Button
+                      variant={sortOrder === 'latest' ? 'default' : 'ghost'}
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setSortOrder('latest')}
+                      title="Latest first"
+                      aria-label="Sort oil tests with latest date first"
+                    >
+                      <ArrowDownNarrowWide className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={sortOrder === 'oldest' ? 'default' : 'ghost'}
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setSortOrder('oldest')}
+                      title="Oldest first"
+                      aria-label="Sort oil tests with oldest date first"
+                    >
+                      <ArrowUpNarrowWide className="h-4 w-4" />
+                    </Button>
+
+                    <div className="h-5 w-px bg-[color:var(--border)]" aria-hidden="true" />
+
+                    <div ref={yearMenuRef} className="relative">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1 rounded-md bg-[var(--card-muted)] px-2 text-[var(--foreground)] hover:bg-[var(--card-strong)]"
+                        onClick={() => setIsYearMenuOpen((open) => !open)}
+                        aria-expanded={isYearMenuOpen}
+                        aria-haspopup="menu"
+                        title={hasYearFilter ? `Filter by year ${yearFilter}` : 'Filter by year'}
+                      >
+                        <CalendarRange className="h-3.5 w-3.5 text-[var(--muted)]" />
+                        <span className="max-w-[5.75rem] truncate text-xs font-medium">{selectedYearLabel}</span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 text-[var(--muted)] transition-transform ${isYearMenuOpen ? 'rotate-180' : ''}`}
+                        />
+                      </Button>
+
+                      {isYearMenuOpen ? (
+                        <div className="absolute right-0 top-full z-20 mt-2 min-w-[11rem] overflow-hidden rounded-md border border-[color:var(--border)] bg-[var(--card)] shadow-lg">
+                          <div className="border-b border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+                            Filter by year
+                          </div>
+                          <div className="max-h-64 overflow-y-auto p-1">
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--card-muted)]"
+                              onClick={() => {
+                                setYearFilter('');
+                                setIsYearMenuOpen(false);
+                              }}
+                            >
+                              <span>All years</span>
+                              {!hasYearFilter ? <Check className="h-4 w-4 text-[var(--primary)]" /> : null}
+                            </button>
+
+                            {availableYears.map((year) => (
+                              <button
+                                key={year}
+                                type="button"
+                                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                                  year === normalizedYearFilter
+                                    ? 'bg-[var(--primary-soft)] text-[var(--primary-strong)]'
+                                    : 'text-[var(--foreground)] hover:bg-[var(--card-muted)]'
+                                }`}
+                                onClick={() => {
+                                  setYearFilter(year);
+                                  setIsYearMenuOpen(false);
+                                }}
+                              >
+                                <span>{year}</span>
+                                {year === normalizedYearFilter ? <Check className="h-4 w-4 text-[var(--primary)]" /> : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {hasYearFilter ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setYearFilter('')}
+                        title="Clear year filter"
+                        aria-label="Clear year filter"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               {!readOnly ? (
                 <>
                   <Button
@@ -1137,9 +1326,19 @@ function OilTestSection({
                 </button>
               ) : null}
             </div>
+          ) : visibleOilTests.length === 0 ? (
+            <div className="empty-state">
+              <svg className="empty-icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p>No oil test records found for year {normalizedYearFilter}.</p>
+              <Button variant="outline" onClick={() => setYearFilter('')}>
+                Show all years
+              </Button>
+            </div>
           ) : (
             <div className="test-list">
-              {oilTests.map((test) => (
+              {visibleOilTests.map((test) => (
                 <div key={test.id} className={`test-card ${expandedTests[test.id] ? 'expanded' : ''}`}>
                   {/* Compact header - click to expand/collapse */}
                   <div className="test-card-header" onClick={() => toggleExpand(test.id)}>

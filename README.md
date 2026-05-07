@@ -12,7 +12,7 @@ A comprehensive cloud-based transformer substation asset management application 
 ✅ **Secure** - Row Level Security (RLS) policies  
 ✅ **No LocalStorage** - Professional cloud-based solution  
 
-## 🚀 What's New in v3.2
+## 🚀 What's New in v3.6
 
 ✅ **Transformer import workflow** - PDF import and review flow for transformer records  
 ✅ **Asset visibility** - Asset card gallery and context menu for faster review  

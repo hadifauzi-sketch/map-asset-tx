@@ -583,7 +583,12 @@ textarea {
   }
 }
 
-.oil-test-section,
+.oil-test-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .document-section,
 .data-trending-tab {
   display: flex;
