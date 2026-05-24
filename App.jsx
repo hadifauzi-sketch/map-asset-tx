@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
@@ -29,13 +29,14 @@ import TransformerSidebar from './components/TransformerSidebar';
 import TransformerModal from './components/TransformerModal';
 import NoticeDialog from './components/NoticeDialog';
 import TransformerDetailModal from './components/TransformerDetailModal';
+import GeoSearchControl from './components/GeoSearchControl';
 import LocationRegisterModule from './components/location-register/LocationRegisterModule';
 import FloorPlanMapLayer from './components/FloorPlanMapLayer';
 import FloorPlanMetadataDialog from './components/FloorPlanMetadataDialog';
 import FloorPlanDetailModal from './components/FloorPlanDetailModal';
 import { Badge } from './components/ui/badge';
 import { Button } from './components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog';
 import SignIn, {
   clearSession,
@@ -58,6 +59,12 @@ import { documentService } from './lib/documentService';
 import { oilTestService } from './lib/oilTestService';
 import { isSameImportedOilTestPayload } from './lib/oilTestImportUtils';
 import { createTransformerDraft } from './lib/transformerDraft';
+import {
+  ASSET_OWNER_FILTERS,
+  matchesAssetOwnerFilter,
+  normalizeAssetOwnerFilter,
+  normalizeAssetOwnerType,
+} from './lib/assetOwner';
 import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
@@ -71,6 +78,7 @@ const MARKER_CLUSTER_DISABLE_AT_ZOOM = 15;
 const THEME_STORAGE_KEY = 'transformer-asset-map-theme';
 const MAP_BASE_LAYER_STORAGE_KEY = 'transformer-asset-map-base-layer';
 const DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY = 'transformer-asset-map-desktop-sidebar-collapsed';
+const ASSET_OWNER_FILTER_STORAGE_KEY = 'transformer-asset-map-owner-filter';
 const SESSION_ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
 const IDLE_SIGN_OUT_MESSAGE = 'Session expired after 8 hours of inactivity. Please sign in again.';
 
@@ -350,6 +358,14 @@ const createTransformerIcon = (color = '#0f766e') =>
     popupAnchor: [0, -30],
   });
 
+const geoSearchIcon = L.divIcon({
+  className: 'geo-search-pin-icon',
+  html: '<div class="geo-search-pin"><div class="geo-search-pin-dot"></div></div>',
+  iconSize: [34, 42],
+  iconAnchor: [17, 38],
+  popupAnchor: [0, -32],
+});
+
 function App() {
   const [currentUser, setCurrentUser] = useState(() => readSession());
   const [authNotice, setAuthNotice] = useState(null);
@@ -372,6 +388,13 @@ function App() {
 
     const storedLayer = window.localStorage.getItem(MAP_BASE_LAYER_STORAGE_KEY);
     return storedLayer && MAP_BASE_LAYERS[storedLayer] ? storedLayer : 'streets';
+  });
+  const [assetOwnerFilter, setAssetOwnerFilter] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'all';
+    }
+
+    return normalizeAssetOwnerFilter(window.localStorage.getItem(ASSET_OWNER_FILTER_STORAGE_KEY));
   });
   const [theme, setTheme] = useState(() => {
     if (typeof window === 'undefined') {
@@ -408,6 +431,7 @@ function App() {
   const [isFloorDetailModalOpen, setIsFloorDetailModalOpen] = useState(false);
   const [isDraggable, setIsDraggable] = useState(false);
   const [isLocationRegisterOpen, setIsLocationRegisterOpen] = useState(false);
+  const [geoSearchSelection, setGeoSearchSelection] = useState(null);
   const pendingFloorAssignment = useRef(null);
   const leafletMapRef = useRef(null);
   const idleSignOutTimerRef = useRef(null);
@@ -480,6 +504,13 @@ function App() {
     if (typeof window === 'undefined') {
       return;
     }
+    window.localStorage.setItem(ASSET_OWNER_FILTER_STORAGE_KEY, assetOwnerFilter);
+  }, [assetOwnerFilter]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
     window.localStorage.setItem(
       DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY,
       String(isDesktopSidebarCollapsed)
@@ -522,17 +553,61 @@ function App() {
     }
   }, [isDetailModalOpen, selectedTransformer]);
 
+  const filteredTransformers = useMemo(
+    () => transformers.filter((transformer) => matchesAssetOwnerFilter(transformer, assetOwnerFilter)),
+    [assetOwnerFilter, transformers]
+  );
+
+  const assetOwnerCounts = useMemo(
+    () =>
+      transformers.reduce(
+        (counts, transformer) => {
+          const ownerType = normalizeAssetOwnerType(transformer.ownerType);
+          return {
+            ...counts,
+            all: counts.all + 1,
+            [ownerType]: (counts[ownerType] || 0) + 1,
+          };
+        },
+        { all: 0 }
+      ),
+    [transformers]
+  );
+
+  const assetOwnerFilterOptions = useMemo(
+    () =>
+      ASSET_OWNER_FILTERS.map((option) => ({
+        ...option,
+        count: option.value === 'all' ? assetOwnerCounts.all : assetOwnerCounts[option.value] || 0,
+      })),
+    [assetOwnerCounts]
+  );
+
+  const activeAssetOwnerFilter = useMemo(
+    () => ASSET_OWNER_FILTERS.find((option) => option.value === assetOwnerFilter) || ASSET_OWNER_FILTERS[0],
+    [assetOwnerFilter]
+  );
+
+  useEffect(() => {
+    if (!selectedTransformer || matchesAssetOwnerFilter(selectedTransformer, assetOwnerFilter)) {
+      return;
+    }
+
+    setSelectedTransformer(null);
+    setIsDetailModalOpen(false);
+  }, [assetOwnerFilter, selectedTransformer]);
+
   const overviewStats = useMemo(() => {
-    const oilSamples = transformers.reduce((sum, transformer) => sum + (transformer.oilTests?.length || 0), 0);
-    const documents = transformers.reduce((sum, transformer) => sum + (transformer.documents?.length || 0), 0);
-    const sites = new Set(transformers.map((transformer) => transformer.siteName).filter(Boolean)).size;
+    const oilSamples = filteredTransformers.reduce((sum, transformer) => sum + (transformer.oilTests?.length || 0), 0);
+    const documents = filteredTransformers.reduce((sum, transformer) => sum + (transformer.documents?.length || 0), 0);
+    const sites = new Set(filteredTransformers.map((transformer) => transformer.siteName).filter(Boolean)).size;
     return [
-      { label: 'Assets', value: transformers.length, icon: Power },
+      { label: 'Assets', value: filteredTransformers.length, icon: Power },
       { label: 'Oil Samples', value: oilSamples, icon: TestTubeDiagonal },
       { label: 'Documents', value: documents, icon: FileText },
       { label: 'Sites', value: sites, icon: MapPin },
     ];
-  }, [transformers]);
+  }, [filteredTransformers]);
 
   const focusedAssetFaultSummary = useMemo(() => {
     if (!selectedTransformer) {
@@ -638,12 +713,12 @@ function App() {
   const transformerMarkerColors = useMemo(
     () =>
       new Map(
-        transformers.map((transformer) => [
+        filteredTransformers.map((transformer) => [
           transformer.id,
           getTransformerMarkerColor(transformer),
         ]),
       ),
-    [transformers],
+    [filteredTransformers],
   );
 
   const floorPlanByTransformerId = useMemo(() => {
@@ -670,10 +745,10 @@ function App() {
     () =>
       selectedFloorPlan
         ? selectedFloorPlan.transformerIds
-            .map((transformerId) => transformers.find((transformer) => String(transformer.id) === String(transformerId)))
+            .map((transformerId) => filteredTransformers.find((transformer) => String(transformer.id) === String(transformerId)))
             .filter(Boolean)
         : [],
-    [selectedFloorPlan, transformers]
+    [filteredTransformers, selectedFloorPlan]
   );
 
   const focusTransformer = (transformer, zoom = 15) => {
@@ -722,6 +797,37 @@ function App() {
       setSidebarOpen(false);
     }
   }, []);
+
+  const handleGeoSearchPlaceSelect = (result) => {
+    const latitude = Number(result?.position?.[0]);
+    const longitude = Number(result?.position?.[1]);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return;
+    }
+
+    setGeoSearchSelection({
+      position: [latitude, longitude],
+      title: result?.title || 'Search result',
+      subtitle: result?.subtitle || '',
+    });
+    setSelectedTransformer(null);
+    setSelectedFloorPlanId(null);
+
+    const boundingBox = Array.isArray(result?.boundingBox) ? result.boundingBox : null;
+    if (boundingBox?.length === 4 && leafletMapRef.current) {
+      const [south, north, west, east] = boundingBox.map(Number);
+      if ([south, north, west, east].every(Number.isFinite) && south !== north && west !== east) {
+        const bounds = L.latLngBounds([south, west], [north, east]);
+        const targetCenter = bounds.getCenter();
+        const boundsZoom = leafletMapRef.current.getBoundsZoom(bounds, false, L.point(80, 80));
+        const targetZoom = Number.isFinite(boundsZoom) ? Math.min(boundsZoom, 17) : 17;
+        focusLocationPosition([targetCenter.lat, targetCenter.lng], Math.max(targetZoom, 3));
+        return;
+      }
+    }
+
+    focusLocationPosition([latitude, longitude], 17);
+  };
 
   const loadFloorPlans = async () => {
     try {
@@ -1316,7 +1422,7 @@ function App() {
       return;
     }
 
-    const detectedTransformers = findTransformersInsidePolygon(transformers, floorPlanDraft.points);
+    const detectedTransformers = findTransformersInsidePolygon(filteredTransformers, floorPlanDraft.points);
     const existingFloorPlan = floorPlanDraft.id
       ? floorPlans.find((floorPlan) => floorPlan.id === floorPlanDraft.id) || null
       : null;
@@ -1324,7 +1430,7 @@ function App() {
       detectedTransformers[0] ||
       (existingFloorPlan?.transformerIds || [])
         .map((transformerId) =>
-          transformers.find((transformer) => String(transformer.id) === String(transformerId))
+          filteredTransformers.find((transformer) => String(transformer.id) === String(transformerId))
         )
         .filter(Boolean)[0] ||
       selectedTransformer ||
@@ -1554,7 +1660,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
   }
 
   const markerClusterEnabled = !(isDraggable && canEditAssets);
-  const transformerMarkerNodes = transformers.map((transformer) => (
+  const transformerMarkerNodes = filteredTransformers.map((transformer) => (
     <TransformerMarker
       key={transformer.id}
       transformer={transformer}
@@ -1597,7 +1703,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           }}
         >
           <TransformerSidebar
-            transformers={transformers}
+            transformers={filteredTransformers}
             floorPlans={floorPlans}
             currentUser={currentUser}
             canManageAssets={canEditAssets}
@@ -1715,6 +1821,12 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     })}
                   </div>
                 </div>
+
+                <GeoSearchControl
+                  mapRef={leafletMapRef}
+                  onSelectPlace={handleGeoSearchPlaceSelect}
+                  onClearSelection={() => setGeoSearchSelection(null)}
+                />
 
                 <div className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">
                   <Button
@@ -1978,7 +2090,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
               <MapClickHandler onMapClick={handleMapClick} />
               <FloorPlanMapLayer
                 floorPlans={floorPlans}
-                transformers={transformers}
+                transformers={filteredTransformers}
                 canManageAssets={canEditAssets}
                 showFloorPlans={showFloorPlans}
                 selectedFloorPlanId={selectedFloorPlanId}
@@ -1990,6 +2102,22 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 onDeleteFloorPlan={handleDeleteFloorPlan}
                 onDraftVertexMove={handleFloorDraftVertexMove}
               />
+              {geoSearchSelection?.position ? (
+                <Marker position={geoSearchSelection.position} icon={geoSearchIcon}>
+                  <Popup className="geo-search-popup">
+                    <div className="min-w-[190px] space-y-1 px-3 py-2">
+                      <p className="text-sm font-semibold text-[var(--foreground)]">
+                        {geoSearchSelection.title}
+                      </p>
+                      {geoSearchSelection.subtitle ? (
+                        <p className="text-xs text-[var(--muted)]">
+                          {geoSearchSelection.subtitle}
+                        </p>
+                      ) : null}
+                    </div>
+                  </Popup>
+                </Marker>
+              ) : null}
               {markerClusterEnabled ? (
                 <MarkerClusterGroup
                   chunkedLoading
@@ -2113,7 +2241,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <FloorPlanMetadataDialog
         open={isFloorPlanDialogOpen}
         floorPlanDraft={floorPlanDialogDraft}
-        transformers={transformers}
+        transformers={filteredTransformers}
         detectedTransformerIds={floorPlanDialogDraft?.detectedTransformerIds || []}
         onClose={() => {
           setIsFloorPlanDialogOpen(false);
@@ -2125,7 +2253,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
 
       <FloorPlanDetailModal
         floorPlan={floorDetailFloorPlan}
-        transformers={transformers}
+        transformers={filteredTransformers}
         isOpen={isFloorDetailModalOpen}
         canManageAssets={canEditAssets}
         onClose={() => setIsFloorDetailModalOpen(false)}
@@ -2178,27 +2306,72 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             </div>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-5">
-            {isAdmin ? (
-              <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
-            ) : (
+            <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Account</CardTitle>
+                  <CardTitle>Asset owner visibility</CardTitle>
+                  <CardDescription>
+                    Showing{' '}
+                    {activeAssetOwnerFilter.value === 'all'
+                      ? 'all TNB and Non-TNB assets'
+                      : `${activeAssetOwnerFilter.label} assets`}{' '}
+                    on the map and asset lists.
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm text-[var(--muted)]">
-                  <p>
-                    You are signed in as <span className="font-semibold text-[var(--foreground)]">{currentUser?.username}</span>.
-                    Contact an administrator to change your access to transformer assets.
-                  </p>
-                  {isViewer ? (
-                    <p>
-                      This account is in <span className="font-semibold text-[var(--foreground)]">viewer</span> mode, so asset edits, uploads, and new records are disabled.
-                    </p>
-                  ) : null}
-                  <p>Assets you can currently view: <span className="font-semibold text-[var(--foreground)]">{transformers.length}</span></p>
+                <CardContent>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {assetOwnerFilterOptions.map((option) => {
+                      const isActive = assetOwnerFilter === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={cn(
+                            'flex min-h-16 items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition-colors',
+                            isActive
+                              ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] text-[var(--foreground)]'
+                              : 'border-[color:var(--border)] bg-[var(--card-muted)] text-[var(--foreground)] hover:bg-[var(--card-strong)]'
+                          )}
+                          aria-pressed={isActive}
+                          onClick={() => setAssetOwnerFilter(option.value)}
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold">{option.label}</span>
+                            <span className="mt-0.5 block text-xs text-[var(--muted)]">
+                              {option.value === 'all' ? 'TNB and Non-TNB' : `${option.shortLabel} assets`}
+                            </span>
+                          </span>
+                          <Badge variant={isActive ? 'default' : 'outline'}>{option.count}</Badge>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </CardContent>
               </Card>
-            )}
+
+              {isAdmin ? (
+                <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Account</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm text-[var(--muted)]">
+                    <p>
+                      You are signed in as <span className="font-semibold text-[var(--foreground)]">{currentUser?.username}</span>.
+                      Contact an administrator to change your access to transformer assets.
+                    </p>
+                    {isViewer ? (
+                      <p>
+                        This account is in <span className="font-semibold text-[var(--foreground)]">viewer</span> mode, so asset edits, uploads, and new records are disabled.
+                      </p>
+                    ) : null}
+                    <p>Assets you can currently view: <span className="font-semibold text-[var(--foreground)]">{transformers.length}</span></p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

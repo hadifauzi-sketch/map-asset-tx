@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Marker, Popup, Tooltip } from 'react-leaflet';
+import { getAssetOwnerLabel } from '../lib/assetOwner';
 import { getTransformerState } from '../lib/malaysiaStates';
 
 function TransformerMarker({
@@ -16,6 +17,7 @@ function TransformerMarker({
 }) {
   const markerRef = useRef(null);
   const transformerState = getTransformerState(transformer);
+  const assetOwnerLabel = getAssetOwnerLabel(transformer.ownerType);
 
   const eventHandlers = useMemo(
     () => ({
@@ -84,11 +86,15 @@ function TransformerMarker({
               <p className="popup-eyebrow">Transformer</p>
               <h3>{transformer.txName || 'Unnamed transformer'}</h3>
             </div>
-            <span className="popup-badge">{transformer.voltage || 'Voltage N/A'}</span>
+            <div className="popup-badge-stack">
+              <span className="popup-badge">{transformer.voltage || 'Voltage N/A'}</span>
+              <span className="popup-badge popup-badge-muted">{assetOwnerLabel}</span>
+            </div>
           </div>
 
           <dl className="popup-details">
             <DetailRow label="Site" value={transformer.siteName} />
+            <DetailRow label="Owner" value={assetOwnerLabel} />
             <DetailRow label="State" value={transformerState} />
             <DetailRow label="Mnemonic" value={transformer.mnemonic} />
             <DetailRow label="Serial" value={transformer.serialNumber} />

@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from './ui/input';
 import AssetCardGalleryModal from './AssetCardGalleryModal';
 import SidebarAssetContextMenu from './SidebarAssetContextMenu';
+import { getAssetOwnerLabel } from '../lib/assetOwner';
 import { compareMalaysianStates, getTransformerState } from '../lib/malaysiaStates';
 
 const EXPANDED_STATES_STORAGE_KEY = 'transformer-asset-map-expanded-states';
@@ -67,6 +68,7 @@ function matchesTransformer(transformer, search) {
     transformer.mnemonic,
     transformer.serialNumber,
     transformer.voltage,
+    getAssetOwnerLabel(transformer.ownerType),
     getTransformerState(transformer),
   ]
     .filter(Boolean)
@@ -1528,6 +1530,7 @@ function AssetsListDialog({ open, assets, selectedAssetId, onClose, onSelectAsse
           <dl className="divide-y divide-[color:var(--border)] px-3 py-1 text-xs">
             {[
               ['Site',     ctxMenu.asset.siteName],
+              ['Owner',    getAssetOwnerLabel(ctxMenu.asset.ownerType)],
               ['State',    ctxMenu.asset.state],
               ['Mnemonic', ctxMenu.asset.mnemonic],
               ['Serial',   ctxMenu.asset.serialNumber],
@@ -1735,6 +1738,7 @@ function TransformerListCard({
   onDelete,
 }) {
   const transformerState = getTransformerState(transformer);
+  const assetOwnerLabel = getAssetOwnerLabel(transformer.ownerType);
 
   return (
     <article
@@ -1784,15 +1788,17 @@ function TransformerListCard({
 
       {isExpanded ? (
         <>
-          <div className="mt-2.5 flex items-center justify-between gap-2 lg:mt-3 lg:gap-3">
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 lg:mt-3 lg:gap-3">
             <Badge variant="outline">{transformer.voltage || 'Voltage N/A'}</Badge>
             <Badge variant="secondary">{transformerState}</Badge>
+            <Badge variant="outline">{assetOwnerLabel}</Badge>
           </div>
 
           <dl className="mt-2.5 grid grid-cols-2 gap-2 text-sm lg:mt-3 lg:gap-3">
             <InfoPair label="Mnemonic" value={transformer.mnemonic || '-'} />
             <InfoPair label="Serial" value={transformer.serialNumber || '-'} />
             <InfoPair label="Load" value={transformer.loadMVA ? `${transformer.loadMVA} MVA` : '-'} />
+            <InfoPair label="Owner" value={assetOwnerLabel} />
             <InfoPair label="Year" value={transformer.yearBuilt || '-'} />
           </dl>
 

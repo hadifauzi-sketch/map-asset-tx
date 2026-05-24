@@ -18,6 +18,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { analyzeSample } from '../lib/dga/diagnostics';
 import { getStandardLabelForOilType, getStandardOptionsForOilType } from '../lib/dga/appConfig';
+import { getAssetOwnerLabel } from '../lib/assetOwner';
 import { getTransformerState } from '../lib/malaysiaStates';
 
 const DGA_CARD_GASES = [
@@ -307,6 +308,7 @@ function matchesAsset(asset, query) {
     asset.voltage,
     asset.loadMVA,
     asset.maker,
+    getAssetOwnerLabel(asset.ownerType),
     getTransformerState(asset),
   ]
     .filter(Boolean)
@@ -555,6 +557,7 @@ function TransformerAssetCard({
   const dgaStyle = DGA_STATUS_STYLES[dgaStatus.status] || DGA_STATUS_STYLES.noData;
   const latestOilTestDate = formatDate(dgaStatus.latestTest?.testDate);
   const transformerState = getTransformerState(asset);
+  const assetOwnerLabel = getAssetOwnerLabel(asset.ownerType);
 
   return (
     <article
@@ -597,6 +600,7 @@ function TransformerAssetCard({
             <div className="mt-2 flex flex-wrap gap-1">
               <Badge variant="outline" className="px-1.5 py-0.5 text-[10px]">{formatValue(asset.voltage, 'Voltage N/A')}</Badge>
               <Badge variant="secondary" className="px-1.5 py-0.5 text-[10px]">{transformerState || 'State N/A'}</Badge>
+              <Badge variant="outline" className="px-1.5 py-0.5 text-[10px]">{assetOwnerLabel}</Badge>
             </div>
           </div>
         </div>
@@ -607,6 +611,7 @@ function TransformerAssetCard({
           <AssetFact icon={Hash} label="Mnemonic" value={formatValue(asset.mnemonic)} />
           <AssetFact icon={ClipboardList} label="Serial" value={formatValue(asset.serialNumber)} />
           <AssetFact icon={Gauge} label="Load" value={asset.loadMVA ? `${asset.loadMVA} MVA` : '-'} />
+          <AssetFact icon={Building2} label="Owner" value={assetOwnerLabel} />
           <AssetFact icon={Calendar} label="Built" value={formatValue(asset.yearBuilt)} />
         </dl>
 

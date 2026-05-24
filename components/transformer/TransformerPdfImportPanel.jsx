@@ -142,8 +142,8 @@ function TransformerPdfImportPanel({
           isDragReject
             ? 'border-[color:var(--danger-soft)] bg-[var(--danger-soft)]/30'
             : isDragAccept || isDragActive
-              ? 'border-[color:var(--primary)] bg-[linear-gradient(135deg,rgba(12,120,113,0.16),rgba(255,255,255,0.96)_44%,rgba(12,120,113,0.10))]'
-              : 'border-[color:var(--border)] bg-[linear-gradient(135deg,rgba(12,120,113,0.10),rgba(255,255,255,0.92)_44%,rgba(12,120,113,0.05))]'
+              ? 'border-[color:var(--primary)] bg-[var(--primary-soft)]/45'
+              : 'border-[color:var(--border)] bg-[var(--card-muted)]/72'
         ),
       })}
     >

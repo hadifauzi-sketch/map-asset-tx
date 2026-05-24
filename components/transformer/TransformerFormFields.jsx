@@ -1,7 +1,13 @@
 import React from 'react';
+import {
+  ASSET_OWNER_TYPES,
+  getAssetOwnerLabel,
+  normalizeAssetOwnerType,
+} from '../../lib/assetOwner';
 import { MALAYSIA_STATES } from '../../lib/malaysiaStates';
 import { PAPER_TYPE_OPTIONS } from '../../lib/paperTypeUtils';
 import { Input } from '../ui/input';
+import { Switch } from '../ui/switch';
 
 function Field({ label, name, required = false, ...props }) {
   return (
@@ -62,12 +68,22 @@ function TransformerFormFields({
   onMnemonicSuggestionPick,
 }) {
   const currentMnemonic = String(formData.mnemonic || '').trim();
+  const ownerType = normalizeAssetOwnerType(formData.ownerType);
+  const isNonTnbOwner = ownerType === ASSET_OWNER_TYPES.NON_TNB;
   const hasLookupInput = Boolean(
     String(formData.serialNumber || '').trim() ||
       String(formData.siteName || '').trim() ||
       String(formData.txName || '').trim()
   );
   const serialConflictMessage = buildSerialConflictMessage(serialConflicts);
+  const handleOwnerToggle = (checked) => {
+    onChange?.({
+      target: {
+        name: 'ownerType',
+        value: checked ? ASSET_OWNER_TYPES.NON_TNB : ASSET_OWNER_TYPES.TNB,
+      },
+    });
+  };
 
   return (
     <section className="grid gap-4 sm:grid-cols-2">
@@ -93,6 +109,37 @@ function TransformerFormFields({
           </option>
         ))}
       </SelectField>
+      <div className="sm:col-span-2 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <span className="text-sm font-medium text-[var(--foreground)]">Asset owner</span>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Current category: {getAssetOwnerLabel(ownerType)}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2">
+            <span
+              className={`text-xs font-semibold ${
+                !isNonTnbOwner ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+              }`}
+            >
+              TNB
+            </span>
+            <Switch
+              checked={isNonTnbOwner}
+              onCheckedChange={handleOwnerToggle}
+              aria-label="Set transformer owner to Non-TNB"
+            />
+            <span
+              className={`text-xs font-semibold ${
+                isNonTnbOwner ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'
+              }`}
+            >
+              Non-TNB
+            </span>
+          </div>
+        </div>
+      </div>
       <Field
         label="Transformer name"
         name="txName"

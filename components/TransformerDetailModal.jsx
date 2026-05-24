@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { documentService } from '../lib/documentService';
+import { getAssetOwnerLabel } from '../lib/assetOwner';
 import { isImageDocument } from '../lib/documentUtils';
 import { getTransformerState } from '../lib/malaysiaStates';
 import { normaliseOilType } from '../lib/oilTypeUtils';
@@ -549,6 +550,7 @@ function TransformerDetailModal({
     normaliseOilType(latestOilTest?.oilType) ||
     '';
   const paperTypeValue = getPaperTypeLabel(transformer.paperType);
+  const assetOwnerLabel = getAssetOwnerLabel(transformer.ownerType);
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose() : null)}>
@@ -573,6 +575,7 @@ function TransformerDetailModal({
 
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">{transformerState}</Badge>
+              <Badge variant="outline">{assetOwnerLabel}</Badge>
               <Badge variant="outline">{voltageValue || 'Voltage N/A'}</Badge>
               <Badge variant="secondary">{loadValue || 'Load N/A'}</Badge>
               <Badge variant="secondary">{selectedCompartmentName}</Badge>
@@ -806,6 +809,7 @@ function TransformerDetailModal({
                     </CardHeader>
                     <CardContent className="grid gap-4 sm:grid-cols-2">
                       <DetailField label="Site name" value={transformer.siteName} />
+                      <DetailField label="Asset owner" value={assetOwnerLabel} />
                       <DetailField label="State / territory" value={transformerState} />
                       <DetailField label="Transformer name" value={transformer.txName} />
                       <DetailField label="Mnemonic" value={transformer.mnemonic} />
@@ -822,6 +826,7 @@ function TransformerDetailModal({
                     </CardHeader>
                     <CardContent className="grid gap-3">
                       <SummaryMetric icon={Zap} label="Voltage" value={voltageValue || '-'} />
+                      <SummaryMetric icon={Building2} label="Asset owner" value={assetOwnerLabel} />
                       <SummaryMetric icon={Shield} label="Load" value={loadValue || '-'} />
                       <SummaryMetric
                         icon={TestTubeDiagonal}
