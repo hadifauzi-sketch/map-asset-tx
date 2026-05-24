@@ -13,6 +13,7 @@ import {
   Map as MapIcon,
   MapPin,
   Menu,
+  MoreHorizontal,
   Move,
   Plus,
   Minus,
@@ -28,9 +29,12 @@ import TransformerMarker from './components/TransformerMarker';
 import TransformerSidebar from './components/TransformerSidebar';
 import TransformerModal from './components/TransformerModal';
 import NoticeDialog from './components/NoticeDialog';
+import ConfirmDialog from './components/ConfirmDialog';
 import TransformerDetailModal from './components/TransformerDetailModal';
 import GeoSearchControl from './components/GeoSearchControl';
 import LocationRegisterModule from './components/location-register/LocationRegisterModule';
+import CompanyBoundaryMapLayer from './components/CompanyBoundaryMapLayer';
+import CompanyBoundaryMetadataDialog from './components/CompanyBoundaryMetadataDialog';
 import FloorPlanMapLayer from './components/FloorPlanMapLayer';
 import FloorPlanMetadataDialog from './components/FloorPlanMetadataDialog';
 import FloorPlanDetailModal from './components/FloorPlanDetailModal';
@@ -51,9 +55,12 @@ import {
   createDraftFloorPlan,
   findTransformersInsidePolygon,
   getPolygonCentroid,
+  isPointInsidePolygon,
   normalizeFloorPlan,
 } from './lib/floorPlanStorage';
 import { floorPlanService } from './lib/floorPlanService';
+import { createDraftCompanyBoundary, normalizeCompanyBoundary } from './lib/companyBoundaryStorage';
+import { companyBoundaryService } from './lib/companyBoundaryService';
 import { getTransformerState } from './lib/malaysiaStates';
 import { documentService } from './lib/documentService';
 import { oilTestService } from './lib/oilTestService';
@@ -381,6 +388,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [appNotice, setAppNotice] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const [mapBaseLayer, setMapBaseLayer] = useState(() => {
     if (typeof window === 'undefined') {
       return 'streets';
@@ -421,6 +430,13 @@ function App() {
     return storedPreference === 'true';
   });
   const [isSidebarInteracting, setIsSidebarInteracting] = useState(false);
+  const [isMapToolbarExpanded, setIsMapToolbarExpanded] = useState(false);
+  const [companyBoundaries, setCompanyBoundaries] = useState([]);
+  const [showCompanyBoundaries, setShowCompanyBoundaries] = useState(true);
+  const [selectedCompanyBoundaryId, setSelectedCompanyBoundaryId] = useState(null);
+  const [companyBoundaryDraft, setCompanyBoundaryDraft] = useState(null);
+  const [isCompanyBoundaryDialogOpen, setIsCompanyBoundaryDialogOpen] = useState(false);
+  const [companyBoundaryDialogDraft, setCompanyBoundaryDialogDraft] = useState(null);
   const [floorPlans, setFloorPlans] = useState([]);
   const [showFloorPlans, setShowFloorPlans] = useState(true);
   const [selectedFloorPlanId, setSelectedFloorPlanId] = useState(null);
@@ -541,6 +557,7 @@ function App() {
 
     loadTransformers();
     loadFloorPlans();
+    loadCompanyBoundaries();
   }, [currentUser]);
 
   useEffect(() => {
@@ -736,9 +753,34 @@ function App() {
     [floorPlans, floorDetailFloorPlanId]
   );
 
+  const selectedCompanyBoundary = useMemo(
+    () => companyBoundaries.find((boundary) => boundary.id === selectedCompanyBoundaryId) || null,
+    [companyBoundaries, selectedCompanyBoundaryId]
+  );
+
   const selectedFloorPlan = useMemo(
     () => floorPlans.find((floorPlan) => floorPlan.id === selectedFloorPlanId) || null,
     [floorPlans, selectedFloorPlanId]
+  );
+
+  const selectedCompanyFloors = useMemo(() => {
+    if (!selectedCompanyBoundary) {
+      return [];
+    }
+
+    const companyName = String(selectedCompanyBoundary.companyName || '').trim().toLowerCase();
+    return floorPlans.filter(
+      (floorPlan) => String(floorPlan.companyName || '').trim().toLowerCase() === companyName
+    );
+  }, [floorPlans, selectedCompanyBoundary]);
+
+  const selectedCompanyAssetCount = useMemo(
+    () =>
+      selectedCompanyFloors.reduce(
+        (total, floorPlan) => total + (Array.isArray(floorPlan.transformerIds) ? floorPlan.transformerIds.length : 0),
+        0
+      ),
+    [selectedCompanyFloors]
   );
 
   const selectedFloorTransformers = useMemo(
@@ -763,6 +805,7 @@ function App() {
     setMapZoom(zoom);
     setSelectedTransformer(transformer);
     setSelectedFloorPlanId(null);
+    setSelectedCompanyBoundaryId(null);
     deactivateSidebarInteraction();
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setSidebarOpen(false);
@@ -774,6 +817,20 @@ function App() {
     setMapCenter(centroid || [...DEFAULT_CENTER]);
     setMapZoom(zoom);
     setSelectedFloorPlanId(floorPlan?.id || null);
+    setSelectedCompanyBoundaryId(null);
+    setSelectedTransformer(null);
+    deactivateSidebarInteraction();
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const focusCompanyBoundary = (boundary, zoom = 16) => {
+    const centroid = getPolygonCentroid(boundary?.points || []);
+    setMapCenter(centroid || [...DEFAULT_CENTER]);
+    setMapZoom(zoom);
+    setSelectedCompanyBoundaryId(boundary?.id || null);
+    setSelectedFloorPlanId(null);
     setSelectedTransformer(null);
     deactivateSidebarInteraction();
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -812,6 +869,7 @@ function App() {
     });
     setSelectedTransformer(null);
     setSelectedFloorPlanId(null);
+    setSelectedCompanyBoundaryId(null);
 
     const boundingBox = Array.isArray(result?.boundingBox) ? result.boundingBox : null;
     if (boundingBox?.length === 4 && leafletMapRef.current) {
@@ -836,6 +894,22 @@ function App() {
       setFloorPlans(data);
     } catch (err) {
       console.error('Failed to load floor plans:', err);
+    }
+  };
+
+  const loadCompanyBoundaries = async () => {
+    try {
+      const data = await companyBoundaryService.getAll();
+      setCompanyBoundaries(data);
+    } catch (err) {
+      console.error('Failed to load company boundaries:', err);
+      showAppNotice({
+        variant: 'warning',
+        title: 'Company boundary table not ready',
+        description: 'The parent boundary layer needs the company_boundaries database table.',
+        detail: err?.message || 'Run the latest Supabase migration, then refresh the app.',
+        contextLabel: 'Company boundaries',
+      });
     }
   };
 
@@ -908,6 +982,18 @@ function App() {
 
   const handleMapClick = (event) => {
     if (!canEditAssets) {
+      return;
+    }
+
+    if (companyBoundaryDraft) {
+      setCompanyBoundaryDraft((current) =>
+        current
+          ? {
+              ...current,
+              points: [...current.points, [event.latlng.lat, event.latlng.lng]],
+            }
+          : current
+      );
       return;
     }
 
@@ -1267,10 +1353,45 @@ function App() {
       return;
     }
     setIsAddMode(false);
+    setCompanyBoundaryDraft(null);
+    setIsCompanyBoundaryDialogOpen(false);
+    setCompanyBoundaryDialogDraft(null);
+    setSelectedCompanyBoundaryId(null);
     setSelectedFloorPlanId(null);
     setFloorPlanDraft(createDraftFloorPlan());
     setIsFloorPlanDialogOpen(false);
     setFloorPlanDialogDraft(null);
+  };
+
+  const startCompanyBoundaryDrawing = () => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    setIsAddMode(false);
+    setFloorPlanDraft(null);
+    setIsFloorPlanDialogOpen(false);
+    setFloorPlanDialogDraft(null);
+    setSelectedFloorPlanId(null);
+    setSelectedCompanyBoundaryId(null);
+    setCompanyBoundaryDraft(createDraftCompanyBoundary());
+    setIsCompanyBoundaryDialogOpen(false);
+    setCompanyBoundaryDialogDraft(null);
+  };
+
+  const handleEditCompanyBoundary = (boundary) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    if (!boundary) {
+      return;
+    }
+
+    focusCompanyBoundary(boundary);
+    setIsAddMode(false);
+    setFloorPlanDraft(null);
+    setCompanyBoundaryDraft(createDraftCompanyBoundary(boundary));
+    setIsCompanyBoundaryDialogOpen(false);
+    setCompanyBoundaryDialogDraft(null);
   };
 
   const handleEditFloorPlan = (floorPlan) => {
@@ -1283,9 +1404,53 @@ function App() {
 
     focusFloorPlan(floorPlan);
     setIsAddMode(false);
+    setCompanyBoundaryDraft(null);
+    setIsCompanyBoundaryDialogOpen(false);
+    setCompanyBoundaryDialogDraft(null);
     setFloorPlanDraft(createDraftFloorPlan(floorPlan));
     setIsFloorPlanDialogOpen(false);
     setFloorPlanDialogDraft(null);
+  };
+
+  const handleSaveCompanyBoundaryShape = async (boundary, nextPoints) => {
+    if (!ensureCanEditAssets()) {
+      return false;
+    }
+    if (!boundary || !Array.isArray(nextPoints) || nextPoints.length < 3) {
+      showAppNotice({
+        variant: 'warning',
+        title: 'More boundary points needed',
+        description: 'A company boundary needs at least three points before it can be saved.',
+        detail: 'Add more points or continue reshaping the parent boundary, then try saving again.',
+        contextLabel: 'Company boundary',
+        actionLabel: 'Back to map',
+      });
+      return false;
+    }
+
+    try {
+      const normalizedBoundary = normalizeCompanyBoundary({
+        ...boundary,
+        points: nextPoints,
+        createdAt: boundary.createdAt || new Date().toISOString(),
+      });
+
+      await companyBoundaryService.upsert(normalizedBoundary);
+      const storedBoundaries = await companyBoundaryService.getAll();
+      setCompanyBoundaries(storedBoundaries);
+      focusCompanyBoundary(normalizedBoundary);
+      return true;
+    } catch (err) {
+      console.error('Failed to reshape company boundary:', err);
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to save company boundary',
+        description: 'The reshaped company boundary could not be saved yet.',
+        detail: err?.message || 'Failed to save company boundary. Please try again.',
+        contextLabel: 'Company boundary',
+      });
+      return false;
+    }
   };
 
   const handleSaveFloorPlanShape = async (floorPlan, nextPoints) => {
@@ -1335,12 +1500,180 @@ function App() {
     setFloorPlanDialogDraft(null);
   };
 
+  const cancelCompanyBoundaryDrawing = () => {
+    setCompanyBoundaryDraft(null);
+    setIsCompanyBoundaryDialogOpen(false);
+    setCompanyBoundaryDialogDraft(null);
+  };
+
+  const handleCompanyBoundaryDraftVertexMove = (pointIndex, nextPoint) => {
+    if (!canEditAssets) {
+      return;
+    }
+    setCompanyBoundaryDraft((current) =>
+      current
+        ? {
+            ...current,
+            points: current.points.map((point, index) => (index === pointIndex ? nextPoint : point)),
+          }
+        : current
+    );
+  };
+
+  const handleUndoCompanyBoundaryDraftPoint = () => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    setCompanyBoundaryDraft((current) =>
+      current
+        ? {
+            ...current,
+            points: current.points.slice(0, -1),
+          }
+        : current
+    );
+  };
+
+  const openCompanyBoundaryMetadataDialog = (draft) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    setCompanyBoundaryDialogDraft(draft);
+    setIsCompanyBoundaryDialogOpen(true);
+  };
+
+  const handleEditCompanyBoundaryInfo = (boundary) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    if (!boundary) {
+      return;
+    }
+
+    focusCompanyBoundary(boundary);
+    setCompanyBoundaryDraft(null);
+    openCompanyBoundaryMetadataDialog({
+      ...createDraftCompanyBoundary(boundary),
+      points: boundary.points,
+    });
+  };
+
+  const openCompanyBoundaryDialogFromDraft = () => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    if (!companyBoundaryDraft || companyBoundaryDraft.points.length < 3) {
+      showAppNotice({
+        variant: 'warning',
+        title: 'More boundary points needed',
+        description: 'Draw at least three points on the map to create a company boundary.',
+        detail: 'Keep clicking on the map until the parent area has enough points to form a closed boundary.',
+        contextLabel: 'Company boundary',
+        actionLabel: 'Back to map',
+      });
+      return;
+    }
+
+    const existingBoundary = companyBoundaryDraft.id
+      ? companyBoundaries.find((boundary) => boundary.id === companyBoundaryDraft.id) || null
+      : null;
+    const detectedTransformers = findTransformersInsidePolygon(filteredTransformers, companyBoundaryDraft.points);
+    const primaryTransformer = detectedTransformers[0] || selectedTransformer || null;
+
+    openCompanyBoundaryMetadataDialog({
+      ...createDraftCompanyBoundary({
+        ...existingBoundary,
+        ...companyBoundaryDraft,
+        companyName: existingBoundary?.companyName || primaryTransformer?.siteName || '',
+        state: existingBoundary?.state || (primaryTransformer ? getTransformerState(primaryTransformer) : '') || '',
+      }),
+    });
+  };
+
+  const handleSaveCompanyBoundary = async (nextBoundaryDraft) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    try {
+      const currentBoundary = nextBoundaryDraft?.id
+        ? companyBoundaries.find((boundary) => boundary.id === nextBoundaryDraft.id) || null
+        : null;
+      const normalizedBoundary = normalizeCompanyBoundary({
+        ...currentBoundary,
+        ...nextBoundaryDraft,
+        createdAt: currentBoundary?.createdAt || nextBoundaryDraft?.createdAt || new Date().toISOString(),
+      });
+
+      await companyBoundaryService.upsert(normalizedBoundary);
+      const storedBoundaries = await companyBoundaryService.getAll();
+      setCompanyBoundaries(storedBoundaries);
+      setIsCompanyBoundaryDialogOpen(false);
+      setCompanyBoundaryDialogDraft(null);
+      setCompanyBoundaryDraft(null);
+      focusCompanyBoundary(normalizedBoundary);
+    } catch (err) {
+      console.error('Failed to save company boundary:', err);
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to save company boundary',
+        description: 'The company or parent boundary could not be saved yet.',
+        detail: err?.message || 'Failed to save company boundary. Please try again.',
+        contextLabel: 'Company boundary',
+      });
+    }
+  };
+
+  const handleDeleteCompanyBoundary = (boundaryId) => {
+    if (!ensureCanEditAssets()) {
+      return;
+    }
+    const targetBoundary = companyBoundaries.find((boundary) => boundary.id === boundaryId);
+    const boundaryLabel = targetBoundary?.companyName || 'this company boundary';
+
+    const runDelete = async () => {
+      try {
+        setConfirmBusy(true);
+        await companyBoundaryService.delete(boundaryId);
+        setCompanyBoundaries((current) => current.filter((boundary) => boundary.id !== boundaryId));
+        if (selectedCompanyBoundaryId === boundaryId) {
+          setSelectedCompanyBoundaryId(null);
+        }
+        if (companyBoundaryDraft?.id === boundaryId) {
+          setCompanyBoundaryDraft(null);
+        }
+        setIsCompanyBoundaryDialogOpen(false);
+        setCompanyBoundaryDialogDraft(null);
+        setConfirmState(null);
+      } catch (err) {
+        console.error('Failed to delete company boundary:', err);
+        showAppNotice({
+          variant: 'error',
+          title: 'Unable to delete company boundary',
+          description: 'The company or parent boundary could not be deleted yet.',
+          detail: err?.message || 'Failed to delete company boundary. Please try again.',
+          contextLabel: 'Company boundary',
+        });
+      } finally {
+        setConfirmBusy(false);
+      }
+    };
+
+    setConfirmState({
+      title: `Delete ${boundaryLabel}?`,
+      description: 'Delete this parent boundary only. Area/floor polygons and transformer records remain unchanged.',
+      confirmLabel: 'Delete boundary',
+      tone: 'danger',
+      onConfirm: runDelete,
+    });
+  };
+
   const openLocationRegisterModule = useCallback(() => {
     if (!ensureCanEditAssets()) {
       return;
     }
 
     cancelFloorPlanDrawing();
+    cancelCompanyBoundaryDrawing();
     pendingFloorAssignment.current = null;
     setEditingTransformer(null);
     setIsModalOpen(false);
@@ -1351,7 +1684,7 @@ function App() {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
-  }, [cancelFloorPlanDrawing, ensureCanEditAssets]);
+  }, [cancelFloorPlanDrawing, cancelCompanyBoundaryDrawing, ensureCanEditAssets]);
 
   const handleFloorDraftVertexMove = (pointIndex, nextPoint) => {
     if (!canEditAssets) {
@@ -1399,6 +1732,9 @@ function App() {
 
     focusFloorPlan(floorPlan);
     setFloorPlanDraft(null);
+    setCompanyBoundaryDraft(null);
+    setIsCompanyBoundaryDialogOpen(false);
+    setCompanyBoundaryDialogDraft(null);
     openFloorPlanMetadataDialog({
       ...createDraftFloorPlan(floorPlan),
       points: floorPlan.points,
@@ -1426,6 +1762,10 @@ function App() {
     const existingFloorPlan = floorPlanDraft.id
       ? floorPlans.find((floorPlan) => floorPlan.id === floorPlanDraft.id) || null
       : null;
+    const draftCentroid = getPolygonCentroid(floorPlanDraft.points);
+    const containingCompanyBoundary = draftCentroid
+      ? companyBoundaries.find((boundary) => isPointInsidePolygon(draftCentroid, boundary.points))
+      : null;
     const primaryTransformer =
       detectedTransformers[0] ||
       (existingFloorPlan?.transformerIds || [])
@@ -1441,8 +1781,8 @@ function App() {
         ...existingFloorPlan,
         ...floorPlanDraft,
         name: existingFloorPlan?.name || '',
-        companyName: existingFloorPlan?.companyName || primaryTransformer?.siteName || '',
-        state: existingFloorPlan?.state || (primaryTransformer ? getTransformerState(primaryTransformer) : '') || '',
+        companyName: existingFloorPlan?.companyName || containingCompanyBoundary?.companyName || primaryTransformer?.siteName || '',
+        state: existingFloorPlan?.state || containingCompanyBoundary?.state || (primaryTransformer ? getTransformerState(primaryTransformer) : '') || '',
         transformerIds:
           existingFloorPlan?.transformerIds?.length
             ? existingFloorPlan.transformerIds
@@ -1500,38 +1840,52 @@ function App() {
     }
   };
 
-  const handleDeleteFloorPlan = async (floorPlanId) => {
+  const handleDeleteFloorPlan = (floorPlanId) => {
     if (!ensureCanEditAssets()) {
       return;
     }
-    const confirmed = window.confirm(
-      'Delete this floor plan overlay? The transformer records stay, but they will be ungrouped from this floor.'
-    );
-    if (!confirmed) {
-      return;
-    }
 
-    try {
-      await floorPlanService.delete(floorPlanId);
-      setFloorPlans((current) => current.filter((plan) => plan.id !== floorPlanId));
-      if (selectedFloorPlanId === floorPlanId) {
-        setSelectedFloorPlanId(null);
+    const targetPlan = floorPlans.find((plan) => plan.id === floorPlanId);
+    const planLabel = targetPlan?.name || targetPlan?.floorLabel || 'this floor';
+
+    const runDelete = async () => {
+      setConfirmBusy(true);
+      try {
+        await floorPlanService.delete(floorPlanId);
+        setFloorPlans((current) => current.filter((plan) => plan.id !== floorPlanId));
+        if (selectedFloorPlanId === floorPlanId) {
+          setSelectedFloorPlanId(null);
+        }
+        if (floorPlanDraft?.id === floorPlanId) {
+          setFloorPlanDraft(null);
+        }
+        setIsFloorPlanDialogOpen(false);
+        setFloorPlanDialogDraft(null);
+        setConfirmState(null);
+      } catch (err) {
+        console.error('Failed to delete floor plan:', err);
+        setConfirmState(null);
+        showAppNotice({
+          variant: 'error',
+          title: 'Unable to delete floor plan',
+          description: 'The floor plan overlay could not be deleted yet.',
+          detail: err?.message || 'Failed to delete floor plan. Please try again.',
+          contextLabel: 'Floor plan',
+        });
+      } finally {
+        setConfirmBusy(false);
       }
-      if (floorPlanDraft?.id === floorPlanId) {
-        setFloorPlanDraft(null);
-      }
-      setIsFloorPlanDialogOpen(false);
-      setFloorPlanDialogDraft(null);
-    } catch (err) {
-      console.error('Failed to delete floor plan:', err);
-      showAppNotice({
-        variant: 'error',
-        title: 'Unable to delete floor plan',
-        description: 'The floor plan overlay could not be deleted yet.',
-        detail: err?.message || 'Failed to delete floor plan. Please try again.',
-        contextLabel: 'Floor plan',
-      });
-    }
+    };
+
+    setConfirmState({
+      title: `Delete ${planLabel}?`,
+      description:
+        'The transformer records stay, but they will be ungrouped from this floor.',
+      confirmLabel: 'Delete floor',
+      cancelLabel: 'Cancel',
+      tone: 'danger',
+      onConfirm: runDelete,
+    });
   };
 
   const activeBaseLayer = MAP_BASE_LAYERS[mapBaseLayer];
@@ -1705,6 +2059,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           <TransformerSidebar
             transformers={filteredTransformers}
             floorPlans={floorPlans}
+            companyBoundaries={companyBoundaries}
             currentUser={currentUser}
             canManageAssets={canEditAssets}
             onAddClick={() => {
@@ -1712,9 +2067,11 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 return;
               }
               cancelFloorPlanDrawing();
+              cancelCompanyBoundaryDrawing();
               setIsLocationRegisterOpen(false);
               setIsAddMode(true);
               setSelectedFloorPlanId(null);
+              setSelectedCompanyBoundaryId(null);
               if (typeof window !== 'undefined' && window.innerWidth < 1024) {
                 setSidebarOpen(false);
               }
@@ -1732,6 +2089,10 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             onDeleteClick={handleDeleteTransformer}
             onViewDetails={handleViewDetails}
             onFloorPlanClick={focusFloorPlan}
+            onCompanyBoundaryClick={focusCompanyBoundary}
+            onEditCompanyBoundaryInfo={handleEditCompanyBoundaryInfo}
+            onEditCompanyBoundary={handleEditCompanyBoundary}
+            onDeleteCompanyBoundary={handleDeleteCompanyBoundary}
             onEditFloorPlanInfo={handleEditFloorPlanInfo}
             onEditFloorPlan={handleEditFloorPlan}
             onDeleteFloorPlan={handleDeleteFloorPlan}
@@ -1740,6 +2101,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             isFloorDrawingMode={Boolean(floorPlanDraft)}
             loading={loading}
             selectedTransformerId={selectedTransformer?.id ?? null}
+            selectedCompanyBoundaryId={selectedCompanyBoundaryId}
             selectedFloorPlanId={selectedFloorPlanId}
             theme={theme}
             onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
@@ -1781,6 +2143,10 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                       {isAddMode ? (
                         <Badge variant="warning" className="shadow-sm">
                           Map placement active
+                        </Badge>
+                      ) : companyBoundaryDraft ? (
+                        <Badge variant="secondary" className="shadow-sm">
+                          Company pen active
                         </Badge>
                       ) : floorPlanDraft ? (
                         <Badge variant="secondary" className="shadow-sm">
@@ -1831,11 +2197,62 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 <div className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">
                   <Button
                     size="sm"
+                    variant={isMapToolbarExpanded ? 'secondary' : 'outline'}
+                    className="h-9 shrink-0 gap-1.5"
+                    onClick={() => setIsMapToolbarExpanded((current) => !current)}
+                    aria-expanded={isMapToolbarExpanded}
+                    title={isMapToolbarExpanded ? 'Collapse map tools' : 'Expand map tools'}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                    Tools
+                  </Button>
+                  {!isMapToolbarExpanded ? (
+                    <>
+                      <Badge variant={showFloorPlans ? 'default' : 'outline'} className="h-8 shrink-0 px-2.5">
+                        {showFloorPlans ? 'Floors on' : 'Floors off'}
+                      </Badge>
+                      <Badge variant={showCompanyBoundaries ? 'secondary' : 'outline'} className="h-8 shrink-0 px-2.5">
+                        {showCompanyBoundaries ? 'Companies on' : 'Companies off'}
+                      </Badge>
+                      {selectedFloorPlan ? (
+                        <Badge variant="outline" className="h-8 max-w-[180px] shrink-0 truncate px-2.5">
+                          {selectedFloorPlan.name || 'Selected floor'}
+                        </Badge>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {isMapToolbarExpanded ? (
+                    <>
+                  <Button
+                    size="sm"
                     variant={showFloorPlans ? 'default' : 'outline'}
                     className="h-9 shrink-0"
                     onClick={() => setShowFloorPlans((current) => !current)}
                   >
                     {showFloorPlans ? 'Floors on' : 'Floors off'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={showCompanyBoundaries ? 'default' : 'outline'}
+                    className="h-9 shrink-0"
+                    onClick={() => setShowCompanyBoundaries((current) => !current)}
+                  >
+                    {showCompanyBoundaries ? 'Companies on' : 'Companies off'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={companyBoundaryDraft ? 'secondary' : 'outline'}
+                    className="h-9 shrink-0"
+                    disabled={!canEditAssets}
+                    onClick={() => {
+                      if (companyBoundaryDraft) {
+                        cancelCompanyBoundaryDrawing();
+                      } else {
+                        startCompanyBoundaryDrawing();
+                      }
+                    }}
+                  >
+                    {companyBoundaryDraft ? 'Cancel company' : 'Draw company'}
                   </Button>
                   <Button
                     size="sm"
@@ -1851,16 +2268,6 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     }}
                   >
                     {floorPlanDraft ? 'Cancel draw' : 'Draw floor'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={isLocationRegisterOpen ? 'secondary' : 'outline'}
-                    className="h-9 shrink-0 gap-1.5"
-                    disabled={!canEditAssets}
-                    onClick={openLocationRegisterModule}
-                  >
-                    <MapPin className="h-3.5 w-3.5" />
-                    GPS register
                   </Button>
                   <Button
                     size="sm"
@@ -1893,6 +2300,8 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   >
                     Reshape
                   </Button>
+                    </>
+                  ) : null}
 
                   {/* divider */}
                   <div className="mx-1 h-6 w-px shrink-0 bg-[var(--border)]" />
@@ -1927,7 +2336,76 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 </div>
               </div>
 
-              {selectedFloorPlan ? (
+              {selectedCompanyBoundary ? (
+                <div className="pointer-events-auto hidden w-full max-w-[360px] shrink-0 lg:block">
+                  <Card className="border-[color:var(--border)]/50 bg-[color:var(--card-elevated)]/80 shadow-[var(--shadow-card)] backdrop-blur-xl" style={{ borderRadius: '14px' }}>
+                    <CardContent className="space-y-3 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+                            Selected Company
+                          </p>
+                          <h2 className="truncate text-sm font-semibold">
+                            {selectedCompanyBoundary.companyName || 'Unnamed company'}
+                          </h2>
+                          <p className="truncate text-xs text-[var(--muted)]">
+                            {selectedCompanyBoundary.state || 'State not set'}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                          <Badge variant="secondary" className="px-2 py-0 text-[10px]">
+                            {selectedCompanyFloors.length} areas
+                          </Badge>
+                          <Badge variant="outline" className="px-2 py-0 text-[10px]">
+                            {selectedCompanyAssetCount} assets
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1">
+                        {selectedCompanyFloors.slice(0, 4).map((floorPlan) => (
+                          <Badge key={floorPlan.id} variant="outline" className="px-2 py-0 text-[10px]">
+                            {floorPlan.name || 'Area'}
+                          </Badge>
+                        ))}
+                        {selectedCompanyFloors.length > 4 ? (
+                          <Badge variant="outline" className="px-2 py-0 text-[10px]">
+                            +{selectedCompanyFloors.length - 4} more
+                          </Badge>
+                        ) : null}
+                      </div>
+
+                      {selectedCompanyBoundary.notes ? (
+                        <p className="text-[11px] text-[var(--muted)]">{selectedCompanyBoundary.notes}</p>
+                      ) : (
+                        <p className="text-[11px] text-[var(--muted)]">
+                          This parent boundary groups area/floor polygons that use the same company name.
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 border-t border-[color:var(--border)] pt-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-3 text-xs"
+                          disabled={!canEditAssets}
+                          onClick={() => handleEditCompanyBoundaryInfo(selectedCompanyBoundary)}
+                        >
+                          Info
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-8 px-3 text-xs"
+                          disabled={!canEditAssets}
+                          onClick={() => handleEditCompanyBoundary(selectedCompanyBoundary)}
+                        >
+                          Reshape
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : selectedFloorPlan ? (
                 <div className="pointer-events-auto hidden w-full max-w-[360px] shrink-0 lg:block">
                   <Card className="border-[color:var(--border)]/50 bg-[color:var(--card-elevated)]/80 shadow-[var(--shadow-card)] backdrop-blur-xl" style={{ borderRadius: '14px' }}>
                     <CardContent className="space-y-3 p-3">
@@ -2088,6 +2566,19 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
               <MapRefCapture mapRef={leafletMapRef} />
               <MapInteractionController sidebarActive={isSidebarInteracting} />
               <MapClickHandler onMapClick={handleMapClick} />
+              <CompanyBoundaryMapLayer
+                companyBoundaries={companyBoundaries}
+                floorPlans={floorPlans}
+                canManageAssets={canEditAssets}
+                showCompanyBoundaries={showCompanyBoundaries}
+                selectedCompanyBoundaryId={selectedCompanyBoundaryId}
+                draft={companyBoundaryDraft}
+                onSelectCompanyBoundary={focusCompanyBoundary}
+                onEditCompanyBoundaryInfo={handleEditCompanyBoundaryInfo}
+                onEditCompanyBoundary={handleEditCompanyBoundary}
+                onDeleteCompanyBoundary={handleDeleteCompanyBoundary}
+                onDraftVertexMove={handleCompanyBoundaryDraftVertexMove}
+              />
               <FloorPlanMapLayer
                 floorPlans={floorPlans}
                 transformers={filteredTransformers}
@@ -2134,7 +2625,40 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             </MapContainer>
           </div>
 
-          {floorPlanDraft ? (
+          {companyBoundaryDraft ? (
+            <div className="app-bottom-banner pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center">
+              <div className="pointer-events-auto flex w-full max-w-3xl flex-col gap-3 rounded-md border border-sky-400/45 bg-[color:var(--card-elevated)]/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    {companyBoundaryDraft.id ? 'Edit the company boundary on the map.' : 'Click on the map to draw the Company / Parent boundary.'}
+                  </p>
+                  <p className="text-sm text-[var(--muted)]">
+                    {companyBoundaryDraft.points.length} point{companyBoundaryDraft.points.length === 1 ? '' : 's'} placed. Use this as the main outline for a company like GS Paper & Packaging.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUndoCompanyBoundaryDraftPoint}
+                    disabled={!companyBoundaryDraft.points.length}
+                  >
+                    Undo point
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={openCompanyBoundaryDialogFromDraft}
+                    disabled={companyBoundaryDraft.points.length < 3}
+                  >
+                    Save company
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={cancelCompanyBoundaryDrawing}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : floorPlanDraft ? (
             <div className="app-bottom-banner pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center">
               <div className="pointer-events-auto flex w-full max-w-3xl flex-col gap-3 rounded-md border border-[color:var(--primary-soft)] bg-[color:var(--card-elevated)]/95 px-4 py-3 shadow-[var(--shadow-card)] backdrop-blur md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
@@ -2220,6 +2744,22 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onClose={() => setAppNotice(null)}
       />
 
+      <ConfirmDialog
+        open={Boolean(confirmState)}
+        title={confirmState?.title}
+        description={confirmState?.description}
+        detail={confirmState?.detail}
+        confirmLabel={confirmState?.confirmLabel}
+        cancelLabel={confirmState?.cancelLabel}
+        tone={confirmState?.tone}
+        busy={confirmBusy}
+        onConfirm={() => confirmState?.onConfirm?.()}
+        onClose={() => {
+          if (confirmBusy) return;
+          setConfirmState(null);
+        }}
+      />
+
       <LocationRegisterModule
         open={isLocationRegisterOpen}
         onClose={() => setIsLocationRegisterOpen(false)}
@@ -2241,6 +2781,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <FloorPlanMetadataDialog
         open={isFloorPlanDialogOpen}
         floorPlanDraft={floorPlanDialogDraft}
+        companyBoundaries={companyBoundaries}
         transformers={filteredTransformers}
         detectedTransformerIds={floorPlanDialogDraft?.detectedTransformerIds || []}
         onClose={() => {
@@ -2248,6 +2789,17 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           setFloorPlanDialogDraft(null);
         }}
         onSave={handleSaveFloorPlan}
+        onShowNotice={showAppNotice}
+      />
+
+      <CompanyBoundaryMetadataDialog
+        open={isCompanyBoundaryDialogOpen}
+        boundaryDraft={companyBoundaryDialogDraft}
+        onClose={() => {
+          setIsCompanyBoundaryDialogOpen(false);
+          setCompanyBoundaryDialogDraft(null);
+        }}
+        onSave={handleSaveCompanyBoundary}
         onShowNotice={showAppNotice}
       />
 

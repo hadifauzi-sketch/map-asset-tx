@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import {
@@ -19,6 +19,7 @@ function normalizeSearchText(value) {
 function FloorPlanMetadataDialog({
   open,
   floorPlanDraft,
+  companyBoundaries = [],
   transformers = [],
   detectedTransformerIds = [],
   onClose,
@@ -34,6 +35,7 @@ function FloorPlanMetadataDialog({
     createdAt: null,
   });
   const [transformerSearch, setTransformerSearch] = useState('');
+  const companyOptionsListId = useId();
 
   useEffect(() => {
     if (!open) {
@@ -65,6 +67,38 @@ function FloorPlanMetadataDialog({
     [transformers]
   );
 
+  const companyOptions = useMemo(() => {
+    const registry = new Map();
+
+    companyBoundaries.forEach((boundary) => {
+      const companyName = String(boundary?.companyName || '').trim();
+      if (!companyName) {
+        return;
+      }
+
+      const key = normalizeSearchText(companyName);
+      if (!registry.has(key)) {
+        registry.set(key, {
+          companyName,
+          state: String(boundary?.state || '').trim(),
+          source: 'boundary',
+        });
+      }
+    });
+
+    return Array.from(registry.values()).sort((left, right) =>
+      left.companyName.localeCompare(right.companyName)
+    );
+  }, [companyBoundaries]);
+
+  const companyOptionByKey = useMemo(() => {
+    const map = new Map();
+    companyOptions.forEach((option) => {
+      map.set(normalizeSearchText(option.companyName), option);
+    });
+    return map;
+  }, [companyOptions]);
+
   const filteredTransformers = useMemo(() => {
     const search = normalizeSearchText(transformerSearch);
     if (!search) {
@@ -72,7 +106,13 @@ function FloorPlanMetadataDialog({
     }
 
     return sortedTransformers.filter((transformer) =>
-      [transformer.txName, transformer.serialNumber, transformer.mnemonic]
+      [
+        transformer.txName,
+        transformer.siteName,
+        transformer.companyName,
+        transformer.serialNumber,
+        transformer.mnemonic,
+      ]
         .filter(Boolean)
         .some((value) => normalizeSearchText(value).includes(search))
     );
@@ -88,6 +128,30 @@ function FloorPlanMetadataDialog({
     setFormData((current) => ({
       ...current,
       [name]: value,
+    }));
+  };
+
+  const handleCompanyNameChange = (event) => {
+    const value = event.target.value;
+    const option = companyOptionByKey.get(normalizeSearchText(value));
+
+    setFormData((current) => ({
+      ...current,
+      companyName: value,
+      state: option?.state || current.state,
+    }));
+  };
+
+  const normalizeCompanyNameSelection = () => {
+    const option = companyOptionByKey.get(normalizeSearchText(formData.companyName));
+    if (!option) {
+      return;
+    }
+
+    setFormData((current) => ({
+      ...current,
+      companyName: option.companyName,
+      state: option.state || current.state,
     }));
   };
 
@@ -174,11 +238,41 @@ function FloorPlanMetadataDialog({
                 </span>
                 <Input
                   name="companyName"
+                  list={companyOptionsListId}
                   value={formData.companyName}
-                  onChange={handleChange}
-                  placeholder="Ditrolic, PrefChem, PMU, PPU, PE and LSS"
+                  onChange={handleCompanyNameChange}
+                  onBlur={normalizeCompanyNameSelection}
+                  placeholder={companyOptions.length ? 'Choose a saved Company / Parent boundary' : 'Draw a Company / Parent boundary first'}
                   required
                 />
+                <datalist id={companyOptionsListId}>
+                  {companyOptions.map((option) => (
+                    <option key={`boundary-${option.companyName}`} value={option.companyName} label={option.state || 'Boundary'} />
+                  ))}
+                </datalist>
+                {companyOptions.length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {companyOptions.slice(0, 5).map((option) => (
+                      <button
+                        key={`boundary-quick-${option.companyName}`}
+                        type="button"
+                        className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-2 py-1 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--card-strong)]"
+                        onClick={() =>
+                          setFormData((current) => ({
+                            ...current,
+                            companyName: option.companyName,
+                            state: option.state || current.state,
+                          }))
+                        }
+                      >
+                        {option.companyName}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <p className="text-xs text-[var(--muted)]">
+                  Only saved Company / Parent boundaries are shown here to prevent mismatched floor grouping.
+                </p>
               </label>
 
               <label className="space-y-2">
@@ -222,7 +316,7 @@ function FloorPlanMetadataDialog({
                 <div>
                   <p className="text-sm font-semibold text-[var(--foreground)]">Transformers inside this Area</p>
                   <p className="text-sm text-[var(--muted)]">
-                    Assets detected inside the drawn boundary are preselected. Search by transformer name, serial number, or mnemonic to fine-tune the list.
+                    Assets detected inside the drawn boundary are preselected. Search by transformer name, site, company, serial number, or mnemonic to fine-tune the list.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -239,7 +333,7 @@ function FloorPlanMetadataDialog({
                   <Input
                     value={transformerSearch}
                     onChange={(event) => setTransformerSearch(event.target.value)}
-                    placeholder="Search by name, serial number, or mnemonic"
+                    placeholder="Search by name, site, company, serial number, or mnemonic"
                   />
                 </label>
 
@@ -254,7 +348,7 @@ function FloorPlanMetadataDialog({
                     </p>
                   ) : filteredTransformers.length === 0 ? (
                     <p className="rounded-md bg-[var(--card)] px-3 py-3 text-sm text-[var(--muted)]">
-                      No transformer matched that search. Try part of the name, serial number, or mnemonic.
+                      No transformer matched that search. Try part of the name, site, company, serial number, or mnemonic.
                     </p>
                   ) : (
                     filteredTransformers.map((transformer) => {

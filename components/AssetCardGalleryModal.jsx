@@ -6,6 +6,7 @@ import {
   Eye,
   FileText,
   Gauge,
+  GitCompareArrows,
   Hash,
   MapPin,
   Pencil,
@@ -20,6 +21,7 @@ import { analyzeSample } from '../lib/dga/diagnostics';
 import { getStandardLabelForOilType, getStandardOptionsForOilType } from '../lib/dga/appConfig';
 import { getAssetOwnerLabel } from '../lib/assetOwner';
 import { getTransformerState } from '../lib/malaysiaStates';
+import CompareTX from './compareTX';
 
 const DGA_CARD_GASES = [
   { key: 'h2', label: 'H2', name: 'Hydrogen' },
@@ -342,10 +344,14 @@ function AssetCardGalleryModal({
   onDeleteAsset,
 }) {
   const [query, setQuery] = useState('');
+  const [compareAssetIds, setCompareAssetIds] = useState([]);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
       setQuery('');
+      setCompareAssetIds([]);
+      setIsCompareOpen(false);
     }
   }, [open, group?.title]);
 
@@ -355,107 +361,162 @@ function AssetCardGalleryModal({
     return assets.filter((asset) => matchesAsset(asset, normalizedQuery));
   }, [assets, query]);
   const summaryStats = useMemo(() => getSummaryStats(assets), [assets]);
+  const selectedCompareAssets = useMemo(
+    () => assets.filter((asset) => compareAssetIds.includes(String(asset.id))),
+    [assets, compareAssetIds]
+  );
 
   const groupTitle = group?.title || 'Asset group';
   const groupType = group?.typeLabel || 'Asset group';
   const groupSubtitle = group?.subtitle || 'Transformer assets';
+  const compareReady = selectedCompareAssets.length >= 2;
+
+  const toggleCompareAsset = (asset) => {
+    const assetId = String(asset?.id ?? '');
+    if (!assetId) {
+      return;
+    }
+
+    setCompareAssetIds((current) =>
+      current.includes(assetId)
+        ? current.filter((id) => id !== assetId)
+        : [...current, assetId]
+    );
+  };
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose?.() : null)}>
-      <DialogContent
-        className="mobile-fullscreen-dialog !fixed !inset-0 flex !h-screen !max-h-none !w-screen !max-w-none flex-col gap-0 overflow-hidden !rounded-none border-0 p-0 sm:!rounded-none"
-        aria-describedby={undefined}
-      >
-        <DialogHeader className="relative overflow-hidden border-b-0 px-0 py-0">
-          <div className="relative bg-[radial-gradient(circle_at_top_left,rgba(13,148,136,0.22),transparent_34%),linear-gradient(135deg,var(--card)_0%,var(--card-muted)_100%)] px-4 py-5 sm:px-6 sm:py-6">
-            <div className="absolute right-8 top-6 hidden h-28 w-28 rounded-full border border-[color:var(--border)]/60 bg-[var(--card)]/30 blur-[1px] sm:block" />
-            <div className="relative flex flex-col gap-4 pr-10 lg:flex-row lg:items-end lg:justify-between">
-              <div className="min-w-0">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Badge variant="default" className="uppercase tracking-[0.14em]">
-                    {groupType}
-                  </Badge>
-                  <Badge variant="outline">{assets.length} asset{assets.length === 1 ? '' : 's'}</Badge>
+    <>
+      <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose?.() : null)}>
+        <DialogContent
+          className="mobile-fullscreen-dialog !fixed !inset-0 flex !h-screen !max-h-none !w-screen !max-w-none flex-col gap-0 overflow-hidden !rounded-none border-0 p-0 sm:!rounded-none"
+          aria-describedby={undefined}
+        >
+          <DialogHeader className="relative overflow-hidden border-b-0 px-0 py-0">
+            <div className="relative bg-[radial-gradient(circle_at_top_left,rgba(13,148,136,0.22),transparent_34%),linear-gradient(135deg,var(--card)_0%,var(--card-muted)_100%)] px-4 py-5 sm:px-6 sm:py-6">
+              <div className="absolute right-8 top-6 hidden h-28 w-28 rounded-full border border-[color:var(--border)]/60 bg-[var(--card)]/30 blur-[1px] sm:block" />
+              <div className="relative flex flex-col gap-4 pr-10 lg:flex-row lg:items-end lg:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Badge variant="default" className="uppercase tracking-[0.14em]">
+                      {groupType}
+                    </Badge>
+                    <Badge variant="outline">{assets.length} asset{assets.length === 1 ? '' : 's'}</Badge>
+                  </div>
+                  <DialogTitle className="text-2xl font-bold tracking-tight sm:text-3xl">
+                    {groupTitle}
+                  </DialogTitle>
+                  <DialogDescription className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">
+                    {groupSubtitle}
+                  </DialogDescription>
                 </div>
-                <DialogTitle className="text-2xl font-bold tracking-tight sm:text-3xl">
-                  {groupTitle}
-                </DialogTitle>
-                <DialogDescription className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">
-                  {groupSubtitle}
-                </DialogDescription>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-                {summaryStats.slice(0, 3).map((stat) => {
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+                  {summaryStats.slice(0, 3).map((stat) => {
+                    const Icon = stat.icon;
+                    return (
+                      <div
+                        key={stat.label}
+                        className="rounded-xl border border-[color:var(--border)] bg-[var(--card)]/72 px-3 py-2 shadow-sm backdrop-blur"
+                      >
+                        <div className="flex items-center gap-2 text-[var(--muted)]">
+                          <Icon className="h-3.5 w-3.5" />
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">{stat.label}</span>
+                        </div>
+                        <p className="mt-1 text-lg font-bold leading-none text-[var(--foreground)]">{stat.value}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="border-y border-[color:var(--border)] bg-[var(--card)]/82 px-4 py-3 sm:px-6">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {summaryStats.slice(3).map((stat) => {
                   const Icon = stat.icon;
                   return (
-                    <div
-                      key={stat.label}
-                      className="rounded-xl border border-[color:var(--border)] bg-[var(--card)]/72 px-3 py-2 shadow-sm backdrop-blur"
-                    >
-                      <div className="flex items-center gap-2 text-[var(--muted)]">
-                        <Icon className="h-3.5 w-3.5" />
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">{stat.label}</span>
-                      </div>
-                      <p className="mt-1 text-lg font-bold leading-none text-[var(--foreground)]">{stat.value}</p>
-                    </div>
+                    <Badge key={stat.label} variant="secondary" className="gap-1.5 px-2.5 py-1">
+                      <Icon className="h-3.5 w-3.5" />
+                      {stat.value} {stat.label.toLowerCase()}
+                    </Badge>
+                  );
+                })}
+                {selectedCompareAssets.length ? (
+                  <Badge variant="outline" className="gap-1.5 px-2.5 py-1">
+                    <GitCompareArrows className="h-3.5 w-3.5" />
+                    {selectedCompareAssets.length} selected for compare
+                  </Badge>
+                ) : null}
+              </div>
+
+              <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                <Button
+                  type="button"
+                  variant={compareReady ? 'default' : 'outline'}
+                  className="h-10 justify-center whitespace-nowrap"
+                  onClick={() => {
+                    if (compareReady) {
+                      setIsCompareOpen(true);
+                    }
+                  }}
+                  disabled={!compareReady}
+                >
+                  <GitCompareArrows className="h-4 w-4" />
+                  Compare {selectedCompareAssets.length}
+                </Button>
+                <label className="relative w-full lg:w-[360px]">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search transformer, serial, voltage..."
+                    className="h-10 w-full rounded-lg border border-[color:var(--border)] bg-[var(--card-muted)] pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/35"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--background)]/35 px-3 py-3 sm:px-4">
+            {assets.length === 0 ? (
+              <EmptyAssetState title="No transformer assets are assigned here yet." />
+            ) : filteredAssets.length === 0 ? (
+              <EmptyAssetState title={`No asset cards match "${query}".`} />
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+                {filteredAssets.map((asset) => {
+                  const assetId = String(asset.id);
+                  return (
+                    <TransformerAssetCard
+                      key={asset.id}
+                      asset={asset}
+                      selected={String(selectedAssetId ?? '') === assetId}
+                      compareSelected={compareAssetIds.includes(assetId)}
+                      canManageAssets={canManageAssets}
+                      onFocus={() => onFocusAsset?.(asset)}
+                      onViewDetails={() => onViewDetails?.(asset)}
+                      onEdit={() => onEditAsset?.(asset)}
+                      onToggleCompare={() => toggleCompareAsset(asset)}
+                      onDelete={() => onDeleteAsset?.(asset.id)}
+                    />
                   );
                 })}
               </div>
-            </div>
+            )}
           </div>
-        </DialogHeader>
+        </DialogContent>
+      </Dialog>
 
-        <div className="border-y border-[color:var(--border)] bg-[var(--card)]/82 px-4 py-3 sm:px-6">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              {summaryStats.slice(3).map((stat) => {
-                const Icon = stat.icon;
-                return (
-                  <Badge key={stat.label} variant="secondary" className="gap-1.5 px-2.5 py-1">
-                    <Icon className="h-3.5 w-3.5" />
-                    {stat.value} {stat.label.toLowerCase()}
-                  </Badge>
-                );
-              })}
-            </div>
-
-            <label className="relative w-full lg:w-[360px]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search transformer, serial, voltage..."
-                className="h-10 w-full rounded-lg border border-[color:var(--border)] bg-[var(--card-muted)] pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/35"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--background)]/35 px-3 py-3 sm:px-4">
-          {assets.length === 0 ? (
-            <EmptyAssetState title="No transformer assets are assigned here yet." />
-          ) : filteredAssets.length === 0 ? (
-            <EmptyAssetState title={`No asset cards match "${query}".`} />
-          ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
-              {filteredAssets.map((asset) => (
-                <TransformerAssetCard
-                  key={asset.id}
-                  asset={asset}
-                  selected={String(selectedAssetId ?? '') === String(asset.id)}
-                  canManageAssets={canManageAssets}
-                  onFocus={() => onFocusAsset?.(asset)}
-                  onViewDetails={() => onViewDetails?.(asset)}
-                  onEdit={() => onEditAsset?.(asset)}
-                  onDelete={() => onDeleteAsset?.(asset.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+      <CompareTX
+        open={isCompareOpen}
+        assets={selectedCompareAssets}
+        groupTitle={groupTitle}
+        groupSubtitle={groupSubtitle}
+        onClose={() => setIsCompareOpen(false)}
+      />
+    </>
   );
 }
 
@@ -547,10 +608,12 @@ function GasLimitChip({ gas }) {
 function TransformerAssetCard({
   asset,
   selected,
+  compareSelected = false,
   canManageAssets,
   onFocus,
   onViewDetails,
   onEdit,
+  onToggleCompare,
   onDelete,
 }) {
   const dgaStatus = getAssetDgaStatus(asset);
@@ -565,8 +628,8 @@ function TransformerAssetCard({
         selected
           ? 'border-[color:var(--primary)] ring-2 ring-[color:var(--ring)]'
           : 'border-[color:var(--border)]'
-      }`}
-      style={{ borderColor: selected ? 'var(--primary)' : dgaStyle.border }}
+      } ${compareSelected ? 'compare-breathing-card' : ''}`}
+      style={{ borderColor: selected ? 'var(--primary)' : compareSelected ? 'rgba(59,130,246,0.86)' : dgaStyle.border }}
     >
       <div className="absolute inset-x-0 top-0 h-1" style={{ background: dgaStyle.accent }} />
 
@@ -594,6 +657,7 @@ function TransformerAssetCard({
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <Badge variant={dgaStyle.badgeVariant}>{dgaStyle.shortLabel}</Badge>
                 {selected ? <Badge variant="default">Selected</Badge> : null}
+                {compareSelected ? <Badge variant="outline" className="compare-breathing-badge">Compare</Badge> : null}
               </div>
             </div>
 
@@ -658,28 +722,39 @@ function TransformerAssetCard({
           <Eye className="h-3 w-3" />
         </Button>
         {canManageAssets ? (
-          <>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 w-9 px-0 text-xs"
-              onClick={onEdit}
-              aria-label="Edit transformer"
-              title="Edit transformer"
-            >
-              <Pencil className="h-3 w-3" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 w-9 px-0 text-xs text-[var(--danger-strong)] hover:bg-[var(--danger-soft)]"
-              onClick={onDelete}
-              aria-label="Delete transformer"
-              title="Delete transformer"
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 w-9 px-0 text-xs"
+            onClick={onEdit}
+            aria-label="Edit transformer"
+            title="Edit transformer"
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          variant={compareSelected ? 'secondary' : 'outline'}
+          className={`h-7 w-9 px-0 text-xs ${compareSelected ? 'compare-breathing-action' : ''}`}
+          onClick={onToggleCompare}
+          aria-label={compareSelected ? 'Remove transformer from compare' : 'Add transformer to compare'}
+          aria-pressed={compareSelected}
+          title={compareSelected ? 'Remove from compare' : 'Add to compare'}
+        >
+          <GitCompareArrows className="h-3 w-3" />
+        </Button>
+        {canManageAssets ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 w-9 px-0 text-xs text-[var(--danger-strong)] hover:bg-[var(--danger-soft)]"
+            onClick={onDelete}
+            aria-label="Delete transformer"
+            title="Delete transformer"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
         ) : null}
       </div>
     </article>

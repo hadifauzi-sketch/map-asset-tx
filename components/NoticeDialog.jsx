@@ -18,7 +18,7 @@ const VARIANT_CONFIG = {
     badgeVariant: 'success',
     iconShellClass: 'bg-[var(--success-soft)] text-[var(--success-strong)]',
     panelClass:
-      'bg-[linear-gradient(135deg,rgba(18,120,90,0.15),rgba(255,255,255,0.96)_52%,rgba(18,120,90,0.08))]',
+      'bg-[linear-gradient(135deg,color-mix(in_srgb,var(--success-strong)_18%,var(--card)),var(--card)_55%,color-mix(in_srgb,var(--success-strong)_8%,var(--card)))]',
     detailClass: 'border-[color:var(--success-soft)] bg-[var(--success-soft)]/35 text-[var(--success-strong)]',
   },
   warning: {
@@ -27,7 +27,7 @@ const VARIANT_CONFIG = {
     badgeVariant: 'warning',
     iconShellClass: 'bg-[var(--warning-soft)] text-[var(--warning-strong)]',
     panelClass:
-      'bg-[linear-gradient(135deg,rgba(214,158,46,0.14),rgba(255,255,255,0.96)_52%,rgba(214,158,46,0.08))]',
+      'bg-[linear-gradient(135deg,color-mix(in_srgb,var(--warning-strong)_18%,var(--card)),var(--card)_55%,color-mix(in_srgb,var(--warning-strong)_8%,var(--card)))]',
     detailClass: 'border-[color:var(--warning-soft)] bg-[var(--warning-soft)]/35 text-[var(--warning-strong)]',
   },
   error: {
@@ -36,7 +36,7 @@ const VARIANT_CONFIG = {
     badgeVariant: 'danger',
     iconShellClass: 'bg-[var(--danger-soft)] text-[var(--danger-strong)]',
     panelClass:
-      'bg-[linear-gradient(135deg,rgba(220,38,38,0.12),rgba(255,255,255,0.96)_52%,rgba(220,38,38,0.06))]',
+      'bg-[linear-gradient(135deg,color-mix(in_srgb,var(--danger-strong)_16%,var(--card)),var(--card)_55%,color-mix(in_srgb,var(--danger-strong)_8%,var(--card)))]',
     detailClass: 'border-[color:var(--danger-soft)] bg-[var(--danger-soft)]/35 text-[var(--danger-strong)]',
   },
 };

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import {
   Building2,
   ChevronDown,
+  GitCompareArrows,
   Layers3,
   MapPin,
   Moon,
@@ -23,6 +24,7 @@ import { Card, CardContent } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
 import AssetCardGalleryModal from './AssetCardGalleryModal';
+import CompareTX from './compareTX';
 import SidebarAssetContextMenu from './SidebarAssetContextMenu';
 import { getAssetOwnerLabel } from '../lib/assetOwner';
 import { compareMalaysianStates, getTransformerState } from '../lib/malaysiaStates';
@@ -125,7 +127,7 @@ function pluralize(count, singular, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function buildHierarchy(transformers, floorPlans) {
+function buildHierarchy(transformers, floorPlans, companyBoundaries = []) {
   const transformerById = new Map();
   transformers.forEach((transformer) => {
     transformerById.set(String(transformer.id), transformer);
@@ -151,6 +153,7 @@ function buildHierarchy(transformers, floorPlans) {
     if (!stateGroup.companies.has(companyKey)) {
       stateGroup.companies.set(companyKey, {
         companyName: companyKey,
+        companyBoundary: null,
         floorPlans: [],
         ungroupedTransformers: [],
       });
@@ -180,6 +183,14 @@ function buildHierarchy(transformers, floorPlans) {
     });
   });
 
+  companyBoundaries.forEach((boundary) => {
+    const companyGroup = ensureCompanyGroup(
+      boundary.state || 'Unassigned',
+      boundary.companyName || 'Unassigned company'
+    );
+    companyGroup.companyBoundary = boundary;
+  });
+
   transformers.forEach((transformer) => {
     if (floorPlanByTransformerId.has(String(transformer.id))) {
       return;
@@ -198,6 +209,7 @@ function buildHierarchy(transformers, floorPlans) {
       companies: Array.from(stateGroup.companies.values())
         .map((companyGroup) => ({
           companyName: companyGroup.companyName,
+          companyBoundary: companyGroup.companyBoundary,
           floorPlans: [...companyGroup.floorPlans].sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''))),
           ungroupedTransformers: sortTransformers(companyGroup.ungroupedTransformers),
         }))
@@ -219,16 +231,23 @@ function filterHierarchy(stateGroups, searchTerm) {
       const companies = stateGroup.companies
         .map((companyGroup) => {
           const companyMatches = normalizeText(companyGroup.companyName).includes(search);
+          const boundaryMatches = [
+            companyGroup.companyBoundary?.companyName,
+            companyGroup.companyBoundary?.state,
+            companyGroup.companyBoundary?.notes,
+          ]
+            .filter(Boolean)
+            .some((value) => normalizeText(value).includes(search));
 
           const floorPlans = companyGroup.floorPlans
             .map((floorPlan) => {
               const floorMatches = matchesFloorPlan(floorPlan, search);
               const transformers = floorPlan.transformers.filter(
                 (transformer) =>
-                  stateMatches || companyMatches || floorMatches || matchesTransformer(transformer, search)
+                  stateMatches || companyMatches || boundaryMatches || floorMatches || matchesTransformer(transformer, search)
               );
 
-              if (!stateMatches && !companyMatches && !floorMatches && transformers.length === 0) {
+              if (!stateMatches && !companyMatches && !boundaryMatches && !floorMatches && transformers.length === 0) {
                 return null;
               }
 
@@ -240,10 +259,10 @@ function filterHierarchy(stateGroups, searchTerm) {
             .filter(Boolean);
 
           const ungroupedTransformers = companyGroup.ungroupedTransformers.filter(
-            (transformer) => stateMatches || companyMatches || matchesTransformer(transformer, search)
+            (transformer) => stateMatches || companyMatches || boundaryMatches || matchesTransformer(transformer, search)
           );
 
-          if (!stateMatches && !companyMatches && floorPlans.length === 0 && ungroupedTransformers.length === 0) {
+          if (!stateMatches && !companyMatches && !boundaryMatches && floorPlans.length === 0 && ungroupedTransformers.length === 0) {
             return null;
           }
 
@@ -310,6 +329,7 @@ function getCollapsedStatLabel(statKey, label) {
 function TransformerSidebar({
   transformers,
   floorPlans = [],
+  companyBoundaries = [],
   currentUser = null,
   canManageAssets = true,
   onAddClick,
@@ -319,6 +339,10 @@ function TransformerSidebar({
   onDeleteClick,
   onViewDetails,
   onFloorPlanClick,
+  onCompanyBoundaryClick,
+  onEditCompanyBoundaryInfo,
+  onEditCompanyBoundary,
+  onDeleteCompanyBoundary,
   onEditFloorPlanInfo,
   onEditFloorPlan,
   onDeleteFloorPlan,
@@ -326,6 +350,7 @@ function TransformerSidebar({
   isLocationRegisterOpen = false,
   loading,
   selectedTransformerId,
+  selectedCompanyBoundaryId,
   selectedFloorPlanId,
   theme,
   onToggleTheme,
@@ -347,10 +372,15 @@ function TransformerSidebar({
   const [isStatesModalOpen, setIsStatesModalOpen] = useState(false);
   const [assetGroupContextMenu, setAssetGroupContextMenu] = useState(null);
   const [assetCardGroup, setAssetCardGroup] = useState(null);
+  const [compareAssetIds, setCompareAssetIds] = useState([]);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [isMobileTopHidden, setIsMobileTopHidden] = useState(false);
   const lastSidebarScrollTopRef = useRef(0);
 
-  const hierarchy = useMemo(() => buildHierarchy(transformers, floorPlans), [floorPlans, transformers]);
+  const hierarchy = useMemo(
+    () => buildHierarchy(transformers, floorPlans, companyBoundaries),
+    [companyBoundaries, floorPlans, transformers]
+  );
   const filteredHierarchy = useMemo(() => filterHierarchy(hierarchy, searchTerm), [hierarchy, searchTerm]);
   const sortedAreas = useMemo(
     () =>
@@ -411,6 +441,10 @@ function TransformerSidebar({
       }
     });
 
+    companyBoundaries.forEach((boundary) => {
+      ensureEntry(boundary.companyName);
+    });
+
     transformers.forEach((transformer) => {
       const entry = ensureEntry(transformer.siteName);
       if (entry) {
@@ -419,7 +453,7 @@ function TransformerSidebar({
     });
 
     return Array.from(registry.values()).sort((left, right) => left.name.localeCompare(right.name));
-  }, [floorPlans, transformers]);
+  }, [companyBoundaries, floorPlans, transformers]);
   const statesList = useMemo(
     () =>
       hierarchy.map((stateGroup) => {
@@ -456,8 +490,14 @@ function TransformerSidebar({
     ];
   }, [companyParentList.length, floorPlans.length, statesList.length, transformers.length]);
 
+  const selectedCompareAssets = useMemo(
+    () => transformers.filter((transformer) => compareAssetIds.includes(String(transformer.id))),
+    [compareAssetIds, transformers]
+  );
+
   const visibleAssetCount = countVisibleAssets(filteredHierarchy);
   const visibleFloorCount = countVisibleFloors(filteredHierarchy);
+  const compareReady = selectedCompareAssets.length >= 2;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -480,6 +520,14 @@ function TransformerSidebar({
     window.localStorage.setItem(EXPANDED_AREAS_STORAGE_KEY, JSON.stringify(expandedFloorPlans));
   }, [expandedFloorPlans]);
 
+  useEffect(() => {
+    const availableIds = new Set(transformers.map((transformer) => String(transformer.id)));
+    setCompareAssetIds((current) => {
+      const next = current.filter((id) => availableIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [transformers]);
+
   const toggleExpandedValue = (setter, key) => {
     setter((current) => ({
       ...current,
@@ -492,6 +540,22 @@ function TransformerSidebar({
       ...current,
       [transformerId]: !current[transformerId],
     }));
+  };
+  const toggleCompareAsset = (transformer) => {
+    const assetId = String(transformer?.id ?? '');
+    if (!assetId) {
+      return;
+    }
+
+    setCompareAssetIds((current) =>
+      current.includes(assetId)
+        ? current.filter((id) => id !== assetId)
+        : [...current, assetId]
+    );
+  };
+  const clearCompareAssets = () => {
+    setCompareAssetIds([]);
+    setIsCompareModalOpen(false);
   };
 
   const openAssetsModal = () => setIsAssetsModalOpen(true);
@@ -608,6 +672,13 @@ function TransformerSidebar({
         onViewDetails={handleAssetCardDetails}
         onEditAsset={handleAssetCardEdit}
         onDeleteAsset={handleAssetCardDelete}
+      />
+      <CompareTX
+        open={isCompareModalOpen}
+        assets={selectedCompareAssets}
+        groupTitle="Sidebar compare"
+        groupSubtitle="Latest oil test and DGA assessment from the selected transformer assets."
+        onClose={() => setIsCompareModalOpen(false)}
       />
     </>
   );
@@ -1033,6 +1104,32 @@ function TransformerSidebar({
                 ) : null}
               </div>
             </label>
+
+            {selectedCompareAssets.length ? (
+              <div className="rounded-md border border-[color:var(--border)] bg-[var(--card)] p-2.5 shadow-[var(--shadow-card)]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Badge variant="outline" className="gap-1.5">
+                    <GitCompareArrows className="h-3.5 w-3.5" />
+                    {selectedCompareAssets.length} selected
+                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={compareReady ? 'default' : 'outline'}
+                      disabled={!compareReady}
+                      onClick={() => setIsCompareModalOpen(true)}
+                    >
+                      <GitCompareArrows className="h-3.5 w-3.5" />
+                      Compare
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={clearCompareAssets}>
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>
@@ -1117,6 +1214,8 @@ function TransformerSidebar({
                           ) || companyGroup;
                         const companyAssets = getCompanyGroupAssets(sourceCompanyGroup);
                         const companyAssetCount = companyAssets.length;
+                        const companyBoundary = sourceCompanyGroup.companyBoundary || companyGroup.companyBoundary;
+                        const isCompanyBoundarySelected = selectedCompanyBoundaryId === companyBoundary?.id;
 
                         return (
                           <section key={companyKey} className="space-y-2 lg:space-y-3">
@@ -1143,6 +1242,7 @@ function TransformerSidebar({
                                 </p>
                               </div>
                               <div className="flex items-center gap-2">
+                                {companyBoundary ? <Badge variant={isCompanyBoundarySelected ? 'default' : 'outline'}>Main</Badge> : null}
                                 <Badge variant="secondary">{companyAssetCount}</Badge>
                                 <ChevronDown
                                   className={`h-4 w-4 text-[var(--muted)] transition-transform duration-200 ${
@@ -1151,6 +1251,42 @@ function TransformerSidebar({
                                 />
                               </div>
                             </button>
+
+                            {companyBoundary ? (
+                              <div
+                                className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 ${
+                                  isCompanyBoundarySelected
+                                    ? 'border-sky-400/80 bg-sky-500/10'
+                                    : 'border-sky-300/45 bg-sky-50/45 dark:border-sky-900/50 dark:bg-sky-950/20'
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  className="min-w-0 flex-1 text-left"
+                                  onClick={() => onCompanyBoundaryClick?.(companyBoundary)}
+                                >
+                                  <p className="truncate text-xs font-semibold text-[var(--foreground)]">
+                                    Main company boundary
+                                  </p>
+                                  <p className="truncate text-[11px] text-[var(--muted)]">
+                                    {companyBoundary.points.length} points - {companyGroup.floorPlans.length} areas under this parent
+                                  </p>
+                                </button>
+                                {canManageAssets ? (
+                                  <div className="flex items-center gap-1">
+                                    <IconAction label="Edit company boundary info" onClick={() => onEditCompanyBoundaryInfo?.(companyBoundary)}>
+                                      <Pencil className="h-4 w-4" />
+                                    </IconAction>
+                                    <IconAction label="Reshape company boundary" onClick={() => onEditCompanyBoundary?.(companyBoundary)}>
+                                      <Layers3 className="h-4 w-4" />
+                                    </IconAction>
+                                    <IconAction label="Delete company boundary" destructive onClick={() => onDeleteCompanyBoundary?.(companyBoundary.id)}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </IconAction>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
 
                             {isCompanyExpanded ? (
                               <div className="space-y-2 pl-1 lg:space-y-3 lg:pl-2">
@@ -1259,6 +1395,8 @@ function TransformerSidebar({
                                                 onClick={() => onTransformerClick(transformer)}
                                                 onViewDetails={() => onViewDetails(transformer)}
                                                 canManageAssets={canManageAssets}
+                                                compareSelected={compareAssetIds.includes(String(transformer.id))}
+                                                onToggleCompare={() => toggleCompareAsset(transformer)}
                                                 onEdit={() => onEditClick(transformer)}
                                                 onDelete={() => onDeleteClick(transformer.id)}
                                               />
@@ -1299,6 +1437,8 @@ function TransformerSidebar({
                                           onClick={() => onTransformerClick(transformer)}
                                           onViewDetails={() => onViewDetails(transformer)}
                                           canManageAssets={canManageAssets}
+                                          compareSelected={compareAssetIds.includes(String(transformer.id))}
+                                          onToggleCompare={() => toggleCompareAsset(transformer)}
                                           onEdit={() => onEditClick(transformer)}
                                           onDelete={() => onDeleteClick(transformer.id)}
                                         />
@@ -1734,6 +1874,8 @@ function TransformerListCard({
   onClick,
   onViewDetails,
   canManageAssets = true,
+  compareSelected = false,
+  onToggleCompare,
   onEdit,
   onDelete,
 }) {
@@ -1743,7 +1885,9 @@ function TransformerListCard({
   return (
     <article
       className={`group rounded-md border p-2.5 transition-all duration-200 hover:-translate-y-0.5 lg:p-3 ${
-        isSelected
+        compareSelected
+          ? 'border-blue-400/80 bg-blue-500/10 compare-breathing-card'
+          : isSelected
           ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
           : 'border-[color:var(--border)] bg-[var(--card)]'
       }`}
@@ -1792,6 +1936,7 @@ function TransformerListCard({
             <Badge variant="outline">{transformer.voltage || 'Voltage N/A'}</Badge>
             <Badge variant="secondary">{transformerState}</Badge>
             <Badge variant="outline">{assetOwnerLabel}</Badge>
+            {compareSelected ? <Badge variant="outline" className="compare-breathing-badge">Compare</Badge> : null}
           </div>
 
           <dl className="mt-2.5 grid grid-cols-2 gap-2 text-sm lg:mt-3 lg:gap-3">
@@ -1808,14 +1953,21 @@ function TransformerListCard({
                 <MapPin className="h-4 w-4" />
               </IconAction>
               {canManageAssets ? (
-                <>
-                  <IconAction label="Edit transformer" onClick={onEdit}>
-                    <Pencil className="h-4 w-4" />
-                  </IconAction>
-                  <IconAction label="Delete transformer" destructive onClick={onDelete}>
-                    <Trash2 className="h-4 w-4" />
-                  </IconAction>
-                </>
+                <IconAction label="Edit transformer" onClick={onEdit}>
+                  <Pencil className="h-4 w-4" />
+                </IconAction>
+              ) : null}
+              <IconAction
+                label={compareSelected ? 'Remove transformer from compare' : 'Add transformer to compare'}
+                active={compareSelected}
+                onClick={onToggleCompare}
+              >
+                <GitCompareArrows className="h-4 w-4" />
+              </IconAction>
+              {canManageAssets ? (
+                <IconAction label="Delete transformer" destructive onClick={onDelete}>
+                  <Trash2 className="h-4 w-4" />
+                </IconAction>
               ) : null}
             </div>
           </div>
@@ -1834,16 +1986,19 @@ function InfoPair({ label, value }) {
   );
 }
 
-function IconAction({ label, onClick, destructive = false, children }) {
+function IconAction({ label, onClick, destructive = false, active = false, children }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
       title={label}
+      aria-pressed={active}
       className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors lg:h-9 lg:w-9 ${
         destructive
           ? 'border-[color:var(--danger-soft)] text-[var(--danger-strong)] hover:bg-[var(--danger-soft)]'
+          : active
+            ? 'compare-breathing-action border-blue-400/80 bg-blue-500/10 text-blue-400'
           : 'border-[color:var(--border)] text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
       }`}
     >
