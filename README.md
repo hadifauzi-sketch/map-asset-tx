@@ -12,6 +12,14 @@ A comprehensive cloud-based transformer substation asset management application 
 ✅ **Secure** - Row Level Security (RLS) policies  
 ✅ **No LocalStorage** - Professional cloud-based solution  
 
+## 🚀 What's New in v3.8
+
+✅ **Asset owner classification** - Tag each transformer as TNB or Non-TNB in the add/edit form  
+✅ **Owner visibility filter** - Toggle TNB / Non-TNB / All from Settings to filter map + lists  
+✅ **Owner badges everywhere** - Owner labels appear in cards, marker popups, and detail views  
+✅ **Map place search** - Search roads, companies, and POI (OpenStreetMap) with a pinned result  
+✅ **Database support** - New `owner_type` column + index for faster filtering (Supabase migration)  
+
 ## 🚀 What's New in v3.7
 
 ✅ **DGA assessment panel** - Per-gas limits, statuses, and references beside each oil test sample  
