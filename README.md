@@ -12,6 +12,14 @@ A comprehensive cloud-based transformer substation asset management application 
 ✅ **Secure** - Row Level Security (RLS) policies  
 ✅ **No LocalStorage** - Professional cloud-based solution  
 
+## 🚀 What's New in v3.9
+
+✅ **Company parent boundaries** - Draw, reshape, and label main company polygons on the map  
+✅ **Boundary metadata** - Capture company name, state, and notes per parent boundary  
+✅ **Sidebar hierarchy updates** - Company boundaries appear as “Main” parents with counts + quick actions  
+✅ **Transformer compare** - Select multiple assets and compare DGA + oil test metrics in one view  
+✅ **Database support** - New `company_boundaries` table + indexes + RLS policy (Supabase migration)  
+
 ## 🚀 What's New in v3.8
 
 ✅ **Asset owner classification** - Tag each transformer as TNB or Non-TNB in the add/edit form  
