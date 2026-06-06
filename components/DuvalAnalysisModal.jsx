@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { Combobox } from './ui/combobox';
 
 // === Dark-themed Card ===
 const Card = ({ children, style }) => (
@@ -310,19 +311,16 @@ export default function DuvalAnalysisModal({ initialGases, initialTransformer })
           {/* Insulating Liquid */}
           <div style={{ background: '#1e1e1e', borderRadius: '12px', border: '1px solid #333', padding: '14px 16px' }}>
             <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.1em', color: '#888', textTransform: 'uppercase', marginBottom: '10px' }}>Insulating Liquid</div>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={insulatingLiquid}
-                onChange={e => setInsulatingLiquid(e.target.value)}
-                style={{ width: '100%', padding: '8px 30px 8px 10px', background: '#2a2a2a', border: '1px solid #444', borderRadius: '8px', fontSize: '14px', fontWeight: '500', color: '#e0e0e0', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none' }}
-              >
-                <option>Mineral oil</option>
-                <option>Natural ester</option>
-                <option>Synthetic ester</option>
-                <option>Silicone oil</option>
-              </select>
-              <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#888', fontSize: '10px' }}>▼</span>
-            </div>
+            <Combobox
+              value={insulatingLiquid}
+              onValueChange={setInsulatingLiquid}
+              options={[
+                { value: 'Mineral oil', label: 'Mineral oil' },
+                { value: 'Natural ester', label: 'Natural ester' },
+                { value: 'Synthetic ester', label: 'Synthetic ester' },
+                { value: 'Silicone oil', label: 'Silicone oil' },
+              ]}
+            />
           </div>
 
           {/* Method */}
@@ -353,18 +351,15 @@ export default function DuvalAnalysisModal({ initialGases, initialTransformer })
           {/* Gas Limit Standard */}
           <div style={{ background: '#1e1e1e', borderRadius: '12px', border: '1px solid #333', padding: '14px 16px' }}>
             <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.1em', color: '#888', textTransform: 'uppercase', marginBottom: '10px' }}>Gas Limit Standard</div>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={gasLimitStandard}
-                onChange={e => setGasLimitStandard(e.target.value)}
-                style={{ width: '100%', padding: '8px 30px 8px 10px', background: '#2a2a2a', border: '1px solid #444', borderRadius: '8px', fontSize: '14px', fontWeight: '500', color: '#e0e0e0', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none' }}
-              >
-                <option>IEEE C57.104-2019</option>
-                <option>IEC 60599</option>
-                <option>CIGRE 771</option>
-              </select>
-              <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#888', fontSize: '10px' }}>▼</span>
-            </div>
+            <Combobox
+              value={gasLimitStandard}
+              onValueChange={setGasLimitStandard}
+              options={[
+                { value: 'IEEE C57.104-2019', label: 'IEEE C57.104-2019' },
+                { value: 'IEC 60599', label: 'IEC 60599' },
+                { value: 'CIGRE 771', label: 'CIGRE 771' },
+              ]}
+            />
           </div>
         </div>
       </div>

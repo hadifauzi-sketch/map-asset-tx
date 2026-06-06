@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AnalysisBoard from './dga-workbench/AnalysisBoard';
+import { AppTooltip } from './ui/app-tooltip';
+import { Combobox } from './ui/combobox';
 import { OIL_OPTIONS, getStandardOptionsForOilType } from '../lib/dga/appConfig';
 import { FAULT_METADATA, analyzeSample, createEmptySample } from '../lib/dga/diagnostics';
 import { transformerService } from '../lib/transformerService';
@@ -445,21 +447,15 @@ export default function DGAWorkbenchModal({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:min-w-[640px]">
-            <label className="space-y-2 text-sm">
+            <div className="space-y-2">
               <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Insulating liquid</span>
-              <select
+              <Combobox
                 value={oilType}
-                onChange={(event) => setOilType(event.target.value)}
+                onValueChange={setOilType}
+                options={OIL_OPTIONS}
                 disabled={readOnly}
-                className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-              >
-                {OIL_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
 
             <div className="space-y-2">
               <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Method view</span>
@@ -468,54 +464,48 @@ export default function DGAWorkbenchModal({
                   const isActive = methodView === option.value;
                   const polygonPoints = getPolygonPoints(option.sides);
                   return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setMethodView(option.value)}
-                      aria-label={option.label}
-                      title={option.label}
-                      disabled={readOnly}
-                      className={`flex h-10 w-full items-center justify-center rounded-md border transition ${
-                        isActive
-                          ? 'border-[color:var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]'
-                          : 'border-[color:var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--card-strong)]'
-                      }`}
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-5 w-5"
-                        aria-hidden="true"
+                    <AppTooltip key={option.value} content={option.label} disabled={readOnly} triggerClassName="w-full">
+                      <button
+                        type="button"
+                        onClick={() => setMethodView(option.value)}
+                        aria-label={option.label}
+                        disabled={readOnly}
+                        className={`flex h-10 w-full items-center justify-center rounded-md border transition ${
+                          isActive
+                            ? 'border-[color:var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]'
+                            : 'border-[color:var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--card-strong)]'
+                        }`}
                       >
-                        <polygon
-                          points={polygonPoints}
-                          fill={isActive ? 'currentColor' : 'none'}
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      <span className="sr-only">{option.label}</span>
-                    </button>
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-5 w-5"
+                          aria-hidden="true"
+                        >
+                          <polygon
+                            points={polygonPoints}
+                            fill={isActive ? 'currentColor' : 'none'}
+                            stroke="currentColor"
+                            strokeWidth="1.7"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span className="sr-only">{option.label}</span>
+                      </button>
+                    </AppTooltip>
                   );
                 })}
               </div>
             </div>
 
-            <label className="space-y-2 text-sm">
+            <div className="space-y-2">
               <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Gas limit standard</span>
-              <select
+              <Combobox
                 value={gasLimitStandard}
-                onChange={(event) => setGasLimitStandard(event.target.value)}
+                onValueChange={setGasLimitStandard}
+                options={standardOptions}
                 disabled={readOnly || standardOptions.length === 1}
-                className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-80"
-              >
-                {standardOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
           </div>
         </div>
 

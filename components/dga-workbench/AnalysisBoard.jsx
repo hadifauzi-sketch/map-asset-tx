@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { FAULT_METADATA } from "../../lib/dga/diagnostics.js";
 import { useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { DuvalDiagram, FaultZoneLegend, getDiagramTitle } from "./DuvalDiagram.jsx";
 import DgaTrendingSection from "./DgaTrendingSection.jsx";
 
@@ -326,6 +327,7 @@ function DiagramModal({ card, oilType, latestSample, completedSamples, hasRequir
   const [selectedSampleId, setSelectedSampleId] = useState(defaultSelectedSample?.id ?? null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
   const modalHasInteractiveSamples = completedSamples.some((sample) => {
     if (card.type === "heptagon") {
       return hasHeptagonData(sample.analysis.raw);
@@ -345,9 +347,15 @@ function DiagramModal({ card, oilType, latestSample, completedSamples, hasRequir
   const previousBodyUserSelectRef = useRef("");
 
   useEffect(() => {
+    setIsVisible(true);
+  }, [card, initialSelectedSampleId]);
+
+  const requestClose = () => setIsVisible(false);
+
+  useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        onClose();
+        setIsVisible(false);
       }
     };
 
@@ -361,7 +369,7 @@ function DiagramModal({ card, oilType, latestSample, completedSamples, hasRequir
       document.body.style.userSelect = previousBodyUserSelectRef.current;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     if (!isDragging) {
@@ -439,25 +447,36 @@ function DiagramModal({ card, oilType, latestSample, completedSamples, hasRequir
   const description = selectedSampleDetails.description;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)] px-4 py-6"
+    <AnimatePresence onExitComplete={onClose}>
+    {isVisible && (
+    <motion.div
+      className="app-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)] px-4 py-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: { duration: 0.22, ease: "easeOut" } }}
+      exit={{ opacity: 0, transition: { duration: 0.38, ease: "easeIn" } }}
       onClick={() => {
         if (ignoreBackdropClickRef.current) {
           ignoreBackdropClickRef.current = false;
           return;
         }
 
-        onClose();
+        requestClose();
       }}
       role="presentation"
     >
-      <div
-        className="relative w-full max-w-[1040px] rounded-2xl border border-[color:var(--border)] bg-[var(--card)] shadow-[var(--shadow-dialog)]"
+      <motion.div
+        className="app-modal-surface relative w-full max-w-[1040px] rounded-2xl border border-[color:var(--border)] bg-[var(--card)] shadow-[var(--shadow-dialog)]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] } }}
+        exit={{ opacity: 0, transition: { duration: 0.42, ease: [0.4, 0, 1, 1] } }}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        style={{ transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` }}
+        style={{
+          "--app-modal-translate-x": `${dragOffset.x}px`,
+          "--app-modal-translate-y": `${dragOffset.y}px`,
+        }}
       >
         <div
           className={`absolute inset-x-0 top-0 flex h-12 items-center justify-center rounded-t-2xl border-b border-[color:var(--border)] bg-[var(--card-muted)] ${
@@ -470,7 +489,7 @@ function DiagramModal({ card, oilType, latestSample, completedSamples, hasRequir
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={requestClose}
           className="absolute right-4 top-3 z-20 rounded-full border border-[color:var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--card-muted)]"
         >
           Close
@@ -513,8 +532,10 @@ function DiagramModal({ card, oilType, latestSample, completedSamples, hasRequir
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }
 

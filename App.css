@@ -91,6 +91,95 @@ body {
   overscroll-behavior: none;
 }
 
+@keyframes appTooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-tooltip-enter-x, 0), var(--app-tooltip-enter-y, 4px), 0) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes appTooltipFadeOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(var(--app-tooltip-exit-x, 0), var(--app-tooltip-exit-y, 2px), 0) scale(0.98);
+  }
+}
+
+.app-tooltip-content {
+  --app-tooltip-enter-x: 0;
+  --app-tooltip-enter-y: 4px;
+  --app-tooltip-exit-x: 0;
+  --app-tooltip-exit-y: 2px;
+  --app-tooltip-follow-x: 0px;
+  --app-tooltip-follow-y: 0px;
+  z-index: 4600;
+  max-width: min(280px, calc(100vw - 32px));
+  border: 1px solid color-mix(in srgb, var(--border), transparent 8%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card-elevated) 94%, transparent);
+  box-shadow: var(--shadow-card);
+  color: var(--foreground);
+  padding: 10px 12px;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+  translate: var(--app-tooltip-follow-x) var(--app-tooltip-follow-y);
+  transition: translate 90ms linear;
+  will-change: transform, opacity, translate;
+}
+
+.app-tooltip-content[data-side='top'] {
+  --app-tooltip-enter-y: 5px;
+  --app-tooltip-exit-y: 2px;
+}
+
+.app-tooltip-content[data-side='bottom'] {
+  --app-tooltip-enter-y: -5px;
+  --app-tooltip-exit-y: -2px;
+}
+
+.app-tooltip-content[data-side='left'] {
+  --app-tooltip-enter-x: 5px;
+  --app-tooltip-enter-y: 0;
+  --app-tooltip-exit-x: 2px;
+  --app-tooltip-exit-y: 0;
+}
+
+.app-tooltip-content[data-side='right'] {
+  --app-tooltip-enter-x: -5px;
+  --app-tooltip-enter-y: 0;
+  --app-tooltip-exit-x: -2px;
+  --app-tooltip-exit-y: 0;
+}
+
+.app-tooltip-content[data-state='delayed-open'],
+.app-tooltip-content[data-state='instant-open'] {
+  animation: appTooltipFadeIn 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-tooltip-content[data-state='closed'] {
+  animation: appTooltipFadeOut 120ms ease forwards;
+}
+
+.app-tooltip-copy {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.45;
+}
+
 @keyframes compareBreathingGlow {
   0%,
   100% {
@@ -208,6 +297,54 @@ body {
   bottom: max(16px, var(--safe-bottom));
 }
 
+@keyframes dialogOverlayFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialogOverlayFadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dialogShrinkIn {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--app-modal-translate-x, 0px), var(--app-modal-translate-y, 0px), 0) scale3d(1.5, 1.5, 1);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(var(--app-modal-translate-x, 0px), var(--app-modal-translate-y, 0px), 0) scale3d(1, 1, 1);
+  }
+}
+
+@keyframes dialogFadeOut {
+  0% {
+    opacity: 1;
+    transform: translate3d(var(--app-modal-translate-x, 0px), var(--app-modal-translate-y, 0px), 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(
+      var(--app-modal-translate-x, 0px),
+      calc(var(--app-modal-translate-y, 0px) + 20px),
+      0
+    ) scale(0.93);
+  }
+}
+
 .dialog-viewport {
   position: fixed;
   inset: 0;
@@ -224,6 +361,22 @@ body {
 
 .dialog-content-shell {
   pointer-events: auto;
+}
+
+.dialog-overlay {
+  will-change: opacity;
+}
+
+/* dialog open/close animations handled by Framer Motion */
+
+.app-modal-overlay {
+  will-change: opacity;
+}
+
+.app-modal-surface {
+  transform: translate3d(var(--app-modal-translate-x, 0px), var(--app-modal-translate-y, 0px), 0);
+  transform-origin: center center;
+  will-change: opacity, transform;
 }
 
 .mobile-form-dialog,
@@ -246,6 +399,14 @@ body {
   flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-tooltip-content[data-state='delayed-open'],
+  .app-tooltip-content[data-state='instant-open'],
+  .app-tooltip-content[data-state='closed'] {
+    animation-duration: 1ms;
+  }
 }
 
 a {
@@ -288,6 +449,27 @@ textarea {
   overscroll-behavior: contain;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+@keyframes placeholderMarquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.search-placeholder-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: placeholderMarquee 9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-placeholder-marquee {
+    animation: none;
+  }
 }
 
 .sidebar-mobile-chrome {
@@ -1309,7 +1491,10 @@ textarea {
   justify-content: center;
   padding: 16px;
   backdrop-filter: blur(10px);
+  will-change: opacity;
 }
+
+/* open/close animations handled by Framer Motion */
 
 .test-view-overlay {
   align-items: stretch;
@@ -1329,6 +1514,8 @@ textarea {
   border: 1px solid var(--border);
   background: var(--card);
   box-shadow: var(--shadow-dialog);
+  transform-origin: center center;
+  will-change: opacity, transform;
 }
 
 .test-view-modal {
@@ -1760,6 +1947,45 @@ textarea {
 
 .trending-tr:hover {
   background: var(--card-muted);
+}
+
+.map-toolbar-viewport {
+  min-height: 36px;
+  overflow: hidden;
+  transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
+}
+
+.map-toolbar-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  transform-origin: left center;
+  transition:
+    opacity 220ms ease,
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.map-toolbar-panel-visible {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
+.map-toolbar-panel-hidden-right {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-toolbar-panel-hidden-right {
+  transform: translateX(14px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-toolbar-viewport,
+  .map-toolbar-panel {
+    transition: none;
+  }
 }
 
 @media (max-width: 1024px) {

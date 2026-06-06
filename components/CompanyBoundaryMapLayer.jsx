@@ -39,7 +39,7 @@ function createCompanyLabelIcon(label, variant = 'compact') {
 
   return L.divIcon({
     className: 'company-boundary-label-marker',
-    html: `<div class="company-boundary-label-shell${isCompact ? ' company-boundary-label-shell--compact' : ''}" title="${escapedLabel}">${escapedLabel}</div>`,
+    html: `<div class="company-boundary-label-shell${isCompact ? ' company-boundary-label-shell--compact' : ''}">${escapedLabel}</div>`,
     iconSize: [width, height],
     iconAnchor: [width / 2, height / 2],
   });

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Combobox } from './ui/combobox';
+import { DatePicker } from './ui/date-picker';
 import { FileText, TestTubeDiagonal } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -59,8 +61,6 @@ const ADDITIONAL_FIELDS = [
 ];
 const IMPORT_FIELDS = [...DGA_FIELDS, ...ADDITIONAL_FIELDS];
 const TDCG_FIELDS = ['h2', 'ch4', 'c2h2', 'c2h4', 'c2h6', 'co'];
-const SELECT_CLASS_NAME =
-  'flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-not-allowed disabled:opacity-50';
 
 function getTodayDateString() {
   return new Date().toISOString().split('T')[0];
@@ -267,10 +267,9 @@ function DocumentImportReviewModal({
                             <label className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
                               Test Date
                             </label>
-                            <Input
-                              type="date"
+                            <DatePicker
                               value={row.testDate}
-                              onChange={(event) => handleRowChange(rowIndex, 'testDate', event.target.value)}
+                              onValueChange={(val) => handleRowChange(rowIndex, 'testDate', val)}
                               disabled={isSubmitting}
                             />
                           </div>
@@ -279,18 +278,12 @@ function DocumentImportReviewModal({
                             <label className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
                               Test Type
                             </label>
-                            <select
-                              className={SELECT_CLASS_NAME}
+                            <Combobox
                               value={row.testType}
-                              onChange={(event) => handleRowChange(rowIndex, 'testType', event.target.value)}
+                              onValueChange={(val) => handleRowChange(rowIndex, 'testType', val)}
+                              options={TEST_TYPE_OPTIONS}
                               disabled={isSubmitting}
-                            >
-                              {TEST_TYPE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </div>
 
                           {DGA_FIELDS.map((field) => (

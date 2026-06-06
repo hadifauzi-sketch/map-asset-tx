@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AppTooltip } from "../ui/app-tooltip";
 import { GAS_COLORS } from "../../lib/dga/appConfig.js";
 
 const TREND_SERIES = [
@@ -413,25 +414,27 @@ function buildRegularPolygonPoints(sides, radius = 9, center = 12) {
 
 function FaultMethodIcon({ title, sides, marker, palette }) {
   return (
-    <span className="inline-flex h-7 w-7 items-center justify-center" title={title}>
-      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-        <polygon points={buildRegularPolygonPoints(sides)} fill={palette.iconFill} stroke={palette.iconStroke} strokeWidth="1.6" />
-        {marker ? (
-          <text
-            x="12"
-            y="14.2"
-            textAnchor="middle"
-            fontSize="8.5"
-            fontWeight="700"
-            fill={palette.iconText}
-            style={{ userSelect: "none" }}
-          >
-            {marker}
-          </text>
-        ) : null}
-      </svg>
-      <span className="sr-only">{title}</span>
-    </span>
+    <AppTooltip content={title}>
+      <span className="inline-flex h-7 w-7 items-center justify-center" aria-label={title}>
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <polygon points={buildRegularPolygonPoints(sides)} fill={palette.iconFill} stroke={palette.iconStroke} strokeWidth="1.6" />
+          {marker ? (
+            <text
+              x="12"
+              y="14.2"
+              textAnchor="middle"
+              fontSize="8.5"
+              fontWeight="700"
+              fill={palette.iconText}
+              style={{ userSelect: "none" }}
+            >
+              {marker}
+            </text>
+          ) : null}
+        </svg>
+        <span className="sr-only">{title}</span>
+      </span>
+    </AppTooltip>
   );
 }
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Combobox } from './ui/combobox';
 import { Download, ExternalLink, Image as ImageIcon, Tag, Trash2, Upload, X } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { Badge } from './ui/badge';
@@ -429,21 +430,15 @@ function ImageSection({
           {!readOnly ? (
             <>
               <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-                <label className="space-y-1 text-sm font-medium text-[var(--foreground)]">
-                  Category
-                  <select
+                <div className="space-y-1">
+                  <span className="block text-sm font-medium text-[var(--foreground)]">Category</span>
+                  <Combobox
                     value={selectedCategory}
-                    onChange={(event) => setSelectedCategory(event.target.value)}
-                    className="h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[color:var(--primary)]"
+                    onValueChange={setSelectedCategory}
+                    options={IMAGE_CATEGORIES.map((c) => ({ value: c.key, label: c.label }))}
                     disabled={isBusy}
-                  >
-                    {IMAGE_CATEGORIES.map((category) => (
-                      <option key={category.key} value={category.key}>
-                        {category.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
 
                 <Button type="button" variant="outline" className="h-10 self-end" onClick={open} disabled={isBusy}>
                   <Upload className="h-4 w-4" />
@@ -594,21 +589,15 @@ function ImageSection({
                               </p>
                             </div>
                           ) : (
-                            <label className="block text-xs font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
-                              Category
-                              <select
+                            <div className="space-y-1">
+                              <span className="block text-xs font-medium uppercase tracking-[0.08em] text-[var(--muted)]">Category</span>
+                              <Combobox
                                 value={categoryKey}
-                                onChange={(event) => setCategoryForImageIds(image.id, event.target.value)}
-                                className="mt-1 h-9 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-2 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[color:var(--primary)]"
+                                onValueChange={(val) => setCategoryForImageIds(image.id, val)}
+                                options={IMAGE_CATEGORIES.map((c) => ({ value: c.key, label: c.label }))}
                                 disabled={isBusy}
-                              >
-                                {IMAGE_CATEGORIES.map((category) => (
-                                  <option key={category.key} value={category.key}>
-                                    {category.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                              />
+                            </div>
                           )}
                         </div>
 

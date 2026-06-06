@@ -5,6 +5,7 @@ import {
   Info,
   ShieldCheck,
 } from 'lucide-react';
+import { AppTooltip } from '../ui/app-tooltip';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import {
@@ -320,43 +321,44 @@ function DgaAssessmentPanel({
           <div className='overflow-x-auto'>
             <table className='min-w-full border-collapse text-sm'>
               <thead className='text-left'>
-                <tr
-                  className={`iec-limits-toggle-row cursor-pointer select-none transition-colors ${
-                    tableCollapsed ? 'is-collapsed' : 'is-expanded'
-                  }`}
-                  onClick={() => setTableCollapsed((collapsed) => !collapsed)}
-                  title={tableCollapsed ? 'Show DGA gas limits' : 'Hide DGA gas limits'}
-                  aria-expanded={!tableCollapsed}
-                >
-                  <th className='px-4 py-3 font-semibold'>
-                    <span className='flex items-center gap-2'>
-                      <svg
-                        xmlns='http://www.w3.org/2000/svg'
-                        viewBox='0 0 24 24'
-                        fill='none'
-                        stroke='currentColor'
-                        strokeWidth='2'
-                        strokeLinecap='round'
-                        strokeLinejoin='round'
-                        style={{
-                          width: 14,
-                          height: 14,
-                          flexShrink: 0,
-                          transition: 'transform 0.2s',
-                          transform: tableCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                        }}
-                      >
-                        <polyline points='6 9 12 15 18 9' />
-                      </svg>
-                      Parameter
-                    </span>
-                  </th>
-                  <th className='px-4 py-3 font-semibold'>Latest</th>
-                  <th className='px-4 py-3 font-semibold'>Healthy</th>
-                  <th className='px-4 py-3 font-semibold'>Monitor</th>
-                  <th className='px-4 py-3 font-semibold'>Action</th>
-                  <th className='px-4 py-3 font-semibold'>Reference</th>
-                </tr>
+                <AppTooltip content={tableCollapsed ? 'Show DGA gas limits' : 'Hide DGA gas limits'}>
+                  <tr
+                    className={`iec-limits-toggle-row cursor-pointer select-none transition-colors ${
+                      tableCollapsed ? 'is-collapsed' : 'is-expanded'
+                    }`}
+                    onClick={() => setTableCollapsed((collapsed) => !collapsed)}
+                    aria-expanded={!tableCollapsed}
+                  >
+                    <th className='px-4 py-3 font-semibold'>
+                      <span className='flex items-center gap-2'>
+                        <svg
+                          xmlns='http://www.w3.org/2000/svg'
+                          viewBox='0 0 24 24'
+                          fill='none'
+                          stroke='currentColor'
+                          strokeWidth='2'
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          style={{
+                            width: 14,
+                            height: 14,
+                            flexShrink: 0,
+                            transition: 'transform 0.2s',
+                            transform: tableCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                          }}
+                        >
+                          <polyline points='6 9 12 15 18 9' />
+                        </svg>
+                        Parameter
+                      </span>
+                    </th>
+                    <th className='px-4 py-3 font-semibold'>Latest</th>
+                    <th className='px-4 py-3 font-semibold'>Healthy</th>
+                    <th className='px-4 py-3 font-semibold'>Monitor</th>
+                    <th className='px-4 py-3 font-semibold'>Action</th>
+                    <th className='px-4 py-3 font-semibold'>Reference</th>
+                  </tr>
+                </AppTooltip>
               </thead>
               {!tableCollapsed ? (
                 <tbody>

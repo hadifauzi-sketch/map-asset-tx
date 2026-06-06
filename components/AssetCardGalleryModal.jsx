@@ -15,6 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
+import { AppTooltip } from './ui/app-tooltip';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { analyzeSample } from '../lib/dga/diagnostics';
@@ -589,19 +590,20 @@ function GasLimitChip({ gas }) {
   const title = `${gas.name}: ${formatGasNumber(gas.value)} ppm / limit ${formatGasNumber(gas.limit)} ppm`;
 
   return (
-    <div
-      className="min-w-0 rounded-md border px-1 py-1 text-center"
-      style={{ background: statusStyle.bg, borderColor: statusStyle.border }}
-      title={title}
-    >
-      <p className="truncate text-[9px] font-black leading-none" style={{ color: statusStyle.text }}>
-        {gas.label}
-      </p>
-      <p className="mt-0.5 text-[9px] font-semibold leading-none text-[var(--foreground)]">
-        {formatGasNumber(gas.value)}
-      </p>
-      <p className="mt-0.5 text-[8px] leading-none text-[var(--muted)]">{ratioLabel}</p>
-    </div>
+    <AppTooltip content={title}>
+      <div
+        className="min-w-0 rounded-md border px-1 py-1 text-center"
+        style={{ background: statusStyle.bg, borderColor: statusStyle.border }}
+      >
+        <p className="truncate text-[9px] font-black leading-none" style={{ color: statusStyle.text }}>
+          {gas.label}
+        </p>
+        <p className="mt-0.5 text-[9px] font-semibold leading-none text-[var(--foreground)]">
+          {formatGasNumber(gas.value)}
+        </p>
+        <p className="mt-0.5 text-[8px] leading-none text-[var(--muted)]">{ratioLabel}</p>
+      </div>
+    </AppTooltip>
   );
 }
 

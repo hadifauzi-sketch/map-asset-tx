@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
+import { Combobox } from './ui/combobox';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import {
@@ -289,26 +290,21 @@ function FloorPlanMetadataDialog({
                 />
               </label>
 
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-[var(--foreground)]">
+              <div className="space-y-2 md:col-span-2">
+                <span className="block text-sm font-medium text-[var(--foreground)]">
                   State / territory
                   <span className="ml-1 text-[var(--danger-strong)]">*</span>
                 </span>
-                <select
-                  name="state"
+                <Combobox
                   value={formData.state}
-                  onChange={handleChange}
-                  className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-                  required
-                >
-                  <option value="">Select a state</option>
-                  {MALAYSIA_STATES.map((state) => (
-                    <option key={state} value={state}>
-                      {state}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onValueChange={(val) => handleChange({ target: { name: 'state', value: val } })}
+                  options={[
+                    { value: '', label: 'Select a state' },
+                    ...MALAYSIA_STATES.map((state) => ({ value: state, label: state })),
+                  ]}
+                  placeholder="Select a state"
+                />
+              </div>
             </section>
 
             <section className="rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">

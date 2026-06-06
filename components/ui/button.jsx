@@ -1,4 +1,5 @@
 import React from 'react';
+import { AppTooltip } from './app-tooltip';
 import { cn } from '../../lib/utils';
 
 const variantClasses = {
@@ -21,10 +22,13 @@ const sizeClasses = {
 };
 
 const Button = React.forwardRef(function Button(
-  { className, variant = 'default', size = 'default', type = 'button', ...props },
+  { className, title, variant = 'default', size = 'default', type = 'button', ...props },
   ref
 ) {
-  return (
+  const tooltipTriggerClassName =
+    /\bw-full\b/.test(className || '') || /\bflex-1\b/.test(className || '') ? 'w-full' : undefined;
+
+  const button = (
     <button
       ref={ref}
       type={type}
@@ -38,6 +42,16 @@ const Button = React.forwardRef(function Button(
       )}
       {...props}
     />
+  );
+
+  if (!title) {
+    return button;
+  }
+
+  return (
+    <AppTooltip content={title} disabled={Boolean(props.disabled)} triggerClassName={tooltipTriggerClassName}>
+      {button}
+    </AppTooltip>
   );
 });
 

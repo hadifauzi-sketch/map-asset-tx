@@ -6,6 +6,7 @@ import {
   Layers,
   ShieldCheck,
 } from 'lucide-react';
+import { AppTooltip } from '../ui/app-tooltip';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import {
@@ -247,42 +248,43 @@ function Iec60422Panel({
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-sm">
               <thead className="text-left">
-                <tr
-                  className={`iec-limits-toggle-row cursor-pointer select-none transition-colors ${
-                    tableCollapsed ? 'is-collapsed' : 'is-expanded'
-                  }`}
-                  onClick={() => setTableCollapsed((c) => !c)}
-                  title={tableCollapsed ? 'Show parameters' : 'Hide parameters'}
-                  aria-expanded={!tableCollapsed}
-                >
-                  <th className="px-4 py-3 font-semibold">
-                    <span className="flex items-center gap-2">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        style={{
-                          width: 14,
-                          height: 14,
-                          flexShrink: 0,
-                          transition: 'transform 0.2s',
-                          transform: tableCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                        }}
-                      >
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                      Parameter
-                    </span>
-                  </th>
-                  <th className="px-4 py-3 font-semibold">Latest</th>
-                  <th className="px-4 py-3 font-semibold">{columnLabels.healthy}</th>
-                  <th className="px-4 py-3 font-semibold">{columnLabels.monitor}</th>
-                  <th className="px-4 py-3 font-semibold">{columnLabels.action}</th>
-                </tr>
+                <AppTooltip content={tableCollapsed ? 'Show parameters' : 'Hide parameters'}>
+                  <tr
+                    className={`iec-limits-toggle-row cursor-pointer select-none transition-colors ${
+                      tableCollapsed ? 'is-collapsed' : 'is-expanded'
+                    }`}
+                    onClick={() => setTableCollapsed((c) => !c)}
+                    aria-expanded={!tableCollapsed}
+                  >
+                    <th className="px-4 py-3 font-semibold">
+                      <span className="flex items-center gap-2">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          style={{
+                            width: 14,
+                            height: 14,
+                            flexShrink: 0,
+                            transition: 'transform 0.2s',
+                            transform: tableCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                          }}
+                        >
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                        Parameter
+                      </span>
+                    </th>
+                    <th className="px-4 py-3 font-semibold">Latest</th>
+                    <th className="px-4 py-3 font-semibold">{columnLabels.healthy}</th>
+                    <th className="px-4 py-3 font-semibold">{columnLabels.monitor}</th>
+                    <th className="px-4 py-3 font-semibold">{columnLabels.action}</th>
+                  </tr>
+                </AppTooltip>
               </thead>
               {!tableCollapsed && <tbody>
                 {items.map((item) => {
@@ -369,38 +371,40 @@ function Iec60422Panel({
 
         {showGroupMatrix ? (
           <div className="overflow-hidden rounded-md border border-[color:var(--border)] bg-[var(--card-muted)]">
-            <button
-              type="button"
-              className="flex w-full cursor-pointer select-none items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--card-hover,var(--card-muted))]"
-              onClick={() => setMatrixCollapsed((c) => !c)}
-              title={matrixCollapsed ? 'Show voltage-group comparison' : 'Hide voltage-group comparison'}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  width: 14,
-                  height: 14,
-                  flexShrink: 0,
-                  transition: 'transform 0.2s',
-                  transform: matrixCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-                  color: 'var(--muted)',
-                }}
+            <AppTooltip content={matrixCollapsed ? 'Show voltage-group comparison' : 'Hide voltage-group comparison'}>
+              <button
+                type="button"
+                className="flex w-full cursor-pointer select-none items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--card-hover,var(--card-muted))]"
+                onClick={() => setMatrixCollapsed((c) => !c)}
+                aria-label={matrixCollapsed ? 'Show voltage-group comparison' : 'Hide voltage-group comparison'}
               >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-              <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">Voltage-group comparison</p>
-                <p className="text-xs text-[var(--muted)]">
-                  {limitProfile?.sourceLabel || 'IEC 60422:2024'} limits for the active test basis.
-                </p>
-              </div>
-            </button>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    width: 14,
+                    height: 14,
+                    flexShrink: 0,
+                    transition: 'transform 0.2s',
+                    transform: matrixCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                    color: 'var(--muted)',
+                  }}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">Voltage-group comparison</p>
+                  <p className="text-xs text-[var(--muted)]">
+                    {limitProfile?.sourceLabel || 'IEC 60422:2024'} limits for the active test basis.
+                  </p>
+                </div>
+              </button>
+            </AppTooltip>
 
             {!matrixCollapsed && (
               <div className="overflow-x-auto border-t border-[color:var(--border)] px-4 pb-4 pt-3">

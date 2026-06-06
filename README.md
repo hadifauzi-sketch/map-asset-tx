@@ -2,15 +2,80 @@
 
 A comprehensive cloud-based transformer substation asset management application with **PostgreSQL database** and **cloud storage** via Supabase.
 
-## 🎉 What's New in v2.0 (Supabase Edition)
+---
 
-✅ **PostgreSQL Database** - All data stored in cloud database  
-✅ **Cloud File Storage** - PDFs and documents in Supabase Storage  
-✅ **Real-time Sync** - Access from multiple devices  
-✅ **Automatic Backups** - Supabase handles database backups  
-✅ **Scalable** - Handles unlimited transformers and tests  
-✅ **Secure** - Row Level Security (RLS) policies  
-✅ **No LocalStorage** - Professional cloud-based solution  
+## 🏆 Version 4.0 — Major Release
+
+> **The biggest update since the app launched.** Version 4.0 overhauls the entire user experience — smooth motion animations everywhere, a new sidebar look, guided onboarding tour, SOP workflow, smarter date and dropdown controls, transformer comparison, floor plan and company boundary drawing, and a clean app icon.
+
+### Smooth Animations
+
+✅ **App-wide motion** — Panels, modals, and overlays throughout the app now open and close with smooth spring-eased transitions powered by framer-motion  
+✅ **Animated test modals** — View test and DGA Analysis overlays enter with a scale + fade and exit with a graceful slide-out  
+✅ **Asset Card Gallery** — Grouped asset cards animate in and out with a timed close transition  
+✅ **Collapsible panels** — DGA gas limits table and IEC 60422 parameters collapse and expand with a smooth chevron rotation  
+
+### New Shared UI Components
+
+✅ **Tooltip system** (`AppTooltip`) — Unified hover tooltips wired to every action button across the sidebar, document panel, image panel, and DGA views  
+✅ **Combobox** — Searchable, keyboard-navigable dropdown replaces all native `<select>` elements — used in oil test form, image category, document assignment, DGA workbench, and import review  
+✅ **Date Picker** — Custom calendar with quick-pick presets (Today, Tomorrow, In 3 days, In a week) and a **3-level drill-down**: click the month/year header to jump to a month grid, click the year to jump to a 12-year grid — no more arrow-clicking through months one at a time  
+✅ **App icon** — Clean, simple icon displayed in the browser tab and app header for a more polished identity  
+
+### Onboarding & Guidance
+
+✅ **Guided spotlight tour** — Step-by-step feature tour highlights key areas (map, layers, tools) for new and returning users; auto-launches on first sign-in and can be replayed anytime from Settings  
+✅ **SOP Flowchart** — Standard Operating Procedure workflow diagram accessible directly from the sidebar  
+✅ **App Info Dialog** — About this app and disclaimer screens available from the sign-in page and settings  
+✅ **Tour toggle in Settings** — Enable or disable auto-tour on sign-in, with a "Launch tour now" button  
+
+### Oil Test Form
+
+✅ **Date Picker integration** — Test date field now uses the new calendar picker with presets and drill-down month/year navigation  
+✅ **Combobox for test type and oil type** — Searchable dropdowns replace the old selects  
+✅ **Assessment section** — Renamed from "Additional Notes" and moved directly after Test Information for a more logical data-entry flow  
+
+### DGA Analysis
+
+✅ **Animated transitions** — View test and DGA Analysis panels use smooth framer-motion enter/exit animations  
+✅ **Action buttons with tooltips** — Each test row now has a dedicated "View" button and "DGA Analysis" button with tooltip labels  
+✅ **Calendar icon on test dates** — Date values in the test list display a calendar glyph for visual clarity  
+✅ **DGA Workbench** — Oil type and gas standard selectors upgraded to Combobox; heptagon method buttons wrapped with descriptive tooltips  
+✅ **Collapsible gas limits table** — Click the header row to collapse or expand the per-gas limit reference in the DGA Assessment panel  
+✅ **Collapsible IEC 60422 panel** — Same collapsible pattern applied to the IEC 60422 oil quality parameters  
+
+### Sidebar — New Look
+
+✅ **Refreshed sidebar color scheme** — Updated palette and visual hierarchy make the sidebar feel lighter and more modern  
+✅ **Tooltip-wrapped controls** — Add transformer and GPS/Location Register buttons show tooltip labels on hover  
+✅ **SOP button** — Direct access to the SOP Flowchart from the main sidebar toolbar  
+✅ **User info strip** — Username and role visible in the sidebar for quick context  
+
+### Transformer Compare
+
+✅ **Multi-asset comparison** — Select two or more transformers and compare their DGA gases, oil test results, and key metrics side by side in a single view  
+✅ **Comparative DGA view** — Gas values highlighted with severity colors for fast visual comparison across assets  
+
+### Floor Plan & Company Boundaries
+
+✅ **Floor plan mapping** — Attach and overlay internal floor plan images on the map for substation layout reference  
+✅ **Floor plan metadata** — Capture name, description, and scale per floor plan layer  
+✅ **Company boundary drawing** — Draw, reshape, and label main company polygons directly on the map  
+✅ **Boundary metadata** — Capture company name, state, and notes per boundary polygon  
+✅ **Sidebar hierarchy** — Company boundaries appear as "Main" parent groups with asset counts and quick actions  
+
+### Document & Image
+
+✅ **Document compartment assignment** — Move a document to any compartment directly from the document list via Combobox  
+✅ **Tooltips on document actions** — View and Download buttons now show tooltip labels  
+✅ **Image category Combobox** — Category picker on upload and on existing images upgraded from native select  
+
+### Sign-in Page
+
+✅ **About and Disclaimer buttons** — Compact icon buttons at the sign-in footer open the App Info Dialog in About or Disclaimer mode  
+✅ **Post-login disclaimer** — First-time users see the disclaimer immediately after credentials are accepted  
+
+---
 
 ## 🚀 What's New in v3.9
 
@@ -303,8 +368,8 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 3.7.0 (Supabase Edition)  
-**Last Updated**: May 2026  
+**Version**: 4.0.0 (Supabase Edition)  
+**Last Updated**: June 2026  
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  
 **Status**: Personal Project

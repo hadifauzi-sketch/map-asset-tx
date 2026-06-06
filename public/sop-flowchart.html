@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SOP Flowchart — Asset Tx Map V2</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-wrapper {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .chart-wrapper.panning { cursor: grabbing; }
+    .chart-wrapper.rect-selecting { cursor: crosshair; }
+
+    pre.mermaid {
+      display: block;
+      margin: 0;
+      padding: 1.5rem 1rem;
+      transform-origin: 0 0;
+      will-change: transform;
+      user-select: none;
+    }
+    pre.mermaid svg {
+      max-width: none !important;
+      display: block;
+    }
+
+    .sel-rect {
+      position: absolute;
+      pointer-events: none;
+      border: 2px dashed #818cf8;
+      background: rgba(129, 140, 248, 0.08);
+      border-radius: 2px;
+      z-index: 100;
+    }
+
+    .legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 1rem;
+      border-top: 1px solid #30363d;
+      background: #161b22;
+      flex-shrink: 0;
+    }
+    .legend-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8b949e;
+      margin-right: 0.15rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.7rem;
+      color: #8b949e;
+    }
+    .legend-swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+<div class="chart-wrapper" id="chart-wrapper">
+<pre class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#334155", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#475569", "lineColor": "#64748b", "background": "#0d1117", "mainBkg": "#1e293b", "secondaryColor": "#1e293b", "tertiaryColor": "#0f172a", "nodeBorder": "#475569", "clusterBkg": "#0f172a", "clusterBorder": "#334155", "titleColor": "#f1f5f9", "edgeLabelBackground": "#1e293b", "fontFamily": "system-ui, -apple-system, sans-serif", "fontSize": "13px"}}}%%
+flowchart TD
+
+  STARTNODE(["▶  START"])
+  STARTNODE --> LAUNCH
+
+subgraph S1 ["  🔐  STEP 1 — AUTHENTICATION"]
+  LAUNCH["Open Browser\nAsset Tx Map V2"]
+  LAUNCH --> SESSCK{"Session\nActive?"}
+  SESSCK -->|"Yes"| ROLELOAD
+  SESSCK -->|"No"| SIGNINPAGE["Sign-In Page\nEnter Email + Password"]
+  SIGNINPAGE --> AUTHRES{"Auth\nSuccess?"}
+  AUTHRES -->|"Failed"| SIGNINPAGE
+  AUTHRES -->|"OK"| DISCLAIM["Acknowledge Disclaimer\nUsage Notice Before Access\n(Required on Each Login)"]
+  DISCLAIM --> ROLELOAD["Load User Role\nViewer  ·  Editor"]
+  ROLELOAD --> IDLEQ{"Session Idle\n> 8 Hours?"}
+  IDLEQ -->|"Yes — Auto Sign-Out"| SIGNINPAGE
+end
+
+IDLEQ -->|"No — Active Session"| DASH
+
+subgraph S2 ["  🗺️  STEP 2 — MAIN MAP DASHBOARD"]
+  DASH["Leaflet Map View\nTransformer Markers + Cluster Groups"]
+  DASH --> SBR["Sidebar Navigation\nState → Company → Floor → Asset Hierarchy"]
+  DASH --> QSTATS["Quick Stats Bar\nTotal Assets · Oil Samples · Documents · Sites"]
+  DASH --> MLAYER["Map Layer Toggle\nStreets  ·  Satellite  ·  Hybrid"]
+  DASH --> GSEARCH["Geo-Search Control\nFind Location on Map by Address"]
+  DASH --> OWNFLT["Asset Owner Filter\nAll  ·  TNB  ·  IPP  ·  Industry"]
+end
+
+DASH --> ACTREG["➕  Register\nNew Transformer"]
+DASH --> ACTDRAW["🏢  Draw Company\nor Floor Plan"]
+DASH --> ACTOPEN["📋  Open Existing\nTransformer Asset"]
+DASH --> ACTCOMP["⚖️  Compare\nTransformers"]
+DASH --> ACTGALL["🖼️  Asset\nCard Gallery"]
+
+subgraph S3 ["  ➕  STEP 3 — TRANSFORMER REGISTRATION"]
+  ACTREG --> REGMETH{"How to\nRegister?"}
+  REGMETH -->|"① Manual Form"| MANFORM["Fill Asset Registration Form\nSite Name · TX Name · Voltage\nSerial No. · Year Built · MVA\nPaper Type · Oil Type · State"]
+  REGMETH -->|"② GPS Register"| GPSMOD["Location Register Module\nActivate GPS on Device\nCapture Live Coordinates + Accuracy"]
+  GPSMOD --> GPSCONFIRM["GPS Position Confirmed\nLatitude / Longitude / Accuracy"]
+  GPSCONFIRM --> MAPPLACE
+  MANFORM --> MAPPLACE["Map Marker Placement\nMarker Shown at Entered Coordinates\nDrag Marker on Map to Refine"]
+  MAPPLACE --> PDFQ{"Import PDF\nfor Auto-Fill?"}
+  PDFQ -->|"Yes — Drop PDF"| PDFDROP["Upload PDF Test Report\nOCR Engine Auto-Extracts\nAsset Info + Oil Test Data"]
+  PDFDROP --> OILRV["Review Imported Oil Test Rows\nVerify  ·  Edit  ·  Remove Rows\nDate · Gas Values · Oil Params"]
+  OILRV --> OILAPR{"Confirm\nImported Tests?"}
+  OILAPR -->|"Approve"| WITHTESTS["Transformer + Oil Tests\nQueued for Save"]
+  OILAPR -->|"Skip Tests"| NOTEST["Transformer Only\nOil Tests Not Imported"]
+  PDFQ -->|"No"| VALID
+  WITHTESTS --> VALID
+  NOTEST --> VALID
+  VALID{"All Required Fields\nComplete?"}
+  VALID -->|"⚠️ Missing Field"| WARNNOTICE["Warning Dialog\nSite Name / TX Name /\nVoltage Is Required"]
+  WARNNOTICE --> MANFORM
+  VALID -->|"OK"| DUPLCK{"Serial Number\nConflict?"}
+  DUPLCK -->|"Duplicate Found"| DUPWARN["Warning: Duplicate Serial\nOpen Existing Asset Instead\nDo Not Create Duplicate"]
+  DUPWARN --> MANFORM
+  DUPLCK -->|"No Conflict"| SAVETX["✅  Transformer Saved\nStored in Supabase Database\nMarker Appears on Map"]
+end
+
+subgraph S4 ["  🏢  STEP 4 — DRAW COMPANY BOUNDARY & FLOOR PLAN"]
+  ACTDRAW --> DRWTYPE{"What to\nDraw?"}
+  DRWTYPE -->|"Company Boundary"| DRAWCO["Draw Company Polygon\nClick Points on Map to Trace Border\nClick First Point Again to Close"]
+  DRAWCO --> COMETAFORM["Set Company Metadata\nCompany Name · Owner Type · Description"]
+  COMETAFORM --> SAVECOMP["✅  Company Boundary Saved\nOverlay Visible on Map"]
+  DRWTYPE -->|"Floor Plan"| DRAWFP["Draw Floor Plan Polygon\nClick Points on Map to Trace Floor Area\nClick First Point Again to Close"]
+  DRAWFP --> FPMETAFORM["Set Floor Plan Metadata\nFloor Name · Level · Building Info"]
+  FPMETAFORM --> ASSIGNTX["Assign Transformers to Floor\nTransformers Inside Polygon\nAuto-Linked to Floor Plan"]
+  ASSIGNTX --> RESHAPEQ{"Adjust\nBoundary?"}
+  RESHAPEQ -->|"Yes — Reshape"| RESHAPE["Reshape Polygon\nDrag Vertex Points to\nRefine Floor Boundary"]
+  RESHAPE --> SAVEFP["✅  Floor Plan Saved\nOverlay Visible on Map\nTransformers Linked"]
+  RESHAPEQ -->|"No"| SAVEFP
+end
+
+SAVETX --> ACTOPEN
+
+subgraph S5 ["  📋  STEP 5 — TRANSFORMER DETAIL & MANAGEMENT"]
+  ACTOPEN --> DETMODAL["Transformer Detail Modal\nAsset Info · Specs · GPS · Compartments\nEdit Any Field · Manage Assignments"]
+  DETMODAL --> SECTAB{"Navigate to\nSection"}
+  SECTAB --> SOT["🧪  Oil Test\nSection"]
+  SECTAB --> SDC["📎  Document\nSection"]
+  SECTAB --> SHD["❤️  Health\nDashboard"]
+  SECTAB --> SDW["🔬  DGA\nWorkbench"]
+  SECTAB --> STR["📈  Data\nTrending"]
+end
+
+subgraph S6A ["  🧪  STEP 6A — OIL TEST RESULTS"]
+  SOT --> OILMETH{"Input\nMethod"}
+  OILMETH -->|"① Manual Entry"| OILFORM["Fill Oil Test Form\nSample Date · Test Type\n(DGA · Physical · Chemical · Full)"]
+  OILFORM --> DGAINPUT["Enter DGA Gas Values (ppm)\nH2  ·  CH4  ·  C2H6  ·  C2H4\nC2H2  ·  CO  ·  CO2  ·  O2  ·  N2"]
+  DGAINPUT --> OILPARAMS["Enter Oil Quality Parameters\nBDV  ·  Moisture  ·  Acidity  ·  IFT\nFuran  ·  Methanol  ·  Inhibitor\nPassivator  ·  DBDS  ·  TanDelta\nColor  ·  Appearance  ·  Density"]
+  OILMETH -->|"② PDF Auto-Upload"| OCRPDF["Upload PDF Test Report\nTesseract OCR Engine\nAuto-Reads Gas + Oil Values\nFrom Report Document"]
+  OCRPDF --> OCREDIT["Review Extracted Values\nCheck OCR Accuracy\nCorrect Any Misread Fields"]
+  OCREDIT --> TDCG
+  OILPARAMS --> TDCG["Auto-Calculate TDCG\nTotal Dissolved Combustible Gas\nH2+CH4+C2H6+C2H4+C2H2+CO"]
+  TDCG --> OILSAVE["✅  Oil Test Record Saved\nStatus Assigned Automatically\nHealthy  ·  Monitor  ·  Action"]
+end
+
+subgraph S6B ["  📎  STEP 6B — DOCUMENT MANAGEMENT"]
+  SDC --> DOCUP["Upload Document File\nPDF  ·  Word  ·  Excel  ·  Image\n(Max File Size Enforced)"]
+  DOCUP --> DOCSAVE["✅  File Stored in Supabase Storage\nLinked to Transformer Record\nAccessible from Detail Modal"]
+end
+
+subgraph S6C ["  ❤️  STEP 6C — TRANSFORMER HEALTH DASHBOARD"]
+  SHD --> HGAUGE["Health Score Gauge\n0 – 100 Composite Score\nBased on DGA + Oil Parameters"]
+  HGAUGE --> KPITILES["Oil Quality KPI Tiles\nBDV  ·  Moisture  ·  Acidity  ·  IFT\nPower Factor  ·  Resistivity"]
+  KPITILES --> INSIGHTS["Insights & Alerts Panel\nCaution / Critical Items Flagged\nWith Recommended Action Text"]
+  INSIGHTS --> LIFETILE["Lifetime Usage Card\nDP via Furan or Methanol Method\nEstimated Remaining Life %\nInsulation Degradation Index"]
+  LIFETILE --> FAULTRADAR["Fault Methods Summary\nDuval  ·  Rogers  ·  IEC\nMulti-Standard Overview Cards"]
+end
+
+subgraph S6D ["  🔬  STEP 6D — DGA WORKBENCH (ANALYSIS)"]
+  SDW --> DGAMETH{"Analysis\nMethod"}
+  DGAMETH -->|"Heptagon"| HEPT["Heptagon DGA Plot\n7-Gas Polygon Visualization\nGas vs Normalised Zone Limits\nAll Samples Overlaid on Plot"]
+  DGAMETH -->|"Pentagon"| PENT["Pentagon DGA Plot\n5-Zone Analysis\nMineral · Ester · Synthetic Oils\nZone-Based Diagnosis"]
+  DGAMETH -->|"Duval Triangle"| DUVAL["Duval Triangle Plot\nFault Zone Mapping\nT1  T2  T3  D1  D2  DT  PD  S\nFault Tooltip on Hover"]
+  HEPT --> OILTYPE
+  PENT --> OILTYPE
+  DUVAL --> OILTYPE
+  OILTYPE{"Select\nOil Type"}
+  OILTYPE -->|"Mineral"| GASSTD
+  OILTYPE -->|"Ester / Synthetic"| GASSTD
+  GASSTD["Apply Gas Limit Standard\nIEEE C57.104-2019\nIEC 60599  ·  CIGRE  ·  Custom"]
+  GASSTD --> FAULTDIAG["Fault Diagnosis Result\nFault Zone Label  ·  Severity Level\nGas-by-Gas Limit Status\nAction / Caution / Healthy"]
+  FAULTDIAG --> DGAHISTORY["DGA Trend on Polygon\nAll Historical Samples Plotted\nVisually Track Gas Evolution Over Time"]
+end
+
+subgraph S6E ["  📈  STEP 6E — DATA TRENDING"]
+  STR --> GASCHART["DGA Gas Trend Charts\nH2  CH4  C2H6  C2H4  C2H2  CO  CO2\nTime-Series with Reference Lines\nToggle Individual Gas Series"]
+  GASCHART --> OILCHART["Oil Parameter Trend Charts\nBDV  ·  Moisture  ·  Acidity  ·  IFT\nFuran  ·  Methanol  ·  Degree of Poly."]
+  OILCHART --> CORRCHART["Corrosion & Additive Charts\nDBDS  ·  Passivator  ·  Copper Corrosive\nInhibitor  ·  Tan Delta  ·  Resistivity"]
+  CORRCHART --> HISTTABLE["Full History Table\nAll Test Records Sorted by Date\nPaginated  ·  Sortable by Column"]
+end
+
+subgraph S7 ["  ⚖️  STEP 7 — COMPARE TRANSFORMERS"]
+  ACTCOMP --> CSELECT["Select Assets to Compare\nPick Multiple Transformers\nFrom Asset List"]
+  CSELECT --> CSBSVIEW["Side-by-Side Comparison View\nLatest Oil Test per Transformer\nDisplayed in Parallel Columns"]
+  CSBSVIEW --> CDGACOMP["DGA Gas Comparison\nH2  CH4  C2H6  C2H4  C2H2\nExceeded Limits Highlighted\nStatus Color per Cell"]
+  CDGACOMP --> COILCOMP["Oil Metrics Comparison\nBDV  ·  Acidity  ·  IFT  ·  Moisture\nFuran  ·  Methanol  ·  DP\nUnit + Threshold per Metric"]
+  COILCOMP --> CSTATUS["Status Assessment Panels\nHealthy  ·  Monitor  ·  Action\nDGA + Oil Assessment per Asset\nPrimary Fault Zone Shown"]
+  CSTATUS --> COPEN["Open Asset from Compare\nClick Card → Detail Modal"]
+  COPEN --> DETMODAL
+end
+
+subgraph S8 ["  🖼️  STEP 8 — ASSET CARD GALLERY"]
+  ACTGALL --> GALLVIEW["Asset Card Gallery View\nGrid of All Transformer Asset Cards\nDGA Status Badge on Each Card"]
+  GALLVIEW --> GALLFILT["Filter & Sort Cards\nBy Owner Type  ·  DGA Status\nSearch by Name or Site"]
+  GALLFILT --> GALLCARD["Asset Summary Card\nDGA Limit Status  ·  Latest Test Date\nGPS Coordinates  ·  Gas Readings\nAsset Age  ·  Voltage"]
+  GALLCARD --> GALLOPEN["Open Asset Detail\nClick Card → Detail Modal"]
+  GALLOPEN --> DETMODAL
+end
+
+style S1 fill:#1c0a2e,stroke:#818cf8,color:#e2e8f0
+style S2 fill:#0a1f2e,stroke:#38bdf8,color:#e2e8f0
+style S3 fill:#0a2818,stroke:#34d399,color:#e2e8f0
+style S4 fill:#1f1a0a,stroke:#fbbf24,color:#e2e8f0
+style S5 fill:#1a1031,stroke:#a78bfa,color:#e2e8f0
+style S6A fill:#1a0e12,stroke:#f87171,color:#e2e8f0
+style S6B fill:#0a1a1f,stroke:#67e8f9,color:#e2e8f0
+style S6C fill:#1a0a12,stroke:#fb7185,color:#e2e8f0
+style S6D fill:#0e100a,stroke:#86efac,color:#e2e8f0
+style S6E fill:#0a1028,stroke:#93c5fd,color:#e2e8f0
+style S7 fill:#1a0e1a,stroke:#d8b4fe,color:#e2e8f0
+style S8 fill:#0a1a14,stroke:#6ee7b7,color:#e2e8f0
+
+classDef decision fill:#1e293b,stroke:#94a3b8,color:#f1f5f9
+classDef success fill:#052e16,stroke:#16a34a,color:#bbf7d0
+classDef warning fill:#2d1500,stroke:#d97706,color:#fde68a
+classDef terminal fill:#1e293b,stroke:#818cf8,color:#c7d2fe
+
+class SESSCK,AUTHRES,IDLEQ,PDFQ,OILAPR,VALID,DUPLCK,DRWTYPE,REGMETH,RESHAPEQ,OILMETH,DGAMETH,OILTYPE decision
+class SAVETX,SAVECOMP,SAVEFP,OILSAVE,DOCSAVE success
+class WARNNOTICE,DUPWARN warning
+class STARTNODE terminal
+</pre>
+</div>
+
+<div class="legend-bar">
+  <span class="legend-label">Steps:</span>
+  <div class="legend-item"><div class="legend-swatch" style="background:#818cf8;"></div>Auth</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#38bdf8;"></div>Dashboard</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#34d399;"></div>Registration</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fbbf24;"></div>Map Drawing</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#a78bfa;"></div>Asset Detail</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#f87171;"></div>Oil Tests</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#67e8f9;"></div>Documents</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fb7185;"></div>Health</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#86efac;"></div>DGA</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#93c5fd;"></div>Trending</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#d8b4fe;"></div>Compare</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#6ee7b7;"></div>Gallery</div>
+  <div class="legend-item" style="margin-left:0.5rem;"><div class="legend-swatch" style="background:#16a34a;border-radius:50%;"></div>Save</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#d97706;border-radius:50%;"></div>Warning</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#94a3b8;border-radius:50%;"></div>Decision</div>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    flowchart: {
+      htmlLabels: true,
+      curve: 'basis',
+      padding: 18,
+      nodeSpacing: 42,
+      rankSpacing: 44,
+      useMaxWidth: false,
+    },
+    securityLevel: 'loose',
+  });
+
+  // ── Pan / Zoom state ──────────────────────────────────────────────
+  var MIN_SCALE = 0.35;
+  var MAX_SCALE = 4.0;
+  var WHEEL_FACTOR = 0.12;
+
+  var _scale = 1, _panX = 0, _panY = 0;
+  var _pre = null; // set after Mermaid renders
+  var _wrapper = document.getElementById('chart-wrapper');
+
+  function reportScale() {
+    try { window.parent.postMessage({ type: 'sopZoomChanged', scale: _scale }, '*'); } catch(e) {}
+  }
+
+  function applyTransform(s, tx, ty, animate) {
+    _scale = s; _panX = tx; _panY = ty;
+    var t = 'matrix(' + s + ',0,0,' + s + ',' + tx + ',' + ty + ')';
+    if (animate) {
+      _pre.style.transition = 'transform 0.2s ease';
+      _pre.style.transform = t;
+      setTimeout(function () { _pre.style.transition = ''; }, 220);
+    } else {
+      _pre.style.transition = '';
+      _pre.style.transform = t;
+    }
+    reportScale();
+  }
+
+  function zoomAt(newScale, pivotX, pivotY, animate) {
+    newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+    var elemX = (pivotX - _panX) / _scale;
+    var elemY = (pivotY - _panY) / _scale;
+    applyTransform(newScale, pivotX - elemX * newScale, pivotY - elemY * newScale, animate || false);
+  }
+
+  // ── Wheel zoom ────────────────────────────────────────────────────
+  _wrapper.addEventListener('wheel', function (e) {
+    if (!_pre) return;
+    e.preventDefault();
+    var rect = _wrapper.getBoundingClientRect();
+    var mx = e.clientX - rect.left;
+    var my = e.clientY - rect.top;
+    var factor = e.deltaY < 0 ? (1 + WHEEL_FACTOR) : 1 / (1 + WHEEL_FACTOR);
+    zoomAt(_scale * factor, mx, my);
+  }, { passive: false });
+
+  // ── Left-drag pan ─────────────────────────────────────────────────
+  var _panning = false, _panAnchorX = 0, _panAnchorY = 0;
+
+  _wrapper.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    _panning = true;
+    _panAnchorX = e.clientX - _panX;
+    _panAnchorY = e.clientY - _panY;
+    _wrapper.classList.add('panning');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (!_panning || !_pre) return;
+    applyTransform(_scale, e.clientX - _panAnchorX, e.clientY - _panAnchorY, false);
+  });
+  window.addEventListener('mouseup', function (e) {
+    if (e.button === 0 && _panning) {
+      _panning = false;
+      _wrapper.classList.remove('panning');
+    }
+  });
+
+  // ── Right-drag rectangle zoom ─────────────────────────────────────
+  var _rectSel = false, _rectStart = null, _rectEl = null;
+
+  _wrapper.addEventListener('mousedown', function (e) {
+    if (e.button !== 2) return;
+    e.preventDefault();
+    _rectSel = true;
+    var r = _wrapper.getBoundingClientRect();
+    _rectStart = { x: e.clientX - r.left, y: e.clientY - r.top };
+    _rectEl = document.createElement('div');
+    _rectEl.className = 'sel-rect';
+    _rectEl.style.left = _rectStart.x + 'px';
+    _rectEl.style.top  = _rectStart.y + 'px';
+    _rectEl.style.width = '0'; _rectEl.style.height = '0';
+    _wrapper.appendChild(_rectEl);
+    _wrapper.classList.add('rect-selecting');
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (!_rectSel || !_rectEl) return;
+    var r = _wrapper.getBoundingClientRect();
+    var cx = e.clientX - r.left, cy = e.clientY - r.top;
+    _rectEl.style.left   = Math.min(_rectStart.x, cx) + 'px';
+    _rectEl.style.top    = Math.min(_rectStart.y, cy) + 'px';
+    _rectEl.style.width  = Math.abs(cx - _rectStart.x) + 'px';
+    _rectEl.style.height = Math.abs(cy - _rectStart.y) + 'px';
+  });
+  window.addEventListener('mouseup', function (e) {
+    if (e.button !== 2 || !_rectSel) return;
+    _rectSel = false;
+    _wrapper.classList.remove('rect-selecting');
+    if (!_rectEl) return;
+
+    var r  = _wrapper.getBoundingClientRect();
+    var cx = e.clientX - r.left, cy = e.clientY - r.top;
+    var selX = Math.min(_rectStart.x, cx), selY = Math.min(_rectStart.y, cy);
+    var selW = Math.abs(cx - _rectStart.x), selH = Math.abs(cy - _rectStart.y);
+    _wrapper.removeChild(_rectEl);
+    _rectEl = null; _rectStart = null;
+
+    if (selW < 10 || selH < 10 || !_pre) return;
+
+    var vpW = _wrapper.clientWidth, vpH = _wrapper.clientHeight;
+    var selCX = selX + selW / 2, selCY = selY + selH / 2;
+
+    // Selection center → element coordinates
+    var elemCX = (selCX - _panX) / _scale;
+    var elemCY = (selCY - _panY) / _scale;
+
+    // Scale that fills the viewport with the selection
+    var newScale = Math.min(
+      Math.min(vpW / selW, vpH / selH) * _scale,
+      MAX_SCALE
+    );
+
+    // Pan to center the selection in the viewport
+    var newPanX = vpW / 2 - elemCX * newScale;
+    var newPanY = vpH / 2 - elemCY * newScale;
+
+    applyTransform(newScale, newPanX, newPanY, true);
+  });
+  _wrapper.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // ── Commands from parent dialog ───────────────────────────────────
+  window.addEventListener('message', function (e) {
+    if (!e.data) return;
+    var vpW = _wrapper.clientWidth, vpH = _wrapper.clientHeight;
+    var cx = vpW / 2, cy = vpH / 2;
+    if (e.data.type === 'sopZoomIn')    { if (_pre) zoomAt(_scale * (1 + WHEEL_FACTOR * 1.5), cx, cy, true); }
+    else if (e.data.type === 'sopZoomOut')  { if (_pre) zoomAt(_scale / (1 + WHEEL_FACTOR * 1.5), cx, cy, true); }
+    else if (e.data.type === 'sopZoomReset') { if (_pre) applyTransform(1, 0, 0, true); }
+  });
+
+  // ── Init after Mermaid renders SVG ────────────────────────────────
+  function initPanZoom() {
+    var svg = document.querySelector('pre.mermaid svg');
+    if (!svg) { setTimeout(initPanZoom, 300); return; }
+    var vb = svg.viewBox ? svg.viewBox.baseVal : null;
+    if (!vb || vb.width === 0) { setTimeout(initPanZoom, 300); return; }
+
+    // Lock SVG to explicit pixel size so transform works correctly
+    svg.style.width  = vb.width + 'px';
+    svg.style.height = vb.height + 'px';
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+
+    _pre = document.querySelector('pre.mermaid');
+    applyTransform(1, 0, 0, false); // identity — report scale=1 to parent
+  }
+
+  setTimeout(initPanZoom, 400);
+</script>
+</body>
+</html>

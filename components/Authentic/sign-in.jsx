@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Lock, User, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { useState } from 'react';
+import { Lock, User, Loader2, AlertTriangle, Eye, EyeOff, FileText } from 'lucide-react';
+import AppInfoDialog from '../AppInfoDialog';
+import { AppTooltip } from '../ui/app-tooltip';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
-import { cn } from '../../lib/utils';
 
 /**
  * Username / password sign-in — all credential work runs server-side
@@ -167,31 +168,36 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [disclaimerMode, setDisclaimerMode] = useState(null);
+  const [infoDialogMode, setInfoDialogMode] = useState(null);
   const [pendingUser, setPendingUser] = useState(null);
 
-  const isDisclaimerOpen = disclaimerMode !== null;
-  const isDisclaimerRequired = disclaimerMode === 'post-login';
+  const isInfoDialogOpen = infoDialogMode !== null;
+  const isDisclaimerRequired = infoDialogMode === 'post-login-disclaimer';
+
+  const openAboutPreview = () => {
+    setPendingUser(null);
+    setInfoDialogMode('about');
+  };
 
   const openDisclaimerPreview = () => {
     setPendingUser(null);
-    setDisclaimerMode('preview');
+    setInfoDialogMode('disclaimer');
   };
 
-  const closeDisclaimer = () => {
+  const closeInfoDialog = () => {
     if (isDisclaimerRequired) {
       return;
     }
 
     setPendingUser(null);
-    setDisclaimerMode(null);
+    setInfoDialogMode(null);
   };
 
   const acknowledgeDisclaimer = () => {
     const acknowledgedUser = pendingUser;
 
     setPendingUser(null);
-    setDisclaimerMode(null);
+    setInfoDialogMode(null);
 
     if (acknowledgedUser) {
       persistSession(acknowledgedUser);
@@ -207,7 +213,7 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
     try {
       const user = await authenticate(username.trim(), password);
       setPendingUser(user);
-      setDisclaimerMode('post-login');
+      setInfoDialogMode('post-login-disclaimer');
     } catch (err) {
       setError(err.message || 'Unable to sign in.');
     } finally {
@@ -342,84 +348,42 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
               ChM. Ts. Hadi Fauzi, MRSC
             </a>
           </p>
-          <button
-            type="button"
-            onClick={openDisclaimerPreview}
-            className="text-white/75 underline-offset-4 hover:text-white hover:underline"
-          >
-            Disclaimer
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <AppTooltip content="About this app">
+              <button
+                type="button"
+                onClick={openAboutPreview}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/5 text-white/75 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white"
+                aria-label="About this app"
+              >
+                <FileText className="h-3.5 w-3.5" />
+              </button>
+            </AppTooltip>
+            <AppTooltip content="Disclaimer">
+              <button
+                type="button"
+                onClick={openDisclaimerPreview}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/5 text-white/75 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white"
+                aria-label="Disclaimer"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </button>
+            </AppTooltip>
+          </div>
         </div>
       </form>
 
-      {isDisclaimerOpen ? (
-        <div
-          className="auth-terms-overlay"
-          role="presentation"
-          onClick={isDisclaimerRequired ? undefined : closeDisclaimer}
-        >
-          <div
-            className="auth-terms-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="auth-terms-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="auth-terms-header">
-              <div>
-                <p className="auth-terms-eyebrow">
-                  {isDisclaimerRequired ? 'Login successful' : 'Important notice'}
-                </p>
-                <h2 id="auth-terms-title">Disclaimer</h2>
-              </div>
-              {!isDisclaimerRequired ? (
-                <button
-                  type="button"
-                  className="auth-terms-close"
-                  onClick={closeDisclaimer}
-                  aria-label="Close disclaimer"
-                >
-                  x
-                </button>
-              ) : null}
-            </div>
-
-            <div className="auth-terms-body">
-              <p>
-                This application is a beta or trial release and is still under active testing. Any
-                calculations, analysis results, and recommendations should be independently reviewed
-                before operational use.
-              </p>
-              <p>
-                The app is built with open-source technologies, including JavaScript, TypeScript, SQL
-                databases, OpenStreetMap, and Leaflet. IEC, IEEE, and journal-based methods remain
-                subject to their original licensed or paid sources.
-              </p>
-              <p>
-                The app design and workflow were developed by{' '}
-                <a
-                  href="https://www.linkedin.com/in/chm-hadi-fauzi/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  ChM. Ts. Hadi Fauzi, MRSC
-                </a>
-                .
-              </p>
-              <p>
-                This application is still being verified by engineers, chemists, and technical experts
-                before release. If you find any issue or bug, please contact the developer.
-              </p>
-            </div>
-
-            <div className="auth-terms-footer">
-              <button type="button" className="auth-terms-action" onClick={acknowledgeDisclaimer}>
-                Okay
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <AppInfoDialog
+        open={isInfoDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeInfoDialog();
+          }
+        }}
+        mode={isDisclaimerRequired ? 'disclaimer' : infoDialogMode || 'about'}
+        requireAcknowledgement={isDisclaimerRequired}
+        onAcknowledge={acknowledgeDisclaimer}
+      />
 
       <style>{`
         .auth-shell {
@@ -445,109 +409,6 @@ function SignIn({ onSuccess, onForgotPassword, infoMessage }) {
             radial-gradient(1px 1px at 40% 75%, rgba(255,255,255,0.2), transparent 50%),
             radial-gradient(1px 1px at 88% 60%, rgba(255,255,255,0.18), transparent 50%);
           pointer-events: none;
-          }
-        .auth-terms-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 70;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          background: rgba(0,0,0,0.56);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-        }
-        .auth-terms-modal {
-          position: relative;
-          width: min(92vw, 560px);
-          border: 1px solid rgba(255,255,255,0.16);
-          border-radius: 18px;
-          background: rgba(20,28,25,0.92);
-          box-shadow: 0 24px 80px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.86);
-          overflow: hidden;
-        }
-        .auth-terms-header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 16px;
-          border-bottom: 1px solid rgba(255,255,255,0.10);
-          padding: 20px 22px 16px;
-        }
-        .auth-terms-eyebrow {
-          margin: 0 0 6px;
-          color: rgba(255,255,255,0.50);
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-        }
-        .auth-terms-header h2 {
-          margin: 0;
-          color: rgba(255,255,255,0.95);
-          font-size: 20px;
-          font-weight: 700;
-        }
-        .auth-terms-close {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 32px;
-          height: 32px;
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 10px;
-          background: rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.82);
-          cursor: pointer;
-          font-size: 18px;
-          line-height: 1;
-        }
-        .auth-terms-close:hover {
-          background: rgba(255,255,255,0.14);
-          color: #fff;
-        }
-        .auth-terms-body {
-          display: grid;
-          gap: 12px;
-          padding: 18px 22px 22px;
-          font-size: 13px;
-          line-height: 1.65;
-        }
-        .auth-terms-body p {
-          margin: 0;
-        }
-        .auth-terms-body a {
-          color: rgba(255,255,255,0.95);
-          font-weight: 600;
-          text-decoration: underline;
-          text-underline-offset: 3px;
-        }
-        .auth-terms-footer {
-          display: flex;
-          justify-content: flex-end;
-          padding: 0 22px 22px;
-        }
-        .auth-terms-action {
-          min-width: 110px;
-          border: 1px solid rgba(255,255,255,0.14);
-          border-radius: 12px;
-          background: linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(220,240,235,0.92) 100%);
-          color: #14211b;
-          cursor: pointer;
-          font-size: 13px;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-          padding: 11px 18px;
-          text-transform: uppercase;
-          transition: transform 120ms ease, filter 120ms ease;
-        }
-        .auth-terms-action:hover {
-          filter: brightness(1.05);
-        }
-        .auth-terms-action:active {
-          transform: scale(0.98);
         }
       `}</style>
     </div>

@@ -4,6 +4,7 @@ import {
   Building2,
   ChevronDown,
   GitCompareArrows,
+  HelpCircle,
   Layers3,
   MapPin,
   Moon,
@@ -19,6 +20,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Badge } from './ui/badge';
+import { AppTooltip } from './ui/app-tooltip';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
@@ -355,11 +357,13 @@ function TransformerSidebar({
   theme,
   onToggleTheme,
   onOpenSettings,
+  onOpenSOP,
   onCloseMobile,
   collapsed,
   onToggleCollapsed,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [expandedStates, setExpandedStates] = useState(() => readStoredExpansionMap(EXPANDED_STATES_STORAGE_KEY));
   const [expandedCompanies, setExpandedCompanies] = useState(() =>
     readStoredExpansionMap(EXPANDED_COMPANIES_STORAGE_KEY)
@@ -372,6 +376,8 @@ function TransformerSidebar({
   const [isStatesModalOpen, setIsStatesModalOpen] = useState(false);
   const [assetGroupContextMenu, setAssetGroupContextMenu] = useState(null);
   const [assetCardGroup, setAssetCardGroup] = useState(null);
+  const [isAssetCardGalleryOpen, setIsAssetCardGalleryOpen] = useState(false);
+  const assetCardCloseTimerRef = useRef(null);
   const [compareAssetIds, setCompareAssetIds] = useState([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [isMobileTopHidden, setIsMobileTopHidden] = useState(false);
@@ -613,13 +619,24 @@ function TransformerSidebar({
     });
   };
   const openAssetCardsFromMenu = (group) => {
+    if (assetCardCloseTimerRef.current != null) {
+      window.clearTimeout(assetCardCloseTimerRef.current);
+      assetCardCloseTimerRef.current = null;
+    }
     setAssetCardGroup({
       ...group,
       assets: dedupeAndSortTransformers(group.assets || []),
     });
+    setIsAssetCardGalleryOpen(true);
     setAssetGroupContextMenu(null);
   };
-  const closeAssetCards = () => setAssetCardGroup(null);
+  const closeAssetCards = () => {
+    setIsAssetCardGalleryOpen(false);
+    assetCardCloseTimerRef.current = window.setTimeout(() => {
+      setAssetCardGroup(null);
+      assetCardCloseTimerRef.current = null;
+    }, 550);
+  };
   const handleAssetCardFocus = (asset) => {
     focusAssetInHierarchy(asset);
     closeAssetCards();
@@ -663,7 +680,7 @@ function TransformerSidebar({
         onShowCards={openAssetCardsFromMenu}
       />
       <AssetCardGalleryModal
-        open={Boolean(assetCardGroup)}
+        open={isAssetCardGalleryOpen}
         group={assetCardGroup}
         selectedAssetId={selectedTransformerId}
         canManageAssets={canManageAssets}
@@ -751,34 +768,36 @@ function TransformerSidebar({
             <div className="flex w-full flex-col items-center gap-2 border-y border-[color:var(--border)] py-3">
               {canManageAssets ? (
                 <>
-                  <button
-                    type="button"
-                    className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-                    onClick={onAddClick}
-                    aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
-                    title={isAddMode ? 'Map placement armed' : 'Add transformer'}
-                  >
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                      <Plus className="h-4 w-4" />
-                    </div>
-                    <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                      {isAddMode ? 'Place' : 'Add'}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-                    onClick={onLocationRegisterClick}
-                    aria-label={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
-                    title={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
-                  >
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                      <MapPin className="h-4 w-4" />
-                    </div>
-                    <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                      {isLocationRegisterOpen ? 'GPS On' : 'GPS'}
-                    </span>
-                  </button>
+                  <AppTooltip content={isAddMode ? 'Map placement armed' : 'Add transformer'}>
+                    <button
+                      type="button"
+                      className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                      onClick={onAddClick}
+                      aria-label={isAddMode ? 'Map placement armed' : 'Add transformer'}
+                    >
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                        <Plus className="h-4 w-4" />
+                      </div>
+                      <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                        {isAddMode ? 'Place' : 'Add'}
+                      </span>
+                    </button>
+                  </AppTooltip>
+                  <AppTooltip content={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}>
+                    <button
+                      type="button"
+                      className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                      onClick={onLocationRegisterClick}
+                      aria-label={isLocationRegisterOpen ? 'Location register open' : 'Open location register'}
+                    >
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                        <MapPin className="h-4 w-4" />
+                      </div>
+                      <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                        {isLocationRegisterOpen ? 'GPS On' : 'GPS'}
+                      </span>
+                    </button>
+                  </AppTooltip>
                 </>
               ) : (
                 <Badge variant="outline" className="justify-center px-2 py-1 text-[10px]">
@@ -805,6 +824,16 @@ function TransformerSidebar({
                 title={currentUser ? `Open settings for ${currentUser.username}` : 'Open settings'}
               >
                 <SettingsIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-11 w-11"
+                onClick={onOpenSOP}
+                aria-label="Standard Operating Procedure"
+                title="Standard Operating Procedure Flowchart"
+              >
+                <HelpCircle className="h-4 w-4" />
               </Button>
             </div>
 
@@ -841,13 +870,30 @@ function TransformerSidebar({
                         ? 'Open company/parent list'
                         : 'Open states list';
                   return (
-                    <button
-                      key={stat.key}
-                      type="button"
-                      className={`${sharedClassName} cursor-pointer`}
-                      onClick={onClick}
-                      aria-label={ariaLabel}
-                      title={title}
+                    <AppTooltip key={stat.key} content={title}>
+                      <button
+                        type="button"
+                        className={`${sharedClassName} cursor-pointer`}
+                        onClick={onClick}
+                        aria-label={ariaLabel}
+                      >
+                        <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span className="text-sm font-semibold text-[var(--foreground)]">{stat.value}</span>
+                        <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
+                          {getCollapsedStatLabel(stat.key, stat.label)}
+                        </span>
+                      </button>
+                    </AppTooltip>
+                  );
+                }
+
+                return (
+                  <AppTooltip key={stat.key} content={`${stat.label}: ${stat.value}`}>
+                    <div
+                      className={sharedClassName}
+                      aria-label={`${stat.label}: ${stat.value}`}
                     >
                       <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
                         <Icon className="h-4 w-4" />
@@ -856,25 +902,8 @@ function TransformerSidebar({
                       <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
                         {getCollapsedStatLabel(stat.key, stat.label)}
                       </span>
-                    </button>
-                  );
-                }
-
-                return (
-                  <div
-                    key={stat.key}
-                    className={sharedClassName}
-                    aria-label={`${stat.label}: ${stat.value}`}
-                    title={`${stat.label}: ${stat.value}`}
-                  >
-                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
-                      <Icon className="h-4 w-4" />
                     </div>
-                    <span className="text-sm font-semibold text-[var(--foreground)]">{stat.value}</span>
-                    <span className="max-w-full whitespace-normal break-words text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)]">
-                      {getCollapsedStatLabel(stat.key, stat.label)}
-                    </span>
-                  </div>
+                  </AppTooltip>
                 );
               })}
             </div>
@@ -956,6 +985,7 @@ function TransformerSidebar({
               <Button
                 variant="outline"
                 size="icon"
+                data-tour="settings-btn"
                 className="h-9 w-9 lg:h-10 lg:w-10"
                 onClick={onOpenSettings}
                 aria-label="Open settings"
@@ -964,6 +994,18 @@ function TransformerSidebar({
                 <SettingsIcon className="h-4 w-4" />
               </Button>
               <Button
+                data-tour="sop-btn"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 lg:h-10 lg:w-10"
+                onClick={onOpenSOP}
+                aria-label="Standard Operating Procedure"
+                title="Standard Operating Procedure Flowchart"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+              <Button
+                data-tour="theme-btn"
                 variant="outline"
                 size="icon"
                 className="h-9 w-9 lg:h-10 lg:w-10"
@@ -984,7 +1026,7 @@ function TransformerSidebar({
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-4 gap-1.5 lg:mt-4 lg:grid-cols-2 lg:gap-2">
+          <div data-tour="quick-stats" className="mt-3 grid grid-cols-4 gap-1.5 lg:mt-4 lg:grid-cols-2 lg:gap-2">
             {quickStats.map((stat) => {
               const Icon = stat.icon;
               const isAssetsStat = stat.key === 'assets';
@@ -1030,15 +1072,16 @@ function TransformerSidebar({
                       : 'Open states list';
                 return (
                   <Card key={stat.key} className="bg-[var(--card-elevated)]">
-                    <button
-                      type="button"
-                      className="w-full rounded-[inherit] text-left transition-colors hover:bg-[var(--card-muted)]"
-                      onClick={onClick}
-                      aria-label={ariaLabel}
-                      title={title}
-                    >
-                      {cardBody}
-                    </button>
+                    <AppTooltip content={title}>
+                      <button
+                        type="button"
+                        className="w-full rounded-[inherit] text-left transition-colors hover:bg-[var(--card-muted)]"
+                        onClick={onClick}
+                        aria-label={ariaLabel}
+                      >
+                        {cardBody}
+                      </button>
+                    </AppTooltip>
                   </Card>
                 );
               }
@@ -1056,22 +1099,28 @@ function TransformerSidebar({
           <div className="flex flex-col gap-3">
             {canManageAssets ? (
               <div className="grid grid-cols-2 gap-2">
-                <Button
-                  className="h-10 w-full justify-center lg:h-11"
-                  variant={isAddMode ? 'secondary' : 'default'}
-                  onClick={onAddClick}
-                >
-                  <Plus className="h-4 w-4" />
-                  <span className="truncate">{isAddMode ? 'Placement armed' : 'Transformer'}</span>
-                </Button>
-                <Button
-                  className="h-10 w-full justify-center lg:h-11"
-                  variant={isLocationRegisterOpen ? 'secondary' : 'outline'}
-                  onClick={onLocationRegisterClick}
-                >
-                  <MapPin className="h-4 w-4" />
-                  <span className="truncate">{isLocationRegisterOpen ? 'GPS active' : 'GPS register'}</span>
-                </Button>
+                <AppTooltip content="Add transformer manually into the map">
+                  <Button
+                    data-tour="add-transformer"
+                    className="h-10 w-full justify-center lg:h-11"
+                    variant={isAddMode ? 'secondary' : 'default'}
+                    onClick={onAddClick}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span className="truncate">{isAddMode ? 'Placement armed' : 'Transformer'}</span>
+                  </Button>
+                </AppTooltip>
+                <AppTooltip content="Add transformer at site by phone or handheld">
+                  <Button
+                    data-tour="gps-register"
+                    className="h-10 w-full justify-center lg:h-11"
+                    variant={isLocationRegisterOpen ? 'secondary' : 'outline'}
+                    onClick={onLocationRegisterClick}
+                  >
+                    <MapPin className="h-4 w-4" />
+                    <span className="truncate">{isLocationRegisterOpen ? 'GPS active' : 'GPS register'}</span>
+                  </Button>
+                </AppTooltip>
               </div>
             ) : (
               <Badge variant="outline" className="justify-center px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em]">
@@ -1079,7 +1128,7 @@ function TransformerSidebar({
               </Badge>
             )}
 
-            <label className="space-y-2">
+            <label data-tour="search" className="space-y-2">
               <span className="hidden text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)] lg:inline">
                 Find an asset or floor
               </span>
@@ -1088,19 +1137,29 @@ function TransformerSidebar({
                 <Input
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by floor, company, or transformer"
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setIsSearchFocused(false)}
+                  placeholder=""
                   className="pl-9 pr-9"
                 />
+                {!searchTerm && !isSearchFocused && (
+                  <div className="pointer-events-none absolute left-9 right-9 top-1/2 -translate-y-1/2 overflow-hidden">
+                    <span className="search-placeholder-marquee text-sm text-[var(--muted)]">
+                      Search by floor, company, or transformer&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Search by floor, company, or transformer&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    </span>
+                  </div>
+                )}
                 {searchTerm ? (
-                  <button
-                    type="button"
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-xs font-semibold text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
-                    aria-label="Clear search"
-                    title="Clear search"
-                  >
-                    X
-                  </button>
+                  <AppTooltip content="Clear search">
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-xs font-semibold text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                      aria-label="Clear search"
+                    >
+                      X
+                    </button>
+                  </AppTooltip>
                 ) : null}
               </div>
             </label>
@@ -1135,6 +1194,7 @@ function TransformerSidebar({
       </div>
 
       <div
+        data-tour="floor-hierarchy"
         className="sidebar-scroll min-h-0 flex-1 overflow-y-scroll overscroll-contain px-4 py-3 lg:px-5 lg:py-5"
         onScroll={handleHierarchyScroll}
         onWheelCapture={(event) => {
@@ -1184,11 +1244,11 @@ function TransformerSidebar({
                     type="button"
                     onClick={() => toggleExpandedValue(setExpandedStates, stateKey)}
                     aria-expanded={isStateExpanded}
-                    className="flex w-full items-center justify-between rounded-md border border-emerald-300/60 bg-emerald-50/70 px-3 py-2 text-left transition-colors hover:bg-emerald-100/80 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:hover:bg-emerald-900/45"
+                    className="flex w-full items-center justify-between rounded-md border-2 border-amber-400/80 bg-amber-50/80 px-3 py-2 text-left transition-colors hover:bg-amber-100/90 dark:border-amber-600/70 dark:bg-amber-950/50 dark:hover:bg-amber-900/65"
                   >
                     <div>
-                      <p className="text-sm font-semibold text-[var(--foreground)]">{stateGroup.state}</p>
-                      <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">
+                      <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">{stateGroup.state}</p>
+                      <p className="text-xs uppercase tracking-[0.12em] text-amber-600 dark:text-amber-500">
                         {stateGroup.companies.length} companies
                       </p>
                     </div>
@@ -1231,7 +1291,7 @@ function TransformerSidebar({
                                 });
                               }}
                               aria-expanded={isCompanyExpanded}
-                              className="flex w-full items-center justify-between rounded-md border border-sky-300/60 bg-sky-50/65 px-3 py-2 text-left transition-colors hover:bg-sky-100/80 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:bg-sky-900/40"
+                              className="flex w-full items-center justify-between rounded-md border border-sky-400/75 bg-sky-50/80 px-3 py-2 text-left transition-colors hover:bg-sky-100/90 dark:border-sky-700/65 dark:bg-sky-950/45 dark:hover:bg-sky-900/60"
                             >
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold text-[var(--foreground)]">
@@ -1312,7 +1372,7 @@ function TransformerSidebar({
                                       className={`rounded-md border p-2.5 shadow-[var(--shadow-card)] lg:p-3 ${
                                         isFloorSelected
                                           ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
-                                          : 'border-violet-300/60 bg-violet-50/45 dark:border-violet-900/50 dark:bg-violet-950/20'
+                                          : 'border-violet-400/70 bg-violet-50/60 dark:border-violet-700/55 dark:bg-violet-950/35'
                                       }`}
                                     >
                                       <div className="flex items-start gap-2">
@@ -1988,22 +2048,23 @@ function InfoPair({ label, value }) {
 
 function IconAction({ label, onClick, destructive = false, active = false, children }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors lg:h-9 lg:w-9 ${
-        destructive
-          ? 'border-[color:var(--danger-soft)] text-[var(--danger-strong)] hover:bg-[var(--danger-soft)]'
-          : active
-            ? 'compare-breathing-action border-blue-400/80 bg-blue-500/10 text-blue-400'
-          : 'border-[color:var(--border)] text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
-      }`}
-    >
-      {children}
-    </button>
+    <AppTooltip content={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        aria-pressed={active}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors lg:h-9 lg:w-9 ${
+          destructive
+            ? 'border-[color:var(--danger-soft)] text-[var(--danger-strong)] hover:bg-[var(--danger-soft)]'
+            : active
+              ? 'compare-breathing-action border-blue-400/80 bg-blue-500/10 text-blue-400'
+            : 'border-[color:var(--border)] text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
+        }`}
+      >
+        {children}
+      </button>
+    </AppTooltip>
   );
 }
 

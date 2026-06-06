@@ -23,6 +23,7 @@ import DocumentSection from './DocumentSection';
 import ImageSection from './ImageSection';
 import DataTrending from './DataTrending';
 import TransformerHealthDashboard from './TransformerHealthDashboard';
+import { AppTooltip } from './ui/app-tooltip';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import {
@@ -653,12 +654,14 @@ function TransformerDetailModal({
                           >
                             <span>{compartmentName}</span>
                             {hasOverrides ? (
-                              <span
-                                className={`h-1.5 w-1.5 rounded-full ${
-                                  isActive ? 'bg-[var(--primary-foreground)]' : 'bg-[var(--primary)]'
-                                }`}
-                                title="Has compartment overrides"
-                              />
+                              <AppTooltip content="Has compartment overrides">
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${
+                                    isActive ? 'bg-[var(--primary-foreground)]' : 'bg-[var(--primary)]'
+                                  }`}
+                                  aria-label="Has compartment overrides"
+                                />
+                              </AppTooltip>
                             ) : null}
                           </button>
                         );

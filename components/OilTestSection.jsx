@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownNarrowWide, ArrowUpNarrowWide, CalendarRange, Check, ChevronDown, X } from 'lucide-react';
+import { Combobox } from './ui/combobox';
+import { DatePicker } from './ui/date-picker';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowDownNarrowWide, ArrowUpNarrowWide, Calendar, CalendarRange, Check, ChevronDown, X } from 'lucide-react';
 import { oilTestService } from '../lib/oilTestService';
 import DGAWorkbenchModal from './DGAWorkbenchModal';
+import { AppTooltip } from './ui/app-tooltip';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { normaliseTestTypeForStorage, TEST_TYPE_OPTIONS } from '../lib/testTypeUtils';
@@ -289,6 +293,9 @@ function OilTestSection({
     estimatedDpMethanol: '',
     notes: '',
   });
+
+  const closeViewTest = () => setViewingTest(null);
+  const closeDgaTest = () => setDgaTest(null);
 
   useEffect(() => {
     if (!readOnly) {
@@ -1003,9 +1010,23 @@ function OilTestSection({
   return (
     <div className="oil-test-section">
       {/* View Test Modal */}
+      <AnimatePresence>
       {viewingTest && (
-        <div className="test-view-overlay" onClick={() => setViewingTest(null)}>
-          <div className="test-view-modal" onClick={(e) => e.stopPropagation()}>
+        <motion.div
+          key="view-test-overlay"
+          className="test-view-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.22, ease: 'easeOut' } }}
+          exit={{ opacity: 0, transition: { duration: 0.38, ease: 'easeIn' } }}
+          onClick={closeViewTest}
+        >
+          <motion.div
+            className="test-view-modal"
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] } }}
+            exit={{ opacity: 0, scale: 0.93, y: 22, transition: { duration: 0.42, ease: [0.4, 0, 1, 1] } }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="test-view-header">
               <div className="test-view-title">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 22, height: 22 }}>
@@ -1028,7 +1049,7 @@ function OilTestSection({
                   ) : null}
                 </div>
               </div>
-              <button className="close-btn" onClick={() => setViewingTest(null)}>
+              <button className="close-btn" onClick={closeViewTest}>
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -1037,14 +1058,29 @@ function OilTestSection({
             <div className="test-view-body">
               {renderTestDetails(viewingTest)}
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* DGA Analysis Fullscreen Modal */}
+      <AnimatePresence>
       {dgaTest && (
-        <div className="heptagon-fullscreen-overlay" onClick={() => setDgaTest(null)}>
-          <div className="heptagon-fullscreen-modal" onClick={(e) => e.stopPropagation()}>
+        <motion.div
+          key="dga-test-overlay"
+          className="heptagon-fullscreen-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.22, ease: 'easeOut' } }}
+          exit={{ opacity: 0, transition: { duration: 0.38, ease: 'easeIn' } }}
+          onClick={closeDgaTest}
+        >
+          <motion.div
+            className="heptagon-fullscreen-modal"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] } }}
+            exit={{ opacity: 0, y: 20, transition: { duration: 0.42, ease: [0.4, 0, 1, 1] } }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="heptagon-fullscreen-header">
               <div className="heptagon-fullscreen-title">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 22, height: 22 }}>
@@ -1052,11 +1088,12 @@ function OilTestSection({
                 </svg>
                 <h3>DGA Analysis</h3>
                 <span className="test-type-badge">{normaliseTestTypeForStorage(dgaTest.testType)}</span>
-                <span className="test-view-date">
-                  📅 {new Date(dgaTest.testDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                <span className="test-view-date" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Calendar style={{ width: 13, height: 13, flexShrink: 0 }} />
+                  {new Date(dgaTest.testDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </span>
               </div>
-              <button className="close-btn" onClick={() => setDgaTest(null)}>
+              <button className="close-btn" onClick={closeDgaTest}>
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -1075,9 +1112,10 @@ function OilTestSection({
                 }}
               />
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       <Dialog
         open={Boolean(pendingDeleteTest)}
@@ -1339,7 +1377,7 @@ function OilTestSection({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                         </svg>
                       </span>
-                      <span className="date-icon">📅</span>
+                      <Calendar className="date-icon" style={{ width: 14, height: 14, flexShrink: 0 }} />
                       <span className="test-card-date">
                         {new Date(test.testDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
@@ -1357,27 +1395,31 @@ function OilTestSection({
 
                   {/* Action buttons */}
                   <div className="test-card-actions">
-                    <button 
-                      className="btn-action-view"
-                      onClick={(e) => { e.stopPropagation(); setViewingTest(test); }}
-                      title="View full test details"
-                    >
-                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                      View
-                    </button>
-                    <button
-                      className="btn-action-analysis"
-                      onClick={(e) => { e.stopPropagation(); setDgaTest(test); }}
-                      title="DGA Analysis (Duval + Heptagon + Assessment)"
-                    >
-                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                      DGA Analysis
-                    </button>
+                    <AppTooltip content="View full test details">
+                      <button 
+                        className="btn-action-view"
+                        onClick={(e) => { e.stopPropagation(); setViewingTest(test); }}
+                        aria-label="View full test details"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        View
+                      </button>
+                    </AppTooltip>
+                    <AppTooltip content="DGA Analysis (Duval + Heptagon + Assessment)">
+                      <button
+                        className="btn-action-analysis"
+                        onClick={(e) => { e.stopPropagation(); setDgaTest(test); }}
+                        aria-label="DGA Analysis (Duval + Heptagon + Assessment)"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        DGA Analysis
+                      </button>
+                    </AppTooltip>
                     {!readOnly ? (
                       <>
                         <button 
@@ -1419,47 +1461,27 @@ function OilTestSection({
             <h4>Test Information</h4>
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="testDate">Test Date *</label>
-                <input
-                  type="date"
-                  id="testDate"
-                  name="testDate"
+                <label>Test Date *</label>
+                <DatePicker
                   value={formData.testDate}
-                  onChange={handleChange}
-                  required
+                  onValueChange={(val) => handleChange({ target: { name: 'testDate', value: val } })}
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="testType">Test Type *</label>
-                <select
-                  id="testType"
-                  name="testType"
+                <label>Test Type *</label>
+                <Combobox
                   value={formData.testType}
-                  onChange={handleChange}
-                  required
-                >
-                  {TEST_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(val) => handleChange({ target: { name: 'testType', value: val } })}
+                  options={TEST_TYPE_OPTIONS}
+                />
               </div>
               <div className="form-group">
-                <label htmlFor="oilType">Type of Oil *</label>
-                <select
-                  id="oilType"
-                  name="oilType"
+                <label>Type of Oil *</label>
+                <Combobox
                   value={formData.oilType}
-                  onChange={handleChange}
-                  required
-                >
-                  {OIL_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(val) => handleChange({ target: { name: 'oilType', value: val } })}
+                  options={OIL_TYPE_OPTIONS}
+                />
               </div>
               <div className="form-group">
                 <label htmlFor="waterContentTemperature">Oil Sampling Temp (°C)</label>
@@ -1507,6 +1529,21 @@ function OilTestSection({
                 </div>
               </div>
             ) : null}
+          </div>
+
+          <div className="form-section">
+            <h4>Assessment</h4>
+            <div className="form-group full-width">
+              <label htmlFor="notes">Notes</label>
+              <textarea
+                id="notes"
+                name="notes"
+                value={formData.notes}
+                onChange={handleChange}
+                rows="4"
+                placeholder="Add any additional observations or comments..."
+              />
+            </div>
           </div>
 
           <div className="form-section">
@@ -2040,21 +2077,6 @@ function OilTestSection({
                 />
                 <small className="field-hint">Jalbert et al. correlation</small>
               </div>
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h4>Additional Notes</h4>
-            <div className="form-group full-width">
-              <label htmlFor="notes">Notes</label>
-              <textarea
-                id="notes"
-                name="notes"
-                value={formData.notes}
-                onChange={handleChange}
-                rows="4"
-                placeholder="Add any additional observations or comments..."
-              />
             </div>
           </div>
 

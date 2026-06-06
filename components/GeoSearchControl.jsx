@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Loader2, LocateFixed, MapPin, Search, X } from 'lucide-react';
+import { AppTooltip } from './ui/app-tooltip';
 import { cn } from '../lib/utils';
 
 const MIN_REMOTE_QUERY_LENGTH = 3;
@@ -274,24 +275,25 @@ function GeoSearchControl({
       ref={containerRef}
       className={cn(
         'geo-search-control pointer-events-auto relative shrink-0 transition-[width] duration-200',
-        isExpanded ? 'w-full sm:w-[340px] lg:w-[420px]' : 'w-10',
+        isExpanded ? 'w-full sm:w-[340px] lg:w-[420px]' : 'w-12',
         className
       )}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {!isExpanded ? (
-        <button
-          type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/88 text-[var(--foreground)] shadow-[var(--shadow-card)] backdrop-blur-md transition-colors hover:bg-[var(--card-muted)]"
-          onClick={expandSearch}
-          aria-label="Search places, roads, companies, and POI"
-          title="Search places"
-        >
-          <Search className="h-4 w-4" />
-        </button>
+        <AppTooltip content="Search places">
+          <button
+            type="button"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 text-[var(--foreground)] shadow-[var(--shadow-card)] backdrop-blur-md transition-colors hover:bg-[var(--card-muted)]"
+            onClick={expandSearch}
+            aria-label="Search places, roads, companies, and POI"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        </AppTooltip>
       ) : (
         <form
-          className="flex h-10 items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/88 px-3 shadow-[var(--shadow-card)] backdrop-blur-md"
+          className="flex h-12 items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-3 shadow-[var(--shadow-card)] backdrop-blur-md"
           onSubmit={handleSubmit}
         >
           <Search className="h-4 w-4 shrink-0 text-[var(--muted)]" />

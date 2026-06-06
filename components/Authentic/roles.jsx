@@ -290,10 +290,10 @@ function UsersPanel({ users, loading, currentUser, onChanged, onError }) {
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex justify-end gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setEditUser(user)} disabled={busyId === user.id} title="Edit user">
+                    <Button size="sm" variant="outline" onClick={() => setEditUser(user)} disabled={busyId === user.id} aria-label="Edit user" title="Edit user">
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setResetUser(user)} disabled={busyId === user.id} title="Reset password">
+                    <Button size="sm" variant="outline" onClick={() => setResetUser(user)} disabled={busyId === user.id} aria-label="Reset password" title="Reset password">
                       <KeyRound className="h-3.5 w-3.5" />
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => handleToggleActive(user)} disabled={busyId === user.id}>

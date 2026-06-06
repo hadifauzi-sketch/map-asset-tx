@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -13,7 +13,6 @@ import {
   Map as MapIcon,
   MapPin,
   Menu,
-  MoreHorizontal,
   Move,
   Plus,
   Minus,
@@ -23,6 +22,7 @@ import {
   Settings as SettingsIcon,
   TestTubeDiagonal,
   UserCircle2,
+  Wrench,
   X,
 } from 'lucide-react';
 import TransformerMarker from './components/TransformerMarker';
@@ -30,6 +30,9 @@ import TransformerSidebar from './components/TransformerSidebar';
 import TransformerModal from './components/TransformerModal';
 import NoticeDialog from './components/NoticeDialog';
 import ConfirmDialog from './components/ConfirmDialog';
+import AppInfoDialog from './components/AppInfoDialog';
+import AppOnboardingTour, { readTourEnabled, writeTourEnabled } from './components/AppOnboardingTour';
+import SOPFlowchartDialog from './components/SOPFlowchartDialog';
 import TransformerDetailModal from './components/TransformerDetailModal';
 import GeoSearchControl from './components/GeoSearchControl';
 import LocationRegisterModule from './components/location-register/LocationRegisterModule';
@@ -38,7 +41,9 @@ import CompanyBoundaryMetadataDialog from './components/CompanyBoundaryMetadataD
 import FloorPlanMapLayer from './components/FloorPlanMapLayer';
 import FloorPlanMetadataDialog from './components/FloorPlanMetadataDialog';
 import FloorPlanDetailModal from './components/FloorPlanDetailModal';
+import { AppTooltip } from './components/ui/app-tooltip';
 import { Badge } from './components/ui/badge';
+import { Switch } from './components/ui/switch';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog';
@@ -377,6 +382,10 @@ function App() {
   const [currentUser, setCurrentUser] = useState(() => readSession());
   const [authNotice, setAuthNotice] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSOPOpen, setIsSOPOpen] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [tourEnabled, setTourEnabled] = useState(() => readTourEnabled());
+  const [appInfoDialogMode, setAppInfoDialogMode] = useState(null);
   const [transformers, setTransformers] = useState([]);
   const [selectedTransformer, setSelectedTransformer] = useState(null);
   const [isAddMode, setIsAddMode] = useState(false);
@@ -451,9 +460,88 @@ function App() {
   const pendingFloorAssignment = useRef(null);
   const leafletMapRef = useRef(null);
   const idleSignOutTimerRef = useRef(null);
+  const mapToolbarExpandedRef = useRef(null);
   const isAdmin = currentUser?.role === 'admin';
   const isViewer = currentUser?.role === 'viewer';
   const canEditAssets = !currentUser || currentUser.role !== 'viewer';
+  const [isMapToolbarContentMounted, setIsMapToolbarContentMounted] = useState(false);
+  const [mapToolbarViewportWidth, setMapToolbarViewportWidth] = useState(0);
+
+  const updateMapToolbarViewportWidth = useCallback(() => {
+    const expandedPanel = mapToolbarExpandedRef.current;
+    if (!expandedPanel) {
+      return;
+    }
+
+    const nextWidth = Math.ceil(expandedPanel.scrollWidth);
+    setMapToolbarViewportWidth((currentWidth) => {
+      if (Math.abs(currentWidth - nextWidth) < 1) {
+        return currentWidth;
+      }
+
+      return nextWidth;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isMapToolbarExpanded) {
+      setIsMapToolbarContentMounted(true);
+
+      if (typeof window === 'undefined') {
+        updateMapToolbarViewportWidth();
+        return undefined;
+      }
+
+      const frameId = window.requestAnimationFrame(() => {
+        updateMapToolbarViewportWidth();
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
+    setMapToolbarViewportWidth(0);
+    return undefined;
+  }, [isMapToolbarExpanded, updateMapToolbarViewportWidth]);
+
+  useEffect(() => {
+    if (
+      !isMapToolbarContentMounted ||
+      !isMapToolbarExpanded ||
+      typeof window === 'undefined' ||
+      typeof ResizeObserver === 'undefined'
+    ) {
+      return undefined;
+    }
+
+    const expandedPanel = mapToolbarExpandedRef.current;
+    if (!expandedPanel) {
+      return undefined;
+    }
+
+    let frameId = null;
+    const observer = new ResizeObserver(() => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        updateMapToolbarViewportWidth();
+      });
+    });
+
+    observer.observe(expandedPanel);
+    updateMapToolbarViewportWidth();
+
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [isMapToolbarContentMounted, isMapToolbarExpanded, updateMapToolbarViewportWidth]);
 
   const clearIdleSignOutTimer = useCallback(() => {
     if (typeof window === 'undefined' || idleSignOutTimerRef.current === null) {
@@ -1296,7 +1384,7 @@ function App() {
 
   const handleCloseDetailModal = () => {
     setIsDetailModalOpen(false);
-    setSelectedTransformer(null);
+    setTimeout(() => setSelectedTransformer(null), 550);
     loadTransformers();
   };
 
@@ -1962,6 +2050,7 @@ function App() {
         onSuccess={(user) => {
           setAuthNotice(null);
           setCurrentUser(user);
+          if (readTourEnabled()) setShowTour(true);
         }}
       />
     );
@@ -2106,6 +2195,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             theme={theme}
             onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenSOP={() => setIsSOPOpen(true)}
             onCloseMobile={() => setSidebarOpen(false)}
             collapsed={isDesktopSidebarCollapsed}
             onToggleCollapsed={() => setIsDesktopSidebarCollapsed((current) => !current)}
@@ -2121,7 +2211,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           />
         ) : null}
 
-        <main className="app-main relative min-w-0 flex-1 overflow-hidden">
+        <main data-tour="map-container" className="app-main relative min-w-0 flex-1 overflow-hidden">
           <div className="app-top-overlay absolute inset-x-0 top-0 z-[1000] pointer-events-none">
             <div className="flex items-start justify-between gap-3">
               <div className="pointer-events-auto flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -2160,29 +2250,29 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     </div>
                   ) : null}
 
-                  <div className="flex shrink-0 items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
+                  <div data-tour="map-layers" className="flex shrink-0 items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
                     {Object.entries(MAP_BASE_LAYERS).map(([layerKey, layer]) => {
                       const isActive = mapBaseLayer === layerKey;
                       const LayerIcon = layer.icon;
 
                       return (
-                        <button
-                          key={layerKey}
-                          type="button"
-                          onClick={() => setMapBaseLayer(layerKey)}
-                          className={cn(
-                            'inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent transition-colors',
-                            isActive
-                              ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm'
-                              : 'text-[var(--foreground)]/80 hover:border-[color:var(--border)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
-                          )}
-                          aria-label={layer.label}
-                          aria-pressed={isActive}
-                          title={layer.label}
-                        >
-                          <LayerIcon className="h-4 w-4" />
-                          <span className="sr-only">{layer.label}</span>
-                        </button>
+                        <AppTooltip key={layerKey} content={layer.label}>
+                          <button
+                            type="button"
+                            onClick={() => setMapBaseLayer(layerKey)}
+                            className={cn(
+                              'inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent transition-colors',
+                              isActive
+                                ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm'
+                                : 'text-[var(--foreground)]/80 hover:border-[color:var(--border)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
+                            )}
+                            aria-label={layer.label}
+                            aria-pressed={isActive}
+                          >
+                            <LayerIcon className="h-4 w-4" />
+                            <span className="sr-only">{layer.label}</span>
+                          </button>
+                        </AppTooltip>
                       );
                     })}
                   </div>
@@ -2194,40 +2284,46 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   onClearSelection={() => setGeoSearchSelection(null)}
                 />
 
-                <div className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">
+                <div data-tour="map-tools" className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">
                   <Button
                     size="sm"
                     variant={isMapToolbarExpanded ? 'secondary' : 'outline'}
-                    className="h-9 shrink-0 gap-1.5"
+                    className="h-9 w-9 shrink-0 px-0"
                     onClick={() => setIsMapToolbarExpanded((current) => !current)}
                     aria-expanded={isMapToolbarExpanded}
+                    aria-label={isMapToolbarExpanded ? 'Collapse map tools' : 'Expand map tools'}
                     title={isMapToolbarExpanded ? 'Collapse map tools' : 'Expand map tools'}
                   >
-                    <MoreHorizontal className="h-4 w-4" />
-                    Tools
+                    <Wrench className="h-4 w-4" />
                   </Button>
-                  {!isMapToolbarExpanded ? (
-                    <>
-                      <Badge variant={showFloorPlans ? 'default' : 'outline'} className="h-8 shrink-0 px-2.5">
-                        {showFloorPlans ? 'Floors on' : 'Floors off'}
-                      </Badge>
-                      <Badge variant={showCompanyBoundaries ? 'secondary' : 'outline'} className="h-8 shrink-0 px-2.5">
-                        {showCompanyBoundaries ? 'Companies on' : 'Companies off'}
-                      </Badge>
-                      {selectedFloorPlan ? (
-                        <Badge variant="outline" className="h-8 max-w-[180px] shrink-0 truncate px-2.5">
-                          {selectedFloorPlan.name || 'Selected floor'}
-                        </Badge>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {isMapToolbarExpanded ? (
-                    <>
+                  {isMapToolbarContentMounted ? (
+                    <div
+                      className="map-toolbar-viewport shrink-0"
+                      style={{ width: `${mapToolbarViewportWidth}px` }}
+                      onTransitionEnd={(event) => {
+                        if (
+                          event.target === event.currentTarget &&
+                          event.propertyName === 'width' &&
+                          !isMapToolbarExpanded
+                        ) {
+                          setIsMapToolbarContentMounted(false);
+                        }
+                      }}
+                    >
+                      <div
+                        ref={mapToolbarExpandedRef}
+                        aria-hidden={!isMapToolbarExpanded}
+                        className={cn(
+                          'map-toolbar-panel',
+                          isMapToolbarExpanded ? 'map-toolbar-panel-visible' : 'map-toolbar-panel-hidden-right'
+                        )}
+                      >
                   <Button
                     size="sm"
                     variant={showFloorPlans ? 'default' : 'outline'}
                     className="h-9 shrink-0"
                     onClick={() => setShowFloorPlans((current) => !current)}
+                    tabIndex={isMapToolbarExpanded ? undefined : -1}
                   >
                     {showFloorPlans ? 'Floors on' : 'Floors off'}
                   </Button>
@@ -2236,6 +2332,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     variant={showCompanyBoundaries ? 'default' : 'outline'}
                     className="h-9 shrink-0"
                     onClick={() => setShowCompanyBoundaries((current) => !current)}
+                    tabIndex={isMapToolbarExpanded ? undefined : -1}
                   >
                     {showCompanyBoundaries ? 'Companies on' : 'Companies off'}
                   </Button>
@@ -2251,6 +2348,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                         startCompanyBoundaryDrawing();
                       }
                     }}
+                    tabIndex={isMapToolbarExpanded ? undefined : -1}
                   >
                     {companyBoundaryDraft ? 'Cancel company' : 'Draw company'}
                   </Button>
@@ -2266,6 +2364,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                         startFloorPlanDrawing();
                       }
                     }}
+                    tabIndex={isMapToolbarExpanded ? undefined : -1}
                   >
                     {floorPlanDraft ? 'Cancel draw' : 'Draw floor'}
                   </Button>
@@ -2276,6 +2375,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     title={isDraggable ? 'Pin dragging ON — click to lock pins' : 'Pin dragging OFF — click to allow moving pins'}
                     disabled={!canEditAssets}
                     onClick={() => setIsDraggable((v) => !v)}
+                    tabIndex={isMapToolbarExpanded ? undefined : -1}
                   >
                     <Move className="h-3.5 w-3.5" />
                     {isDraggable ? 'Pins unlocked' : 'Move pins'}
@@ -2287,6 +2387,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     onClick={() => handleEditFloorPlanInfo(selectedFloorPlan)}
                     disabled={!canEditAssets || !selectedFloorPlan}
                     title={selectedFloorPlan ? 'Edit the selected floor name and company' : 'Select a floor first'}
+                    tabIndex={isMapToolbarExpanded ? undefined : -1}
                   >
                     Edit info
                   </Button>
@@ -2297,10 +2398,12 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     onClick={() => handleEditFloorPlan(selectedFloorPlan)}
                     disabled={!canEditAssets || !selectedFloorPlan}
                     title={selectedFloorPlan ? 'Edit the selected floor boundary' : 'Select a floor first'}
+                    tabIndex={isMapToolbarExpanded ? undefined : -1}
                   >
                     Reshape
                   </Button>
-                    </>
+                      </div>
+                    </div>
                   ) : null}
 
                   {/* divider */}
@@ -2310,6 +2413,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     size="sm"
                     variant="outline"
                     className="h-9 w-9 shrink-0 p-0"
+                    aria-label="Zoom in"
                     title="Zoom in"
                     onClick={() => leafletMapRef.current?.zoomIn()}
                   >
@@ -2319,6 +2423,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     size="sm"
                     variant="outline"
                     className="h-9 w-9 shrink-0 p-0"
+                    aria-label="Zoom out"
                     title="Zoom out"
                     onClick={() => leafletMapRef.current?.zoomOut()}
                   >
@@ -2328,6 +2433,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     size="sm"
                     variant="outline"
                     className="h-9 w-9 shrink-0 p-0"
+                    aria-label="Reset view to Malaysia"
                     title="Reset view — Malaysia"
                     onClick={() => leafletMapRef.current?.setView(MALAYSIA_CENTER, MALAYSIA_ZOOM)}
                   >
@@ -2833,7 +2939,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent className="max-w-[960px]">
           <DialogHeader>
-            <div className="flex items-start justify-between gap-3 pr-8">
+            <div className="flex flex-col gap-3 pr-8 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <DialogTitle className="flex items-center gap-2">
                   <SettingsIcon className="h-4 w-4 text-[var(--primary)]" />
@@ -2844,21 +2950,43 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   {isAdmin ? ', users, and per-user asset access.' : '.'}
                 </DialogDescription>
               </div>
-              <div className="flex items-center gap-3 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-1.5 text-sm">
-                <UserCircle2 className="h-5 w-5 text-[var(--muted)]" />
-                <div className="leading-tight">
-                  <div className="font-semibold">{currentUser?.full_name || currentUser?.username}</div>
-                  <div className="text-xs text-[var(--muted)]">@{currentUser?.username} · {currentUser?.role}</div>
+              <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                <div className="flex flex-wrap items-center gap-3 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] px-3 py-1.5 text-sm">
+                  <UserCircle2 className="h-5 w-5 text-[var(--muted)]" />
+                  <div className="min-w-0 leading-tight">
+                    <div className="font-semibold">{currentUser?.full_name || currentUser?.username}</div>
+                    <div className="text-xs text-[var(--muted)]">@{currentUser?.username} · {currentUser?.role}</div>
+                  </div>
+                  <div className="ml-auto flex items-center gap-2">
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setAppInfoDialogMode('about')}
+                      aria-label="About this app"
+                      title="About this app"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setAppInfoDialogMode('disclaimer')}
+                      aria-label="Disclaimer"
+                      title="Disclaimer"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleSignOut}>
+                      <LogOut className="h-3.5 w-3.5" />
+                      Sign out
+                    </Button>
+                  </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={handleSignOut} className="ml-2">
-                  <LogOut className="h-3.5 w-3.5" />
-                  Sign out
-                </Button>
               </div>
             </div>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-5">
-            <div className="space-y-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex-shrink-0 space-y-4 p-4 sm:p-5">
               <Card>
                 <CardHeader>
                   <CardTitle>Asset owner visibility</CardTitle>
@@ -2902,9 +3030,43 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 </CardContent>
               </Card>
 
-              {isAdmin ? (
-                <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
-              ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>App Tour</CardTitle>
+                  <CardDescription>
+                    Show the guided feature tour automatically each time you sign in.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium text-[var(--foreground)]">Show tour on sign-in</p>
+                      <p className="text-xs text-[var(--muted)]">
+                        Highlights key buttons and areas for new or returning users. Turn off once you know your way around.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={tourEnabled}
+                      onCheckedChange={(checked) => {
+                        setTourEnabled(checked);
+                        writeTourEnabled(checked);
+                      }}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      setShowTour(true);
+                    }}
+                  >
+                    Launch tour now
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {!isAdmin && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Account</CardTitle>
@@ -2924,9 +3086,34 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 </Card>
               )}
             </div>
+            {isAdmin && (
+              <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4 sm:px-5 sm:pb-5">
+                <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
+
+      <AppInfoDialog
+        open={appInfoDialogMode !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setAppInfoDialogMode(null);
+          }
+        }}
+        mode={appInfoDialogMode || 'about'}
+      />
+
+      <SOPFlowchartDialog
+        open={isSOPOpen}
+        onClose={() => setIsSOPOpen(false)}
+      />
+
+      <AppOnboardingTour
+        open={showTour}
+        onClose={() => setShowTour(false)}
+      />
     </div>
   );
 }

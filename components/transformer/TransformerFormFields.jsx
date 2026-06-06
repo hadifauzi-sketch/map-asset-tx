@@ -1,4 +1,5 @@
 import React from 'react';
+import { Combobox } from '../ui/combobox';
 import {
   ASSET_OWNER_TYPES,
   getAssetOwnerLabel,
@@ -21,19 +22,19 @@ function Field({ label, name, required = false, ...props }) {
   );
 }
 
-function SelectField({ label, name, hint, children, ...props }) {
+function SelectField({ label, name, hint, options = [], value, onChange, disabled, ...props }) {
   return (
-    <label className="space-y-2">
-      <span className="text-sm font-medium text-[var(--foreground)]">{label}</span>
-      <select
-        name={name}
-        className="flex h-10 w-full rounded-md border border-[color:var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+    <div className="space-y-2">
+      <span className="block text-sm font-medium text-[var(--foreground)]">{label}</span>
+      <Combobox
+        value={value}
+        onValueChange={(val) => onChange?.({ target: { name, value: val } })}
+        options={options}
+        disabled={disabled}
         {...props}
-      >
-        {children}
-      </select>
-      {hint ? <span className="text-xs text-[var(--muted)]">{hint}</span> : null}
-    </label>
+      />
+      {hint ? <span className="block text-xs text-[var(--muted)]">{hint}</span> : null}
+    </div>
   );
 }
 
@@ -100,15 +101,12 @@ function TransformerFormFields({
         name="state"
         value={formData.state || ''}
         onChange={onChange}
+        options={[
+          { value: '', label: 'Auto detect / unassigned' },
+          ...MALAYSIA_STATES.map((state) => ({ value: state, label: state })),
+        ]}
         hint="Leave this blank to auto-group from the site or transformer name."
-      >
-        <option value="">Auto detect / unassigned</option>
-        {MALAYSIA_STATES.map((state) => (
-          <option key={state} value={state}>
-            {state}
-          </option>
-        ))}
-      </SelectField>
+      />
       <div className="sm:col-span-2 rounded-md border border-[color:var(--border)] bg-[var(--card-muted)] p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">

@@ -456,7 +456,7 @@ function CompareTX({ open, assets = [], groupTitle = 'Selected transformers', gr
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose?.() : null)}>
       <DialogContent className="max-h-[92vh] w-[min(96vw,1180px)] max-w-none overflow-hidden rounded-xl">
         <DialogHeader className="bg-[linear-gradient(135deg,var(--card)_0%,var(--card-muted)_100%)] pr-14">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-3">
             <div className="min-w-0">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Badge variant="default" className="gap-1.5">
@@ -474,7 +474,7 @@ function CompareTX({ open, assets = [], groupTitle = 'Selected transformers', gr
               </DialogDescription>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:w-[420px]">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <StatusPanel status="action" label="Action" value={summary.action} />
               <StatusPanel status="monitor" label="Watch" value={summary.monitor} />
               <StatusPanel status="healthy" label="Normal" value={summary.healthy} />

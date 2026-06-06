@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asset Tx Map V2 — SOP Flowchart</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --primary: #818cf8;
+      --primary-soft: rgba(129,140,248,0.12);
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --amber: #d29922;
+      --red: #f85149;
+      --blue: #58a6ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .page-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(8px);
+    }
+    .header-left { display: flex; flex-direction: column; gap: 0.3rem; }
+    .tag {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--primary);
+      background: var(--primary-soft);
+      border: 1px solid rgba(129,140,248,0.3);
+      padding: 0.15rem 0.55rem;
+      border-radius: 4px;
+      width: fit-content;
+    }
+    .page-header h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .page-header .sub {
+      font-size: 0.775rem;
+      color: var(--muted);
+    }
+    .version-pill {
+      font-size: 0.72rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0.3rem 0.8rem;
+      border-radius: 9999px;
+      white-space: nowrap;
+    }
+
+    /* ── CHART AREA ── */
+    .chart-wrapper {
+      padding: 2.5rem 1.5rem;
+      overflow-x: auto;
+      min-height: 600px;
+    }
+    pre.mermaid {
+      min-width: 900px;
+      display: flex;
+      justify-content: center;
+    }
+    /* Mermaid renders an SVG inside the pre; let it overflow */
+    pre.mermaid svg {
+      max-width: none !important;
+    }
+
+    /* ── LEGEND ── */
+    .legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.9rem 2rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .legend-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-right: 0.25rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      padding: 0.9rem 2rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      background: var(--surface);
+    }
+    footer strong { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<header class="page-header">
+  <div class="header-left">
+    <span class="tag">SOP Document · v3.9</span>
+    <h1>Asset Tx Map V2 — Standard Operating Procedure Flowchart</h1>
+    <p class="sub">Login → Register Transformer → Draw Company &amp; Floor → Oil Tests → DGA Analysis → Trending → Compare</p>
+  </div>
+  <span class="version-pill">ChM. Ts. Hadi Fauzi</span>
+</header>
+
+<div class="chart-wrapper">
+<pre class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"primaryColor": "#334155", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#475569", "lineColor": "#64748b", "background": "#0d1117", "mainBkg": "#1e293b", "secondaryColor": "#1e293b", "tertiaryColor": "#0f172a", "nodeBorder": "#475569", "clusterBkg": "#0f172a", "clusterBorder": "#334155", "titleColor": "#f1f5f9", "edgeLabelBackground": "#1e293b", "fontFamily": "system-ui, -apple-system, sans-serif", "fontSize": "13px"}}}%%
+flowchart TD
+
+  STARTNODE(["▶  START"])
+  STARTNODE --> LAUNCH
+
+%% ════════════════════════════════════════════════════
+%% STEP 1 — AUTHENTICATION
+%% ════════════════════════════════════════════════════
+subgraph S1 ["  🔐  STEP 1 — AUTHENTICATION"]
+  LAUNCH["Open Browser\nAsset Tx Map V2"]
+  LAUNCH --> SESSCK{"Session\nActive?"}
+  SESSCK -->|"Yes"| ROLELOAD
+  SESSCK -->|"No"| SIGNINPAGE["Sign-In Page\nEnter Email + Password"]
+  SIGNINPAGE --> AUTHRES{"Auth\nSuccess?"}
+  AUTHRES -->|"Failed"| SIGNINPAGE
+  AUTHRES -->|"OK"| DISCLAIM["Acknowledge Disclaimer\nUsage Notice Before Access\n(Required on Each Login)"]
+  DISCLAIM --> ROLELOAD["Load User Role\nViewer  ·  Editor"]
+  ROLELOAD --> IDLEQ{"Session Idle\n> 8 Hours?"}
+  IDLEQ -->|"Yes — Auto Sign-Out"| SIGNINPAGE
+end
+
+IDLEQ -->|"No — Active Session"| DASH
+
+%% ════════════════════════════════════════════════════
+%% STEP 2 — MAIN MAP DASHBOARD
+%% ════════════════════════════════════════════════════
+subgraph S2 ["  🗺️  STEP 2 — MAIN MAP DASHBOARD"]
+  DASH["Leaflet Map View\nTransformer Markers + Cluster Groups"]
+  DASH --> SBR["Sidebar Navigation\nState → Company → Floor → Asset Hierarchy"]
+  DASH --> QSTATS["Quick Stats Bar\nTotal Assets · Oil Samples · Documents · Sites"]
+  DASH --> MLAYER["Map Layer Toggle\nStreets  ·  Satellite  ·  Hybrid"]
+  DASH --> GSEARCH["Geo-Search Control\nFind Location on Map by Address"]
+  DASH --> OWNFLT["Asset Owner Filter\nAll  ·  TNB  ·  IPP  ·  Industry"]
+end
+
+DASH --> ACTREG["➕  Register\nNew Transformer"]
+DASH --> ACTDRAW["🏢  Draw Company\nor Floor Plan"]
+DASH --> ACTOPEN["📋  Open Existing\nTransformer Asset"]
+DASH --> ACTCOMP["⚖️  Compare\nTransformers"]
+DASH --> ACTGALL["🖼️  Asset\nCard Gallery"]
+
+%% ════════════════════════════════════════════════════
+%% STEP 3 — TRANSFORMER REGISTRATION
+%% ════════════════════════════════════════════════════
+subgraph S3 ["  ➕  STEP 3 — TRANSFORMER REGISTRATION"]
+  ACTREG --> REGMETH{"How to\nRegister?"}
+
+  REGMETH -->|"① Manual Form"| MANFORM["Fill Asset Registration Form\nSite Name · TX Name · Voltage\nSerial No. · Year Built · MVA\nPaper Type · Oil Type · State"]
+  REGMETH -->|"② GPS Register"| GPSMOD["Location Register Module\nActivate GPS on Device\nCapture Live Coordinates + Accuracy"]
+
+  GPSMOD --> GPSCONFIRM["GPS Position Confirmed\nLatitude / Longitude / Accuracy"]
+  GPSCONFIRM --> MAPPLACE
+
+  MANFORM --> MAPPLACE["Map Marker Placement\nMarker Shown at Entered Coordinates\nDrag Marker on Map to Refine"]
+
+  MAPPLACE --> PDFQ{"Import PDF\nfor Auto-Fill?"}
+  PDFQ -->|"Yes — Drop PDF"| PDFDROP["Upload PDF Test Report\nOCR Engine Auto-Extracts\nAsset Info + Oil Test Data"]
+  PDFDROP --> OILRV["Review Imported Oil Test Rows\nVerify  ·  Edit  ·  Remove Rows\nDate · Gas Values · Oil Params"]
+  OILRV --> OILAPR{"Confirm\nImported Tests?"}
+  OILAPR -->|"Approve"| WITHTESTS["Transformer + Oil Tests\nQueued for Save"]
+  OILAPR -->|"Skip Tests"| NOTEST["Transformer Only\nOil Tests Not Imported"]
+  PDFQ -->|"No"| VALID
+  WITHTESTS --> VALID
+  NOTEST --> VALID
+
+  VALID{"All Required Fields\nComplete?"}
+  VALID -->|"⚠️ Missing Field"| WARNNOTICE["Warning Dialog\nSite Name / TX Name /\nVoltage Is Required"]
+  WARNNOTICE --> MANFORM
+  VALID -->|"OK"| DUPLCK{"Serial Number\nConflict?"}
+  DUPLCK -->|"Duplicate Found"| DUPWARN["Warning: Duplicate Serial\nOpen Existing Asset Instead\nDo Not Create Duplicate"]
+  DUPWARN --> MANFORM
+  DUPLCK -->|"No Conflict"| SAVETX["✅  Transformer Saved\nStored in Supabase Database\nMarker Appears on Map"]
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 4 — DRAW COMPANY BOUNDARY & FLOOR PLAN
+%% ════════════════════════════════════════════════════
+subgraph S4 ["  🏢  STEP 4 — DRAW COMPANY BOUNDARY & FLOOR PLAN"]
+  ACTDRAW --> DRWTYPE{"What to\nDraw?"}
+
+  DRWTYPE -->|"Company Boundary"| DRAWCO["Draw Company Polygon\nClick Points on Map to Trace Border\nClick First Point Again to Close"]
+  DRAWCO --> COMETAFORM["Set Company Metadata\nCompany Name · Owner Type · Description"]
+  COMETAFORM --> SAVECOMP["✅  Company Boundary Saved\nOverlay Visible on Map"]
+
+  DRWTYPE -->|"Floor Plan"| DRAWFP["Draw Floor Plan Polygon\nClick Points on Map to Trace Floor Area\nClick First Point Again to Close"]
+  DRAWFP --> FPMETAFORM["Set Floor Plan Metadata\nFloor Name · Level · Building Info"]
+  FPMETAFORM --> ASSIGNTX["Assign Transformers to Floor\nTransformers Inside Polygon\nAuto-Linked to Floor Plan"]
+  ASSIGNTX --> RESHAPEQ{"Adjust\nBoundary?"}
+  RESHAPEQ -->|"Yes — Reshape"| RESHAPE["Reshape Polygon\nDrag Vertex Points to\nRefine Floor Boundary"]
+  RESHAPE --> SAVEFP["✅  Floor Plan Saved\nOverlay Visible on Map\nTransformers Linked"]
+  RESHAPEQ -->|"No"| SAVEFP
+end
+
+SAVETX --> ACTOPEN
+
+%% ════════════════════════════════════════════════════
+%% STEP 5 — TRANSFORMER DETAIL MODAL
+%% ════════════════════════════════════════════════════
+subgraph S5 ["  📋  STEP 5 — TRANSFORMER DETAIL & MANAGEMENT"]
+  ACTOPEN --> DETMODAL["Transformer Detail Modal\nAsset Info · Specs · GPS · Compartments\nEdit Any Field · Manage Assignments"]
+  DETMODAL --> SECTAB{"Navigate to\nSection"}
+  SECTAB --> SOT["🧪  Oil Test\nSection"]
+  SECTAB --> SDC["📎  Document\nSection"]
+  SECTAB --> SHD["❤️  Health\nDashboard"]
+  SECTAB --> SDW["🔬  DGA\nWorkbench"]
+  SECTAB --> STR["📈  Data\nTrending"]
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 6A — OIL TEST RESULTS
+%% ════════════════════════════════════════════════════
+subgraph S6A ["  🧪  STEP 6A — OIL TEST RESULTS"]
+  SOT --> OILMETH{"Input\nMethod"}
+
+  OILMETH -->|"① Manual Entry"| OILFORM["Fill Oil Test Form\nSample Date · Test Type\n(DGA · Physical · Chemical · Full)"]
+  OILFORM --> DGAINPUT["Enter DGA Gas Values (ppm)\nH2  ·  CH4  ·  C2H6  ·  C2H4\nC2H2  ·  CO  ·  CO2  ·  O2  ·  N2"]
+  DGAINPUT --> OILPARAMS["Enter Oil Quality Parameters\nBDV  ·  Moisture  ·  Acidity  ·  IFT\nFuran  ·  Methanol  ·  Inhibitor\nPassivator  ·  DBDS  ·  TanDelta\nColor  ·  Appearance  ·  Density"]
+
+  OILMETH -->|"② PDF Auto-Upload"| OCRPDF["Upload PDF Test Report\nTesseract OCR Engine\nAuto-Reads Gas + Oil Values\nFrom Report Document"]
+  OCRPDF --> OCREDIT["Review Extracted Values\nCheck OCR Accuracy\nCorrect Any Misread Fields"]
+  OCREDIT --> TDCG
+
+  OILPARAMS --> TDCG["Auto-Calculate TDCG\nTotal Dissolved Combustible Gas\nH2+CH4+C2H6+C2H4+C2H2+CO"]
+  TDCG --> OILSAVE["✅  Oil Test Record Saved\nStatus Assigned Automatically\nHealthy  ·  Monitor  ·  Action"]
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 6B — DOCUMENT SECTION
+%% ════════════════════════════════════════════════════
+subgraph S6B ["  📎  STEP 6B — DOCUMENT MANAGEMENT"]
+  SDC --> DOCUP["Upload Document File\nPDF  ·  Word  ·  Excel  ·  Image\n(Max File Size Enforced)"]
+  DOCUP --> DOCSAVE["✅  File Stored in Supabase Storage\nLinked to Transformer Record\nAccessible from Detail Modal"]
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 6C — HEALTH DASHBOARD
+%% ════════════════════════════════════════════════════
+subgraph S6C ["  ❤️  STEP 6C — TRANSFORMER HEALTH DASHBOARD"]
+  SHD --> HGAUGE["Health Score Gauge\n0 – 100 Composite Score\nBased on DGA + Oil Parameters"]
+  HGAUGE --> KPITILES["Oil Quality KPI Tiles\nBDV  ·  Moisture  ·  Acidity  ·  IFT\nPower Factor  ·  Resistivity"]
+  KPITILES --> INSIGHTS["Insights & Alerts Panel\nCaution / Critical Items Flagged\nWith Recommended Action Text"]
+  INSIGHTS --> LIFETILE["Lifetime Usage Card\nDP via Furan or Methanol Method\nEstimated Remaining Life %\nInsulation Degradation Index"]
+  LIFETILE --> FAULTRADAR["Fault Methods Summary\nDuval  ·  Rogers  ·  IEC\nMulti-Standard Overview Cards"]
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 6D — DGA WORKBENCH
+%% ════════════════════════════════════════════════════
+subgraph S6D ["  🔬  STEP 6D — DGA WORKBENCH (ANALYSIS)"]
+  SDW --> DGAMETH{"Analysis\nMethod"}
+
+  DGAMETH -->|"Heptagon"| HEPT["Heptagon DGA Plot\n7-Gas Polygon Visualization\nGas vs Normalised Zone Limits\nAll Samples Overlaid on Plot"]
+  DGAMETH -->|"Pentagon"| PENT["Pentagon DGA Plot\n5-Zone Analysis\nMineral · Ester · Synthetic Oils\nZone-Based Diagnosis"]
+  DGAMETH -->|"Duval Triangle"| DUVAL["Duval Triangle Plot\nFault Zone Mapping\nT1  T2  T3  D1  D2  DT  PD  S\nFault Tooltip on Hover"]
+
+  HEPT --> OILTYPE
+  PENT --> OILTYPE
+  DUVAL --> OILTYPE
+
+  OILTYPE{"Select\nOil Type"}
+  OILTYPE -->|"Mineral"| GASSTD
+  OILTYPE -->|"Ester / Synthetic"| GASSTD
+
+  GASSTD["Apply Gas Limit Standard\nIEEE C57.104-2019\nIEC 60599  ·  CIGRE  ·  Custom"]
+  GASSTD --> FAULTDIAG["Fault Diagnosis Result\nFault Zone Label  ·  Severity Level\nGas-by-Gas Limit Status\nAction / Caution / Healthy"]
+  FAULTDIAG --> DGAHISTORY["DGA Trend on Polygon\nAll Historical Samples Plotted\nVisually Track Gas Evolution Over Time"]
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 6E — DATA TRENDING
+%% ════════════════════════════════════════════════════
+subgraph S6E ["  📈  STEP 6E — DATA TRENDING"]
+  STR --> GASCHART["DGA Gas Trend Charts\nH2  CH4  C2H6  C2H4  C2H2  CO  CO2\nTime-Series with Reference Lines\nToggle Individual Gas Series"]
+  GASCHART --> OILCHART["Oil Parameter Trend Charts\nBDV  ·  Moisture  ·  Acidity  ·  IFT\nFuran  ·  Methanol  ·  Degree of Poly."]
+  OILCHART --> CORRCHART["Corrosion & Additive Charts\nDBDS  ·  Passivator  ·  Copper Corrosive\nInhibitor  ·  Tan Delta  ·  Resistivity"]
+  CORRCHART --> HISTTABLE["Full History Table\nAll Test Records Sorted by Date\nPaginated  ·  Sortable by Column"]
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 7 — COMPARE TRANSFORMERS
+%% ════════════════════════════════════════════════════
+subgraph S7 ["  ⚖️  STEP 7 — COMPARE TRANSFORMERS"]
+  ACTCOMP --> CSELECT["Select Assets to Compare\nPick Multiple Transformers\nFrom Asset List"]
+  CSELECT --> CSBSVIEW["Side-by-Side Comparison View\nLatest Oil Test per Transformer\nDisplayed in Parallel Columns"]
+  CSBSVIEW --> CDGACOMP["DGA Gas Comparison\nH2  CH4  C2H6  C2H4  C2H2\nExceeded Limits Highlighted\nStatus Color per Cell"]
+  CDGACOMP --> COILCOMP["Oil Metrics Comparison\nBDV  ·  Acidity  ·  IFT  ·  Moisture\nFuran  ·  Methanol  ·  DP\nUnit + Threshold per Metric"]
+  COILCOMP --> CSTATUS["Status Assessment Panels\nHealthy  ·  Monitor  ·  Action\nDGA + Oil Assessment per Asset\nPrimary Fault Zone Shown"]
+  CSTATUS --> COPEN["Open Asset from Compare\nClick Card → Detail Modal"]
+  COPEN --> DETMODAL
+end
+
+%% ════════════════════════════════════════════════════
+%% STEP 8 — ASSET CARD GALLERY
+%% ════════════════════════════════════════════════════
+subgraph S8 ["  🖼️  STEP 8 — ASSET CARD GALLERY"]
+  ACTGALL --> GALLVIEW["Asset Card Gallery View\nGrid of All Transformer Asset Cards\nDGA Status Badge on Each Card"]
+  GALLVIEW --> GALLFILT["Filter & Sort Cards\nBy Owner Type  ·  DGA Status\nSearch by Name or Site"]
+  GALLFILT --> GALLCARD["Asset Summary Card\nDGA Limit Status  ·  Latest Test Date\nGPS Coordinates  ·  Gas Readings\nAsset Age  ·  Voltage"]
+  GALLCARD --> GALLOPEN["Open Asset Detail\nClick Card → Detail Modal"]
+  GALLOPEN --> DETMODAL
+end
+
+%% ════════════════════════════════════════════════════
+%% STYLE OVERRIDES
+%% ════════════════════════════════════════════════════
+
+style S1 fill:#1c0a2e,stroke:#818cf8,color:#e2e8f0
+style S2 fill:#0a1f2e,stroke:#38bdf8,color:#e2e8f0
+style S3 fill:#0a2818,stroke:#34d399,color:#e2e8f0
+style S4 fill:#1f1a0a,stroke:#fbbf24,color:#e2e8f0
+style S5 fill:#1a1031,stroke:#a78bfa,color:#e2e8f0
+style S6A fill:#1a0e12,stroke:#f87171,color:#e2e8f0
+style S6B fill:#0a1a1f,stroke:#67e8f9,color:#e2e8f0
+style S6C fill:#1a0a12,stroke:#fb7185,color:#e2e8f0
+style S6D fill:#0e100a,stroke:#86efac,color:#e2e8f0
+style S6E fill:#0a1028,stroke:#93c5fd,color:#e2e8f0
+style S7 fill:#1a0e1a,stroke:#d8b4fe,color:#e2e8f0
+style S8 fill:#0a1a14,stroke:#6ee7b7,color:#e2e8f0
+
+classDef decision fill:#1e293b,stroke:#94a3b8,color:#f1f5f9
+classDef process fill:#1e2d3d,stroke:#475569,color:#e2e8f0
+classDef success fill:#052e16,stroke:#16a34a,color:#bbf7d0
+classDef warning fill:#2d1500,stroke:#d97706,color:#fde68a
+classDef terminal fill:#1e293b,stroke:#818cf8,color:#c7d2fe
+
+class SESSCK,AUTHRES,IDLEQ,PDFQ,OILAPR,VALID,DUPLCK,DRWTYPE,REGMETH,RESHAPEQ,OILMETH,DGAMETH,OILTYPE decision
+class SAVETX,SAVECOMP,SAVEFP,OILSAVE,DOCSAVE success
+class WARNNOTICE,DUPWARN warning
+class STARTNODE terminal
+</pre>
+</div>
+
+<div class="legend-bar">
+  <span class="legend-label">Sections:</span>
+  <div class="legend-item"><div class="legend-swatch" style="background:#818cf8;"></div>Authentication</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#38bdf8;"></div>Dashboard</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#34d399;"></div>Registration</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fbbf24;"></div>Map Drawing</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#a78bfa;"></div>Asset Detail</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#f87171;"></div>Oil Tests</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#67e8f9;"></div>Documents</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#fb7185;"></div>Health Dashboard</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#86efac;"></div>DGA Workbench</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#93c5fd;"></div>Data Trending</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#d8b4fe;"></div>Compare</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#6ee7b7;"></div>Gallery</div>
+  &nbsp;&nbsp;
+  <span class="legend-label">Nodes:</span>
+  <div class="legend-item"><div class="legend-swatch" style="background:#16a34a;border-radius:50%;"></div>Save / Success</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#d97706;border-radius:50%;"></div>Warning / Error</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#94a3b8;border-radius:50%;"></div>Decision Diamond</div>
+</div>
+
+<footer>
+  <strong>Asset Tx Map V2</strong> · SOP Flowchart · Version 3.9 ·
+  Developed by <strong>ChM. Ts. Hadi Fauzi</strong> ·
+  Transformer Asset Management System — Supabase + Vite + React + Leaflet
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    flowchart: {
+      htmlLabels: true,
+      curve: 'basis',
+      padding: 18,
+      nodeSpacing: 42,
+      rankSpacing: 44,
+      useMaxWidth: false,
+    },
+    securityLevel: 'loose',
+  });
+</script>
+
+</body>
+</html>
