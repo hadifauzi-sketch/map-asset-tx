@@ -7,6 +7,7 @@ import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 import L from 'leaflet';
 import {
   AlertTriangle,
+  CloudSun,
   FileText,
   Layers3,
   LogOut,
@@ -21,6 +22,7 @@ import {
   Satellite,
   Settings as SettingsIcon,
   TestTubeDiagonal,
+  ThermometerSun,
   UserCircle2,
   Wrench,
   X,
@@ -35,6 +37,11 @@ import AppOnboardingTour, { readTourEnabled, writeTourEnabled } from './componen
 import SOPFlowchartDialog from './components/SOPFlowchartDialog';
 import TransformerDetailModal from './components/TransformerDetailModal';
 import GeoSearchControl from './components/GeoSearchControl';
+import LSTMapLayer from './components/LSTMapLayer';
+import LSTToolPanel from './components/LSTToolPanel';
+import WeatherHourlyChart from './components/WeatherHourlyChart';
+import WeatherMapLayer from './components/WeatherMapLayer';
+import WeatherToolPanel from './components/WeatherToolPanel';
 import LocationRegisterModule from './components/location-register/LocationRegisterModule';
 import CompanyBoundaryMapLayer from './components/CompanyBoundaryMapLayer';
 import CompanyBoundaryMetadataDialog from './components/CompanyBoundaryMetadataDialog';
@@ -77,6 +84,23 @@ import {
   normalizeAssetOwnerFilter,
   normalizeAssetOwnerType,
 } from './lib/assetOwner';
+import {
+  DEFAULT_WEATHER_OPTIONS,
+  fetchTransformerHourlyWeather,
+  fetchTransformerWeather,
+  getLocalDateInput,
+} from './lib/weatherService';
+import {
+  DEFAULT_ARCGIS_MOSAIC_WINDOW_DAYS,
+  DEFAULT_ESRI_LANDSAT_RENDERING_RULE,
+  DEFAULT_LST_SOURCE_ID,
+  ESRI_LANDSAT_LEVEL2_IMAGE_SERVICE_URL,
+  LST_LAYER_SOURCE_OPTIONS,
+  getComparisonLSTDate,
+  getDefaultLSTDate,
+  getLSTSource,
+  normalizeLSTDate,
+} from './lib/lstService';
 import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
@@ -208,6 +232,28 @@ function getSortedOilTests(oilTests = []) {
 function getLatestOilTestRecord(oilTests = []) {
   const sortedOilTests = getSortedOilTests(oilTests);
   return sortedOilTests[sortedOilTests.length - 1] ?? null;
+}
+
+function getOilTestSampleDateOptions(oilTests = []) {
+  const seenDates = new Set();
+  return getSortedOilTests(oilTests)
+    .map((test) => String(test?.testDate || '').slice(0, 10))
+    .filter((testDate) => {
+      if (!testDate || seenDates.has(testDate)) {
+        return false;
+      }
+      seenDates.add(testDate);
+      return true;
+    })
+    .reverse()
+    .map((testDate) => ({
+      value: testDate,
+      label: new Date(`${testDate}T00:00:00`).toLocaleDateString(undefined, {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }),
+    }));
 }
 
 function resolveTransformerDgaPreferences(transformer) {
@@ -457,10 +503,48 @@ function App() {
   const [isDraggable, setIsDraggable] = useState(false);
   const [isLocationRegisterOpen, setIsLocationRegisterOpen] = useState(false);
   const [geoSearchSelection, setGeoSearchSelection] = useState(null);
+  const [isWeatherToolOpen, setIsWeatherToolOpen] = useState(false);
+  const [weatherLayerEnabled, setWeatherLayerEnabled] = useState(true);
+  const [weatherDate, setWeatherDate] = useState(() => getLocalDateInput());
+  const [weatherTime, setWeatherTime] = useState('12:00');
+  const [weatherOptions, setWeatherOptions] = useState(DEFAULT_WEATHER_OPTIONS);
+  const [weatherRecords, setWeatherRecords] = useState([]);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState('');
+  const [weatherUpdatedAt, setWeatherUpdatedAt] = useState(null);
+  const [weatherRefreshKey, setWeatherRefreshKey] = useState(0);
+  const [weatherPanelPosition, setWeatherPanelPosition] = useState(null);
+  const [isWeatherPanelDragging, setIsWeatherPanelDragging] = useState(false);
+  const [isWeatherHourlyChartOpen, setIsWeatherHourlyChartOpen] = useState(false);
+  const [isWeatherHourlyChartCollapsed, setIsWeatherHourlyChartCollapsed] = useState(false);
+  const [weatherHourlySeries, setWeatherHourlySeries] = useState([]);
+  const [weatherHourlyLoading, setWeatherHourlyLoading] = useState(false);
+  const [weatherHourlyError, setWeatherHourlyError] = useState('');
+  const [isLSTToolOpen, setIsLSTToolOpen] = useState(false);
+  const [lstLayerEnabled, setLSTLayerEnabled] = useState(true);
+  const [lstDate, setLSTDate] = useState(() => getDefaultLSTDate());
+  const [lstCompareDate, setLSTCompareDate] = useState(() => getComparisonLSTDate(getDefaultLSTDate()));
+  const [lstSourceId, setLSTSourceId] = useState(DEFAULT_LST_SOURCE_ID);
+  const [lstArcgisServiceUrl, setLSTArcgisServiceUrl] = useState(ESRI_LANDSAT_LEVEL2_IMAGE_SERVICE_URL);
+  const [lstArcgisToken, setLSTArcgisToken] = useState('');
+  const [lstArcgisRasterFunction, setLSTArcgisRasterFunction] = useState(DEFAULT_ESRI_LANDSAT_RENDERING_RULE);
+  const [lstArcgisWindowDays, setLSTArcgisWindowDays] = useState(DEFAULT_ARCGIS_MOSAIC_WINDOW_DAYS);
+  const [lstOpacity, setLSTOpacity] = useState(0.74);
+  const [lstCompareEnabled, setLSTCompareEnabled] = useState(false);
+  const [lstCompareSplit, setLSTCompareSplit] = useState(50);
+  const [lstRefreshKey, setLSTRefreshKey] = useState(0);
+  const [lstPanelPosition, setLSTPanelPosition] = useState(null);
+  const [isLSTPanelDragging, setIsLSTPanelDragging] = useState(false);
   const pendingFloorAssignment = useRef(null);
   const leafletMapRef = useRef(null);
   const idleSignOutTimerRef = useRef(null);
   const mapToolbarExpandedRef = useRef(null);
+  const weatherPanelLayerRef = useRef(null);
+  const weatherPanelRef = useRef(null);
+  const weatherPanelDragRef = useRef(null);
+  const lstPanelLayerRef = useRef(null);
+  const lstPanelRef = useRef(null);
+  const lstPanelDragRef = useRef(null);
   const isAdmin = currentUser?.role === 'admin';
   const isViewer = currentUser?.role === 'viewer';
   const canEditAssets = !currentUser || currentUser.role !== 'viewer';
@@ -815,6 +899,11 @@ function App() {
     }
   }, [selectedTransformer]);
 
+  const weatherSampleDateOptions = useMemo(
+    () => getOilTestSampleDateOptions(selectedTransformer?.oilTests),
+    [selectedTransformer]
+  );
+
   const transformerMarkerColors = useMemo(
     () =>
       new Map(
@@ -974,6 +1063,473 @@ function App() {
 
     focusLocationPosition([latitude, longitude], 17);
   };
+
+  const handleWeatherOptionChange = useCallback((optionKey, checked) => {
+    setWeatherOptions((current) => ({
+      ...current,
+      [optionKey]: checked,
+    }));
+  }, []);
+
+  const handleLSTDateChange = useCallback((dateValue) => {
+    const nextDate = normalizeLSTDate(dateValue, lstDate);
+    setLSTDate(nextDate);
+    setLSTLayerEnabled(true);
+    setLSTCompareDate((current) => current || getComparisonLSTDate(nextDate));
+  }, [lstDate]);
+
+  const handleLSTCompareDateChange = useCallback((dateValue) => {
+    setLSTCompareDate((current) =>
+      normalizeLSTDate(dateValue, current || getComparisonLSTDate(lstDate))
+    );
+  }, [lstDate]);
+
+  const handleLSTSampleDateChange = useCallback((sampleDate) => {
+    if (!sampleDate) {
+      return;
+    }
+
+    const nextDate = normalizeLSTDate(sampleDate, lstDate);
+    setLSTDate(nextDate);
+    setLSTLayerEnabled(true);
+    setLSTCompareDate((current) => current || getComparisonLSTDate(nextDate));
+    if (!isLSTToolOpen) {
+      setLSTPanelPosition(null);
+    }
+    setIsLSTToolOpen(true);
+    setLSTRefreshKey((current) => current + 1);
+  }, [isLSTToolOpen, lstDate]);
+
+  const handleUsePreviousLSTYear = useCallback(() => {
+    setLSTCompareDate(getComparisonLSTDate(lstDate));
+    setLSTCompareEnabled(true);
+  }, [lstDate]);
+
+  const handleLSTOpacityChange = useCallback((value) => {
+    const nextOpacity = Number(value);
+    setLSTOpacity(Number.isFinite(nextOpacity) ? Math.min(1, Math.max(0.3, nextOpacity)) : 0.74);
+  }, []);
+
+  const handleLSTCompareSplitChange = useCallback((value) => {
+    const nextSplit = Number(value);
+    setLSTCompareSplit(Number.isFinite(nextSplit) ? Math.min(80, Math.max(20, nextSplit)) : 50);
+  }, []);
+
+  const handleLSTSourceChange = useCallback((sourceId) => {
+    const nextSource = getLSTSource(sourceId);
+    setLSTSourceId(sourceId);
+    setLSTLayerEnabled(true);
+    if (nextSource.dateMode === 'static') {
+      setLSTCompareEnabled(false);
+    }
+    setLSTRefreshKey((current) => current + 1);
+  }, []);
+
+  const handleLSTArcgisWindowDaysChange = useCallback((value) => {
+    const nextWindowDays = Number(value);
+    setLSTArcgisWindowDays(
+      Number.isFinite(nextWindowDays)
+        ? Math.min(180, Math.max(1, Math.round(nextWindowDays)))
+        : DEFAULT_ARCGIS_MOSAIC_WINDOW_DAYS
+    );
+  }, []);
+
+  const getConstrainedWeatherPanelPosition = useCallback((left, top) => {
+    const layer = weatherPanelLayerRef.current;
+    const panel = weatherPanelRef.current;
+
+    if (!layer || !panel) {
+      return { left, top };
+    }
+
+    const layerRect = layer.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 12;
+    const maxLeft = Math.max(margin, layerRect.width - panelRect.width - margin);
+    const maxTop = Math.max(margin, layerRect.height - panelRect.height - margin);
+
+    return {
+      left: Math.min(Math.max(left, margin), maxLeft),
+      top: Math.min(Math.max(top, margin), maxTop),
+    };
+  }, []);
+
+  const handleWeatherPanelDragStart = useCallback((event) => {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    const layer = weatherPanelLayerRef.current;
+    const panel = weatherPanelRef.current;
+
+    if (!layer || !panel) {
+      return;
+    }
+
+    const layerRect = layer.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const startPosition = getConstrainedWeatherPanelPosition(
+      panelRect.left - layerRect.left,
+      panelRect.top - layerRect.top
+    );
+
+    weatherPanelDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: startPosition.left,
+      startTop: startPosition.top,
+    };
+
+    setWeatherPanelPosition(startPosition);
+    setIsWeatherPanelDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }, [getConstrainedWeatherPanelPosition]);
+
+  const handleWeatherPanelDragMove = useCallback((event) => {
+    const dragState = weatherPanelDragRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    setWeatherPanelPosition(
+      getConstrainedWeatherPanelPosition(
+        dragState.startLeft + event.clientX - dragState.startX,
+        dragState.startTop + event.clientY - dragState.startY
+      )
+    );
+    event.preventDefault();
+  }, [getConstrainedWeatherPanelPosition]);
+
+  const handleWeatherPanelDragEnd = useCallback((event) => {
+    const dragState = weatherPanelDragRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    weatherPanelDragRef.current = null;
+    setIsWeatherPanelDragging(false);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }, []);
+
+  const getConstrainedLSTPanelPosition = useCallback((left, top) => {
+    const layer = lstPanelLayerRef.current;
+    const panel = lstPanelRef.current;
+
+    if (!layer || !panel) {
+      return { left, top };
+    }
+
+    const layerRect = layer.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const margin = 12;
+    const maxLeft = Math.max(margin, layerRect.width - panelRect.width - margin);
+    const maxTop = Math.max(margin, layerRect.height - panelRect.height - margin);
+
+    return {
+      left: Math.min(Math.max(left, margin), maxLeft),
+      top: Math.min(Math.max(top, margin), maxTop),
+    };
+  }, []);
+
+  const handleLSTPanelDragStart = useCallback((event) => {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    const layer = lstPanelLayerRef.current;
+    const panel = lstPanelRef.current;
+
+    if (!layer || !panel) {
+      return;
+    }
+
+    const layerRect = layer.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const startPosition = getConstrainedLSTPanelPosition(
+      panelRect.left - layerRect.left,
+      panelRect.top - layerRect.top
+    );
+
+    lstPanelDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: startPosition.left,
+      startTop: startPosition.top,
+    };
+
+    setLSTPanelPosition(startPosition);
+    setIsLSTPanelDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }, [getConstrainedLSTPanelPosition]);
+
+  const handleLSTPanelDragMove = useCallback((event) => {
+    const dragState = lstPanelDragRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    setLSTPanelPosition(
+      getConstrainedLSTPanelPosition(
+        dragState.startLeft + event.clientX - dragState.startX,
+        dragState.startTop + event.clientY - dragState.startY
+      )
+    );
+    event.preventDefault();
+  }, [getConstrainedLSTPanelPosition]);
+
+  const handleLSTPanelDragEnd = useCallback((event) => {
+    const dragState = lstPanelDragRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    lstPanelDragRef.current = null;
+    setIsLSTPanelDragging(false);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }, []);
+
+  const handleWeatherSampleDateChange = useCallback((sampleDate) => {
+    if (!sampleDate) {
+      return;
+    }
+
+    setWeatherDate(sampleDate);
+    setWeatherTime('12:00');
+    setWeatherLayerEnabled(true);
+    if (!isWeatherToolOpen) {
+      setWeatherPanelPosition(null);
+    }
+    setIsWeatherToolOpen(true);
+    setWeatherRefreshKey((current) => current + 1);
+  }, [isWeatherToolOpen]);
+
+  const handleToggleWeatherHourlyChart = useCallback(() => {
+    if (!selectedTransformer) {
+      return;
+    }
+
+    if (!isWeatherHourlyChartOpen) {
+      setIsWeatherHourlyChartCollapsed(false);
+      setIsWeatherHourlyChartOpen(true);
+      return;
+    }
+
+    setIsWeatherHourlyChartCollapsed((current) => !current);
+  }, [isWeatherHourlyChartOpen, selectedTransformer]);
+
+  useEffect(() => {
+    if (selectedTransformer) {
+      return;
+    }
+
+    setIsWeatherHourlyChartOpen(false);
+    setIsWeatherHourlyChartCollapsed(false);
+    setWeatherHourlySeries([]);
+  }, [selectedTransformer]);
+
+  useEffect(() => {
+    if (!isWeatherToolOpen || !weatherPanelPosition) {
+      return undefined;
+    }
+
+    const handleResize = () => {
+      setWeatherPanelPosition((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const nextPosition = getConstrainedWeatherPanelPosition(current.left, current.top);
+        return nextPosition.left === current.left && nextPosition.top === current.top
+          ? current
+          : nextPosition;
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [getConstrainedWeatherPanelPosition, isWeatherToolOpen, weatherPanelPosition]);
+
+  useEffect(() => {
+    if (!isLSTToolOpen || !lstPanelPosition) {
+      return undefined;
+    }
+
+    const handleResize = () => {
+      setLSTPanelPosition((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const nextPosition = getConstrainedLSTPanelPosition(current.left, current.top);
+        return nextPosition.left === current.left && nextPosition.top === current.top
+          ? current
+          : nextPosition;
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [getConstrainedLSTPanelPosition, isLSTToolOpen, lstPanelPosition]);
+
+  useEffect(() => {
+    if (!isWeatherToolOpen) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let ignore = false;
+
+    async function loadWeather() {
+      setWeatherLoading(true);
+      setWeatherError('');
+
+      try {
+        const records = await fetchTransformerWeather(
+          filteredTransformers,
+          {
+            date: weatherDate,
+            time: weatherTime,
+          },
+          {
+            signal: controller.signal,
+          }
+        );
+
+        if (ignore) {
+          return;
+        }
+
+        setWeatherRecords(records);
+        setWeatherUpdatedAt(new Date().toISOString());
+
+        if (records.length === 0) {
+          setWeatherError('No mapped assets have coordinates for weather lookup.');
+        }
+      } catch (err) {
+        if (ignore || err?.name === 'AbortError') {
+          return;
+        }
+
+        console.error('Failed to load Open-Meteo weather:', err);
+        setWeatherRecords([]);
+        setWeatherError(err?.message || 'Unable to load Open-Meteo weather for the selected date and time.');
+      } finally {
+        if (!ignore) {
+          setWeatherLoading(false);
+        }
+      }
+    }
+
+    loadWeather();
+
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
+  }, [filteredTransformers, isWeatherToolOpen, weatherDate, weatherRefreshKey, weatherTime]);
+
+  useEffect(() => {
+    if (!isWeatherHourlyChartOpen || !selectedTransformer) {
+      if (!isWeatherHourlyChartOpen) {
+        setWeatherHourlyLoading(false);
+        setWeatherHourlyError('');
+      }
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let ignore = false;
+
+    async function loadHourlyWeather() {
+      setWeatherHourlyLoading(true);
+      setWeatherHourlyError('');
+
+      try {
+        const series = await fetchTransformerHourlyWeather(
+          selectedTransformer,
+          {
+            date: weatherDate,
+          },
+          {
+            signal: controller.signal,
+          }
+        );
+
+        if (ignore) {
+          return;
+        }
+
+        setWeatherHourlySeries(series);
+
+        if (series.length === 0) {
+          setWeatherHourlyError('No hourly weather is available for the selected site and date.');
+        }
+      } catch (err) {
+        if (ignore || err?.name === 'AbortError') {
+          return;
+        }
+
+        console.error('Failed to load hourly Open-Meteo weather:', err);
+        setWeatherHourlySeries([]);
+        setWeatherHourlyError(err?.message || 'Unable to load hourly weather for the selected site.');
+      } finally {
+        if (!ignore) {
+          setWeatherHourlyLoading(false);
+        }
+      }
+    }
+
+    loadHourlyWeather();
+
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
+  }, [isWeatherHourlyChartOpen, selectedTransformer, weatherDate, weatherRefreshKey]);
+
+  const selectedWeatherRecords = useMemo(() => {
+    if (!selectedTransformer) {
+      return [];
+    }
+
+    const selectedTransformerId = String(selectedTransformer.id);
+    return weatherRecords.filter((record) => String(record.id) === selectedTransformerId);
+  }, [selectedTransformer, weatherRecords]);
+
+  const weatherPanelEmptyMessage = selectedTransformer
+    ? 'No weather record is available for the selected site yet.'
+    : 'Select a site on the map to show its weather history here.';
+
+  const handleWeatherRecordSelect = useCallback((record) => {
+    const nextTransformer = filteredTransformers.find(
+      (transformer) => String(transformer.id) === String(record?.id)
+    );
+
+    if (!nextTransformer) {
+      return;
+    }
+
+    setSelectedTransformer(nextTransformer);
+    setSelectedFloorPlanId(null);
+    setSelectedCompanyBoundaryId(null);
+    setGeoSearchSelection(null);
+  }, [filteredTransformers]);
 
   const loadFloorPlans = async () => {
     try {
@@ -2103,6 +2659,19 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
   }
 
   const markerClusterEnabled = !(isDraggable && canEditAssets);
+  const isWeatherOverlayVisible =
+    isWeatherToolOpen &&
+    weatherLayerEnabled &&
+    weatherRecords.length > 0 &&
+    Object.values(weatherOptions).some(Boolean);
+  const isLSTOverlayVisible =
+    isLSTToolOpen &&
+    lstLayerEnabled &&
+    Boolean(lstDate);
+  const isLSTCompareVisible =
+    isLSTOverlayVisible &&
+    lstCompareEnabled &&
+    Boolean(lstCompareDate);
   const transformerMarkerNodes = filteredTransformers.map((transformer) => (
     <TransformerMarker
       key={transformer.id}
@@ -2283,6 +2852,46 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   onSelectPlace={handleGeoSearchPlaceSelect}
                   onClearSelection={() => setGeoSearchSelection(null)}
                 />
+
+                <div data-tour="map-weather" className="flex shrink-0 items-center gap-1 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 p-1 shadow-[var(--shadow-card)] backdrop-blur-md">
+                  <Button
+                    size="sm"
+                    variant={isWeatherToolOpen ? 'default' : 'outline'}
+                    className="h-9 w-9 shrink-0 p-0"
+                    onClick={() => {
+                      if (!isWeatherToolOpen) {
+                        setWeatherPanelPosition(null);
+                      } else {
+                        setIsWeatherHourlyChartOpen(false);
+                        setIsWeatherHourlyChartCollapsed(false);
+                      }
+                      setIsWeatherToolOpen((current) => !current);
+                      setWeatherLayerEnabled(true);
+                    }}
+                    aria-pressed={isWeatherToolOpen}
+                    aria-label={isWeatherToolOpen ? 'Close weather tool' : 'Open weather tool'}
+                    title={isWeatherToolOpen ? 'Close weather tool' : 'Open weather tool'}
+                  >
+                    <CloudSun className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={isLSTToolOpen ? 'default' : 'outline'}
+                    className="h-9 w-9 shrink-0 p-0"
+                    onClick={() => {
+                      if (!isLSTToolOpen) {
+                        setLSTPanelPosition(null);
+                      }
+                      setIsLSTToolOpen((current) => !current);
+                      setLSTLayerEnabled(true);
+                    }}
+                    aria-pressed={isLSTToolOpen}
+                    aria-label={isLSTToolOpen ? 'Close LST tool' : 'Open LST tool'}
+                    title={isLSTToolOpen ? 'Close LST tool' : 'Open LST tool'}
+                  >
+                    <ThermometerSun className="h-4 w-4" />
+                  </Button>
+                </div>
 
                 <div data-tour="map-tools" className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">
                   <Button
@@ -2662,11 +3271,180 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             </div>
           </div>
 
+          {isWeatherToolOpen ? (
+            <div
+              ref={weatherPanelLayerRef}
+              className="weather-panel-layer pointer-events-none absolute inset-0 z-[1100]"
+            >
+              <div
+                ref={weatherPanelRef}
+                className={cn(
+                  'weather-panel-floating pointer-events-auto absolute',
+                  weatherPanelPosition ? 'weather-panel-floating-positioned' : 'weather-panel-floating-default'
+                )}
+                style={
+                  weatherPanelPosition
+                    ? {
+                        left: `${weatherPanelPosition.left}px`,
+                        top: `${weatherPanelPosition.top}px`,
+                      }
+                    : undefined
+                }
+              >
+                <WeatherToolPanel
+                  className="weather-panel-card"
+                  date={weatherDate}
+                  options={weatherOptions}
+                  layerEnabled={weatherLayerEnabled}
+                  loading={weatherLoading}
+                  error={weatherError}
+                  records={selectedWeatherRecords}
+                  emptyMessage={weatherPanelEmptyMessage}
+                  scopeLabel="Site"
+                  lastUpdatedAt={weatherUpdatedAt}
+                  sampleDateOptions={weatherSampleDateOptions}
+                  selectedAssetName={selectedTransformer?.txName || selectedTransformer?.mnemonic || ''}
+                  hourlyChartOpen={isWeatherHourlyChartOpen}
+                  hourlyChartCollapsed={isWeatherHourlyChartCollapsed}
+                  hourlyChartDisabled={!selectedTransformer}
+                  isDragging={isWeatherPanelDragging}
+                  dragHandleProps={{
+                    onPointerDown: handleWeatherPanelDragStart,
+                    onPointerMove: handleWeatherPanelDragMove,
+                    onPointerUp: handleWeatherPanelDragEnd,
+                    onPointerCancel: handleWeatherPanelDragEnd,
+                  }}
+                  onDateChange={setWeatherDate}
+                  onOptionChange={handleWeatherOptionChange}
+                  onLayerEnabledChange={setWeatherLayerEnabled}
+                  onSampleDateChange={handleWeatherSampleDateChange}
+                  onToggleHourlyChart={handleToggleWeatherHourlyChart}
+                  onRefresh={() => setWeatherRefreshKey((current) => current + 1)}
+                  onClose={() => {
+                    setIsWeatherToolOpen(false);
+                    setWeatherPanelPosition(null);
+                    setIsWeatherHourlyChartOpen(false);
+                    setIsWeatherHourlyChartCollapsed(false);
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {isLSTToolOpen ? (
+            <div
+              ref={lstPanelLayerRef}
+              className="lst-panel-layer pointer-events-none absolute inset-0 z-[1090]"
+            >
+              <div
+                ref={lstPanelRef}
+                className={cn(
+                  'lst-panel-floating pointer-events-auto absolute',
+                  lstPanelPosition ? 'lst-panel-floating-positioned' : 'lst-panel-floating-default'
+                )}
+                style={
+                  lstPanelPosition
+                    ? {
+                        left: `${lstPanelPosition.left}px`,
+                        top: `${lstPanelPosition.top}px`,
+                      }
+                    : undefined
+                }
+              >
+                <LSTToolPanel
+                  className="lst-panel-card"
+                  date={lstDate}
+                  compareDate={lstCompareDate}
+                  sourceId={lstSourceId}
+                  sources={LST_LAYER_SOURCE_OPTIONS}
+                  layerEnabled={lstLayerEnabled}
+                  compareEnabled={lstCompareEnabled}
+                  opacity={lstOpacity}
+                  splitPosition={lstCompareSplit}
+                  arcgisServiceUrl={lstArcgisServiceUrl}
+                  arcgisToken={lstArcgisToken}
+                  arcgisRasterFunction={lstArcgisRasterFunction}
+                  arcgisWindowDays={lstArcgisWindowDays}
+                  sampleDateOptions={weatherSampleDateOptions}
+                  selectedAssetName={selectedTransformer?.txName || selectedTransformer?.mnemonic || ''}
+                  isDragging={isLSTPanelDragging}
+                  dragHandleProps={{
+                    onPointerDown: handleLSTPanelDragStart,
+                    onPointerMove: handleLSTPanelDragMove,
+                    onPointerUp: handleLSTPanelDragEnd,
+                    onPointerCancel: handleLSTPanelDragEnd,
+                  }}
+                  onDateChange={handleLSTDateChange}
+                  onCompareDateChange={handleLSTCompareDateChange}
+                  onSourceChange={handleLSTSourceChange}
+                  onLayerEnabledChange={setLSTLayerEnabled}
+                  onCompareEnabledChange={setLSTCompareEnabled}
+                  onOpacityChange={handleLSTOpacityChange}
+                  onSplitPositionChange={handleLSTCompareSplitChange}
+                  onArcgisServiceUrlChange={setLSTArcgisServiceUrl}
+                  onArcgisTokenChange={setLSTArcgisToken}
+                  onArcgisRasterFunctionChange={setLSTArcgisRasterFunction}
+                  onArcgisWindowDaysChange={handleLSTArcgisWindowDaysChange}
+                  onSampleDateChange={handleLSTSampleDateChange}
+                  onUsePreviousYear={handleUsePreviousLSTYear}
+                  onRefresh={() => setLSTRefreshKey((current) => current + 1)}
+                  onClose={() => {
+                    setIsLSTToolOpen(false);
+                    setLSTPanelPosition(null);
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {isLSTCompareVisible ? (
+            <div
+              className="lst-compare-split-indicator pointer-events-none absolute inset-y-0 z-[880]"
+              style={{ left: `${lstCompareSplit}%` }}
+              aria-hidden="true"
+            >
+              <span className="lst-compare-map-label lst-compare-map-label-left">{lstCompareDate}</span>
+              <span className="lst-compare-map-label lst-compare-map-label-right">{lstDate}</span>
+            </div>
+          ) : null}
+
+          {isWeatherHourlyChartOpen ? (
+            <WeatherHourlyChart
+              collapsed={isWeatherHourlyChartCollapsed}
+              loading={weatherHourlyLoading}
+              error={weatherHourlyError}
+              series={weatherHourlySeries}
+              assetName={selectedTransformer?.txName || selectedTransformer?.mnemonic || ''}
+              siteName={selectedTransformer?.siteName || ''}
+              date={weatherDate}
+              onToggleCollapsed={() => setIsWeatherHourlyChartCollapsed((current) => !current)}
+              onClose={() => {
+                setIsWeatherHourlyChartOpen(false);
+                setIsWeatherHourlyChartCollapsed(false);
+              }}
+            />
+          ) : null}
+
           <div className="app-map-region w-full">
             <MapContainer center={mapCenter} zoom={mapZoom} className="h-full w-full" zoomControl={false}>
               <TileLayer attribution={activeBaseLayer.attribution} url={activeBaseLayer.url} />
               {mapBaseLayer === 'hybrid' ? (
                 <TileLayer attribution={SATELLITE_LABELS_LAYER.attribution} url={SATELLITE_LABELS_LAYER.url} />
+              ) : null}
+              {isLSTOverlayVisible ? (
+                <LSTMapLayer
+                  date={lstDate}
+                  compareDate={lstCompareDate}
+                  sourceId={lstSourceId}
+                  compareEnabled={lstCompareEnabled}
+                  opacity={lstOpacity}
+                  splitPosition={lstCompareSplit}
+                  refreshKey={lstRefreshKey}
+                  arcgisServiceUrl={lstArcgisServiceUrl}
+                  arcgisToken={lstArcgisToken}
+                  arcgisRasterFunction={lstArcgisRasterFunction}
+                  arcgisWindowDays={lstArcgisWindowDays}
+                />
               ) : null}
               <MapUpdater center={mapCenter} zoom={mapZoom} />
               <MapRefCapture mapRef={leafletMapRef} />
@@ -2699,6 +3477,14 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 onDeleteFloorPlan={handleDeleteFloorPlan}
                 onDraftVertexMove={handleFloorDraftVertexMove}
               />
+              {isWeatherOverlayVisible ? (
+                <WeatherMapLayer
+                  records={weatherRecords}
+                  options={weatherOptions}
+                  selectedRecordId={selectedTransformer?.id ?? null}
+                  onSelectRecord={handleWeatherRecordSelect}
+                />
+              ) : null}
               {geoSearchSelection?.position ? (
                 <Marker position={geoSearchSelection.position} icon={geoSearchIcon}>
                   <Popup className="geo-search-popup">

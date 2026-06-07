@@ -82,6 +82,7 @@ export function DatePicker({
   disabled = false,
   placeholder = 'Pick a date',
   className,
+  triggerClassName,
 }) {
   const today = startOfDay(new Date());
   const selected = parseDate(value);
@@ -169,6 +170,7 @@ export function DatePicker({
             : 'cursor-pointer text-[var(--foreground)] hover:bg-[var(--card-muted)]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
           'focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]',
+          triggerClassName,
         )}
       >
         <Calendar className="h-4 w-4 shrink-0 text-[var(--muted)]" />

@@ -4,6 +4,53 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 4.0.1 - Weather And LST Intelligence Update
+
+Version 4.0.1 adds an Open-Meteo weather workflow for oil sampling context, frontend-only NASA GIBS land surface temperature and urban heat overlays, plus asset visibility improvements for the sidebar hierarchy.
+
+### Weather Tool
+
+- Added an icon-only Weather tool to the map toolbar.
+- Added Open-Meteo archive/forecast lookup for selected historical or current dates.
+- Weather panel opens on the map as a draggable bottom-right overlay.
+- Weather history is scoped to the selected site only, instead of listing every weather asset in the modal.
+- Sample date dropdown now uses the selected transformer's oil test dates and automatically updates the weather date.
+- Weather lookup defaults to 12:00 PM for the selected date.
+- Weather fields now include Temperature, Humidity, Rain, Condition, Wind speed, and Dewpoint.
+- Weather map overlay can be toggled independently from the panel.
+
+### Hourly Weather Chart
+
+- Added a collapsible bottom map drawer showing every hour from 12 AM until 11 PM.
+- Chart displays temperature, dewpoint, and humidity trends for the selected site/date.
+- Chart drawer is draggable and uses a fixed content box without vertical panel scrolling.
+- Added cursor-following tooltip showing Temp, Dewpoint, Humidity, time, and condition.
+- Hourly chips now show AM/PM time, temperature, and weather status icons such as Sunny, Cloudy, Rain, Drizzle, Fog, Storm, and Snow.
+
+### Land Surface Temperature And Urban Heat
+
+- Added an icon-only Land Surface Temperature tool beside the Weather tool in the map toolbar.
+- Added public NASA GIBS MODIS Terra/Aqua day/night LST overlays for date-based regional heat context.
+- Added public NASA GIBS VIIRS SNPP and NOAA-20 day/night LST overlays.
+- Added static NASA GIBS 2013 Urban Heat Island summer day and summer night overlays.
+- Added LST opacity control, date selection, sample-date shortcut, and split before/after comparison for daily LST layers.
+- Static UHI layers disable date/sample/compare controls because they are fixed 2013 summer heat products.
+- LST and UHI overlays run frontend-only through public NASA GIBS WMTS layers, with no Esri token or backend service required.
+
+### Sidebar And Asset Visibility
+
+- Improved company/floor asset counts so visible assets and assigned assets are clearer.
+- Added visibility labels such as `visible/assigned` when Supabase permissions or filters hide assigned assets.
+- Improved hierarchy messaging for floors with assigned assets that are not visible to the current account.
+
+### Weather Notes
+
+- Weather data is provided by Open-Meteo using the `openmeteo` npm package.
+- Open-Meteo may return `Minutely API request limit exceeded`; wait one minute and refresh the weather panel if this happens.
+- LST and UHI imagery is provided by NASA GIBS public WMTS services.
+
+---
+
 ## 🏆 Version 4.0 — Major Release
 
 > **The biggest update since the app launched.** Version 4.0 overhauls the entire user experience — smooth motion animations everywhere, a new sidebar look, guided onboarding tour, SOP workflow, smarter date and dropdown controls, transformer comparison, floor plan and company boundary drawing, and a clean app icon.
@@ -341,6 +388,7 @@ npm run build
 - **[SUPABASE_SETUP.md](SUPABASE_SETUP.md)** - Complete Supabase setup guide
 - **[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)** - How the app uses Supabase
 - **[API_REFERENCE.md](API_REFERENCE.md)** - Service functions reference
+- **[CHANGELOG.md](CHANGELOG.md)** - Release notes and version history
 
 ## 🆚 Comparison with LocalStorage Version
 
@@ -368,7 +416,7 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 4.0.0 (Supabase Edition)  
+**Version**: 4.0.1 (Supabase Edition)  
 **Last Updated**: June 2026  
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  

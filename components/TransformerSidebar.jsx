@@ -116,6 +116,34 @@ function getCompanyGroupAssets(companyGroup) {
   return dedupeAndSortTransformers([...floorAssets, ...(companyGroup.ungroupedTransformers || [])]);
 }
 
+function countAssignedTransformerIds(floorPlan) {
+  return new Set((floorPlan?.transformerIds || []).filter(Boolean).map(String)).size;
+}
+
+function countCompanyAssignedAssets(companyGroup) {
+  const assignedIds = new Set();
+  companyGroup.floorPlans.forEach((floorPlan) => {
+    (floorPlan.transformerIds || []).forEach((transformerId) => {
+      if (transformerId) {
+        assignedIds.add(String(transformerId));
+      }
+    });
+  });
+  (companyGroup.ungroupedTransformers || []).forEach((transformer) => {
+    if (transformer?.id) {
+      assignedIds.add(String(transformer.id));
+    }
+  });
+  return assignedIds.size;
+}
+
+function formatAssetVisibilityLabel(visibleCount, assignedCount, noun = 'asset') {
+  if (assignedCount > visibleCount) {
+    return `${visibleCount}/${assignedCount} ${noun}s visible`;
+  }
+  return pluralize(visibleCount, noun);
+}
+
 function getFloorPlanAssets(floorPlan, transformers) {
   const transformerIds = new Set((floorPlan?.transformerIds || []).map(String));
   if (!transformerIds.size) {
@@ -1274,6 +1302,15 @@ function TransformerSidebar({
                           ) || companyGroup;
                         const companyAssets = getCompanyGroupAssets(sourceCompanyGroup);
                         const companyAssetCount = companyAssets.length;
+                        const companyAssignedAssetCount = countCompanyAssignedAssets(sourceCompanyGroup);
+                        const companyAssetLabel = formatAssetVisibilityLabel(
+                          companyAssetCount,
+                          companyAssignedAssetCount
+                        );
+                        const companyBadgeLabel =
+                          companyAssignedAssetCount > companyAssetCount
+                            ? `${companyAssetCount}/${companyAssignedAssetCount}`
+                            : companyAssetCount;
                         const companyBoundary = sourceCompanyGroup.companyBoundary || companyGroup.companyBoundary;
                         const isCompanyBoundarySelected = selectedCompanyBoundaryId === companyBoundary?.id;
 
@@ -1286,7 +1323,7 @@ function TransformerSidebar({
                                 openAssetGroupContextMenu(event, {
                                   typeLabel: 'Company/Parent',
                                   title: companyGroup.companyName,
-                                  subtitle: `${stateGroup.state} - ${pluralize(companyGroup.floorPlans.length, 'floor')} - ${pluralize(companyAssets.length, 'asset')}`,
+                                  subtitle: `${stateGroup.state} - ${pluralize(sourceCompanyGroup.floorPlans.length, 'floor')} - ${companyAssetLabel}`,
                                   assets: companyAssets,
                                 });
                               }}
@@ -1298,12 +1335,12 @@ function TransformerSidebar({
                                   {companyGroup.companyName}
                                 </p>
                                 <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">
-                                  {companyGroup.floorPlans.length} floors · {companyAssetCount} assets
+                                  {sourceCompanyGroup.floorPlans.length} floors - {companyAssetLabel}
                                 </p>
                               </div>
                               <div className="flex items-center gap-2">
                                 {companyBoundary ? <Badge variant={isCompanyBoundarySelected ? 'default' : 'outline'}>Main</Badge> : null}
-                                <Badge variant="secondary">{companyAssetCount}</Badge>
+                                <Badge variant="secondary">{companyBadgeLabel}</Badge>
                                 <ChevronDown
                                   className={`h-4 w-4 text-[var(--muted)] transition-transform duration-200 ${
                                     isCompanyExpanded ? 'rotate-180' : ''
@@ -1357,6 +1394,11 @@ function TransformerSidebar({
                                   const sourceFloorPlan =
                                     floorPlans.find((plan) => plan.id === floorPlan.id) || floorPlan;
                                   const floorAssets = getFloorPlanAssets(sourceFloorPlan, transformers);
+                                  const floorAssignedAssetCount = countAssignedTransformerIds(sourceFloorPlan);
+                                  const floorHasHiddenAssets = floorAssignedAssetCount > floorAssets.length;
+                                  const floorAssetLabel = floorHasHiddenAssets
+                                    ? `${floorPlan.transformers.length}/${floorAssignedAssetCount} transformers visible`
+                                    : `${pluralize(floorPlan.transformers.length, 'transformer')} inside`;
 
                                   return (
                                     <article
@@ -1365,7 +1407,7 @@ function TransformerSidebar({
                                         openAssetGroupContextMenu(event, {
                                           typeLabel: 'Area/Substation',
                                           title: floorPlan.name || 'Unnamed floor',
-                                          subtitle: `${floorPlan.companyName || companyGroup.companyName || 'Unknown company'} - ${floorPlan.state || stateGroup.state || 'State N/A'} - ${pluralize(floorAssets.length, 'asset')}`,
+                                          subtitle: `${floorPlan.companyName || companyGroup.companyName || 'Unknown company'} - ${floorPlan.state || stateGroup.state || 'State N/A'} - ${formatAssetVisibilityLabel(floorAssets.length, floorAssignedAssetCount)}`,
                                           assets: floorAssets,
                                         })
                                       }
@@ -1396,7 +1438,7 @@ function TransformerSidebar({
                                                 {floorPlan.name || 'Unnamed floor'}
                                               </p>
                                               <p className="text-xs text-[var(--muted)]">
-                                                {floorPlan.transformers.length} transformers inside
+                                                {floorAssetLabel}
                                               </p>
                                             </div>
                                           </div>
@@ -1463,7 +1505,9 @@ function TransformerSidebar({
                                             ))
                                           ) : (
                                             <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
-                                              No transformer is assigned to this floor yet.
+                                              {floorHasHiddenAssets
+                                                ? `${floorAssignedAssetCount} transformers are assigned in Supabase, but none are visible for this account.`
+                                                : 'No transformer is assigned to this floor yet.'}
                                             </p>
                                           )}
                                         </div>
