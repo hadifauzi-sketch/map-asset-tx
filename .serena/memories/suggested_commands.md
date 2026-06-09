@@ -1,38 +1,34 @@
----
-name: suggested_commands
-description: Commands to develop, build, and manage the project on Windows
-type: project
----
+# Suggested Commands
 
-# Suggested Commands (Windows / PowerShell)
-
-## Dev & Build
-```powershell
-npm run dev          # Start Vite dev server on http://localhost:3000
-npm run build        # Production build → dist/
-npm run preview      # Serve dist/ locally
+## Dev Workflow
+```
+npm run dev          # start Vite dev server → http://localhost:3000
+npm run build        # production build → dist/
+npm run preview      # serve dist/ locally
 ```
 
-## Supabase CLI (DB)
-```powershell
-npm run db:start     # supabase start (local Docker stack)
-npm run db:stop      # supabase stop
-npm run db:status    # supabase status
-npm run db:reset     # supabase db reset (re-run migrations + seed)
-npm run db:diff      # supabase db diff (generate migration from schema changes)
-npm run db:push      # supabase db push (apply migrations to remote)
-npm run db:pull      # supabase db pull (pull remote schema)
-npm run db:link      # link to project rgtwfmhnnmkbsdjgtxjb
+## Supabase / DB
+```
+npm run db:start     # start local Supabase stack (Docker required)
+npm run db:stop      # stop local stack
+npm run db:status    # check local stack status
+npm run db:reset     # reset local DB and re-run all migrations
+npm run db:diff      # diff local schema against remote
+npm run db:push      # apply pending migrations to remote
+npm run db:pull      # pull remote schema changes
+npm run db:link      # link to remote project ref rgtwfmhnnmkbsdjgtxjb
 ```
 
-## File Search (Windows alternatives to unix commands)
+## Git (Windows PowerShell)
 ```powershell
-Get-ChildItem -Recurse -Filter "*.jsx"     # find files
-Get-Content path\to\file.js                # read file
-rg "pattern"                               # ripgrep search (preferred)
-rg --files                                 # list tracked files
+git status
+git log --oneline -10
+git add <files>
+git commit -m "message"
 ```
 
-## Notes
-- No lint or test script; `npm run build` is the minimum verification step
-- `.env.local` required at project root with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+## Windows-Specific Notes
+- Shell is PowerShell; use `$env:VAR` not `export VAR=`
+- Path separator is `\`; double-quote paths with spaces
+- `ls` aliases to `Get-ChildItem` in PS (different flags than Unix)
+- No test runner configured — no `npm test` script

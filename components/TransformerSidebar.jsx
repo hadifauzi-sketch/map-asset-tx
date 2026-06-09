@@ -389,6 +389,7 @@ function TransformerSidebar({
   onCloseMobile,
   collapsed,
   onToggleCollapsed,
+  searchFocusRequest = 0,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -409,6 +410,7 @@ function TransformerSidebar({
   const [compareAssetIds, setCompareAssetIds] = useState([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [isMobileTopHidden, setIsMobileTopHidden] = useState(false);
+  const searchInputRef = useRef(null);
   const lastSidebarScrollTopRef = useRef(0);
 
   const hierarchy = useMemo(
@@ -553,6 +555,19 @@ function TransformerSidebar({
     }
     window.localStorage.setItem(EXPANDED_AREAS_STORAGE_KEY, JSON.stringify(expandedFloorPlans));
   }, [expandedFloorPlans]);
+
+  useEffect(() => {
+    if (!searchFocusRequest || typeof window === 'undefined') {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [searchFocusRequest]);
 
   useEffect(() => {
     const availableIds = new Set(transformers.map((transformer) => String(transformer.id)));
@@ -1054,7 +1069,7 @@ function TransformerSidebar({
             </div>
           </div>
 
-          <div data-tour="quick-stats" className="mt-3 grid grid-cols-4 gap-1.5 lg:mt-4 lg:grid-cols-2 lg:gap-2">
+          <div data-tour="quick-stats" className="mt-2.5 grid grid-cols-4 gap-1 lg:mt-3 lg:grid-cols-2 lg:gap-1.5">
             {quickStats.map((stat) => {
               const Icon = stat.icon;
               const isAssetsStat = stat.key === 'assets';
@@ -1062,16 +1077,16 @@ function TransformerSidebar({
               const isCompanyParentStat = stat.key === 'companies';
               const isStatesStat = stat.key === 'states';
               const cardBody = (
-                <CardContent className="flex min-h-[58px] flex-col justify-center gap-1 px-2 py-2 lg:block lg:min-h-0 lg:space-y-1.5 lg:p-3">
-                  <div className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)] lg:h-7 lg:w-7">
-                    <Icon className="h-3.5 w-3.5" />
+                <CardContent className="flex min-h-[52px] flex-col justify-center gap-1 px-2 py-1.5 lg:block lg:min-h-0 lg:space-y-1 lg:p-2.5">
+                  <div className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)] lg:h-6 lg:w-6">
+                    <Icon className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
                   </div>
                   <div>
                     <p className="text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)] lg:text-[11px] lg:tracking-[0.12em]">
                       <span className="lg:hidden">{getCollapsedStatLabel(stat.key, stat.label)}</span>
                       <span className="hidden lg:inline">{stat.label}</span>
                     </p>
-                    <p className="text-base font-semibold leading-none lg:text-xl">{stat.value}</p>
+                    <p className="text-base font-semibold leading-none lg:text-lg">{stat.value}</p>
                   </div>
                 </CardContent>
               );
@@ -1163,6 +1178,7 @@ function TransformerSidebar({
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
                 <Input
+                  ref={searchInputRef}
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                   onFocus={() => setIsSearchFocused(true)}

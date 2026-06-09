@@ -57,7 +57,12 @@
       "Bash(grep -E \"\\(//|/\\\\*|feature|Feature|add |Add |new |New |modal|Modal|tour|Tour|SOP|sop|onboard|Onboard|tooltip|Tooltip|import|Import|document|Document|DGA|dga|sign|Sign|role|Role|boundary|Boundary|gallery|Gallery|search|Search|compare|Compare\\)\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git tag *)",
+      "Bash(dir \"f:\\\\Project Lab\\\\Asset Tx Map V2\")",
+      "Bash(Get-ChildItem \"F:\\\\Project Lab\\\\Asset Tx Map V2\")",
+      "Bash(Select-Object Name, LastWriteTime)",
+      "Bash(Format-Table -AutoSize)"
     ]
   },
   "enabledMcpjsonServers": [

@@ -435,7 +435,7 @@ export default function DGAAnalysisModal({ initialGases, initialTransformer }) {
         ))}
       </div>
 
-      <div className="flex-1 space-y-4 p-4 md:p-5">
+      <div className="flex-1 overflow-y-auto overscroll-contain space-y-4 p-4 md:p-5">
 
         {/* ══════════ INPUT TAB ══════════ */}
         {activeTab === 'input' && (

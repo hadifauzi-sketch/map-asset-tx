@@ -3,7 +3,9 @@ import ReactDOM from 'react-dom';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-function Combobox({ value, onValueChange, options = [], placeholder = 'Select...', className, disabled = false }) {
+const COMBOBOX_PORTAL_Z_INDEX = 30000;
+
+const Combobox = React.forwardRef(function Combobox({ value, onValueChange, options = [], placeholder = 'Select...', className, disabled = false }, ref) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef(null);
@@ -29,7 +31,7 @@ function Combobox({ value, onValueChange, options = [], placeholder = 'Select...
   const selected = options.find(o => o.value === value);
 
   return (
-    <div className={cn('relative', className)}>
+    <div ref={ref} className={cn('relative', className)}>
       <button
         ref={triggerRef}
         type="button"
@@ -59,12 +61,12 @@ function Combobox({ value, onValueChange, options = [], placeholder = 'Select...
         <>
           {/* Backdrop — closes dropdown when clicking outside */}
           <div
-            style={{ position: 'fixed', inset: 0, zIndex: 9998, pointerEvents: 'auto' }}
+            style={{ position: 'fixed', inset: 0, zIndex: COMBOBOX_PORTAL_Z_INDEX - 1, pointerEvents: 'auto' }}
             onClick={() => setOpen(false)}
           />
           {/* Dropdown list */}
           <div
-            style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999, pointerEvents: 'auto' }}
+            style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: COMBOBOX_PORTAL_Z_INDEX, pointerEvents: 'auto' }}
             className="rounded-md border border-[color:var(--border)] bg-[var(--card)] shadow-[var(--shadow-dialog)] overflow-hidden"
           >
             <ul role="listbox" className="max-h-60 overflow-y-auto py-1">
@@ -96,6 +98,6 @@ function Combobox({ value, onValueChange, options = [], placeholder = 'Select...
       )}
     </div>
   );
-}
+});
 
 export { Combobox };

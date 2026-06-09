@@ -454,7 +454,7 @@ function CompareTX({ open, assets = [], groupTitle = 'Selected transformers', gr
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (!nextOpen ? onClose?.() : null)}>
-      <DialogContent className="max-h-[92vh] w-[min(96vw,1180px)] max-w-none overflow-hidden rounded-xl">
+      <DialogContent className="mobile-form-dialog max-h-[92vh] w-[min(96vw,1180px)] max-w-none overflow-hidden rounded-xl">
         <DialogHeader className="bg-[linear-gradient(135deg,var(--card)_0%,var(--card-muted)_100%)] pr-14">
           <div className="flex flex-col gap-3">
             <div className="min-w-0">

@@ -37,6 +37,7 @@ import AppOnboardingTour, { readTourEnabled, writeTourEnabled } from './componen
 import SOPFlowchartDialog from './components/SOPFlowchartDialog';
 import TransformerDetailModal from './components/TransformerDetailModal';
 import GeoSearchControl from './components/GeoSearchControl';
+import MapLocationContextMenu from './components/MapLocationContextMenu';
 import LSTMapLayer from './components/LSTMapLayer';
 import LSTToolPanel from './components/LSTToolPanel';
 import WeatherHourlyChart from './components/WeatherHourlyChart';
@@ -117,6 +118,15 @@ const DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY = 'transformer-asset-map-desktop-sid
 const ASSET_OWNER_FILTER_STORAGE_KEY = 'transformer-asset-map-owner-filter';
 const SESSION_ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
 const IDLE_SIGN_OUT_MESSAGE = 'Session expired after 8 hours of inactivity. Please sign in again.';
+
+function formatMapCoordinate(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(6) : '-';
+}
+
+function buildGoogleMapsLocationUrl(lat, lng) {
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
+}
 
 const MAP_BASE_LAYERS = {
   streets: {
@@ -503,6 +513,8 @@ function App() {
   const [isDraggable, setIsDraggable] = useState(false);
   const [isLocationRegisterOpen, setIsLocationRegisterOpen] = useState(false);
   const [geoSearchSelection, setGeoSearchSelection] = useState(null);
+  const [mapContextMenu, setMapContextMenu] = useState(null);
+  const [sidebarSearchFocusRequest, setSidebarSearchFocusRequest] = useState(0);
   const [isWeatherToolOpen, setIsWeatherToolOpen] = useState(false);
   const [weatherLayerEnabled, setWeatherLayerEnabled] = useState(true);
   const [weatherDate, setWeatherDate] = useState(() => getLocalDateInput());
@@ -654,6 +666,30 @@ function App() {
     });
     return false;
   }, [canEditAssets, showAppNotice]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return undefined;
+    }
+
+    const preventUnhandledBrowserContextMenu = (event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('input, textarea, select, [contenteditable="true"], [data-allow-browser-context-menu="true"]')
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+    };
+
+    document.addEventListener('contextmenu', preventUnhandledBrowserContextMenu);
+
+    return () => {
+      document.removeEventListener('contextmenu', preventUnhandledBrowserContextMenu);
+    };
+  }, [currentUser]);
 
   const activateSidebarInteraction = () => {
     setIsSidebarInteracting(true);
@@ -1625,6 +1661,8 @@ function App() {
   };
 
   const handleMapClick = (event) => {
+    setMapContextMenu(null);
+
     if (!canEditAssets) {
       return;
     }
@@ -1663,6 +1701,130 @@ function App() {
     setEditingTransformer(newTransformer);
     setIsModalOpen(true);
     setIsAddMode(false);
+  };
+
+  const handleMapContextMenu = (event) => {
+    event.originalEvent?.preventDefault?.();
+    event.originalEvent?.stopPropagation?.();
+
+    if (!event.latlng) {
+      return;
+    }
+
+    setMapContextMenu({
+      x: event.originalEvent?.clientX ?? 0,
+      y: event.originalEvent?.clientY ?? 0,
+      lat: event.latlng.lat,
+      lng: event.latlng.lng,
+    });
+  };
+
+  const handleMapContextShowAddress = () => {
+    if (!mapContextMenu) {
+      return;
+    }
+
+    const latitude = formatMapCoordinate(mapContextMenu.lat);
+    const longitude = formatMapCoordinate(mapContextMenu.lng);
+    setMapContextMenu(null);
+    showAppNotice({
+      variant: 'info',
+      title: 'Map location',
+      description: `Latitude ${latitude}, longitude ${longitude}`,
+      detail: `${latitude}, ${longitude}`,
+      contextLabel: 'Show address',
+      actionLabel: 'Close',
+    });
+  };
+
+  const handleMapContextAddAsset = () => {
+    if (!mapContextMenu || !ensureCanEditAssets()) {
+      return;
+    }
+
+    const position = [mapContextMenu.lat, mapContextMenu.lng];
+    setMapContextMenu(null);
+    cancelFloorPlanDrawing();
+    cancelCompanyBoundaryDrawing();
+    setIsLocationRegisterOpen(false);
+    setIsAddMode(false);
+    setSelectedFloorPlanId(null);
+    setSelectedCompanyBoundaryId(null);
+    setEditingTransformer(createTransformerDraft({ position }));
+    setIsModalOpen(true);
+  };
+
+  const handleMapContextOpenGoogleMaps = () => {
+    if (!mapContextMenu || typeof window === 'undefined') {
+      return;
+    }
+
+    const url = buildGoogleMapsLocationUrl(mapContextMenu.lat, mapContextMenu.lng);
+    setMapContextMenu(null);
+    const openedWindow = window.open(url, '_blank', 'noopener,noreferrer');
+
+    if (!openedWindow) {
+      showAppNotice({
+        variant: 'warning',
+        title: 'Unable to open Google Maps',
+        description: 'Your browser blocked the new tab.',
+        detail: url,
+        contextLabel: 'Google Maps',
+        actionLabel: 'Close',
+      });
+    }
+  };
+
+  const handleMapContextShareLocation = async () => {
+    if (!mapContextMenu || typeof window === 'undefined') {
+      return;
+    }
+
+    const latitude = formatMapCoordinate(mapContextMenu.lat);
+    const longitude = formatMapCoordinate(mapContextMenu.lng);
+    const url = buildGoogleMapsLocationUrl(mapContextMenu.lat, mapContextMenu.lng);
+    const text = `Transformer map location: ${latitude}, ${longitude}`;
+    setMapContextMenu(null);
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Map location',
+          text,
+          url,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      showAppNotice({
+        variant: 'success',
+        title: 'Location link copied',
+        description: 'The Google Maps link is ready to share.',
+        detail: url,
+        contextLabel: 'Share location',
+        actionLabel: 'Close',
+      });
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
+
+      showAppNotice({
+        variant: 'error',
+        title: 'Unable to share location',
+        description: 'The app could not share or copy this map link.',
+        detail: err?.message || url,
+        contextLabel: 'Share location',
+      });
+    }
+  };
+
+  const handleMapContextSearchAsset = () => {
+    setMapContextMenu(null);
+    setSidebarOpen(true);
+    setIsDesktopSidebarCollapsed(false);
+    setSidebarSearchFocusRequest((current) => current + 1);
   };
 
   const syncImportedReportForTransformer = async (transformerId, importSession, existingOilTests = []) => {
@@ -2768,6 +2930,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             onCloseMobile={() => setSidebarOpen(false)}
             collapsed={isDesktopSidebarCollapsed}
             onToggleCollapsed={() => setIsDesktopSidebarCollapsed((current) => !current)}
+            searchFocusRequest={sidebarSearchFocusRequest}
           />
         </aside>
 
@@ -2783,8 +2946,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         <main data-tour="map-container" className="app-main relative min-w-0 flex-1 overflow-hidden">
           <div className="app-top-overlay absolute inset-x-0 top-0 z-[1000] pointer-events-none">
             <div className="flex items-start justify-between gap-3">
-              <div className="pointer-events-auto flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                {/* On mobile: hamburger + base-layer selector share one row to save vertical space */}
+              <div className="pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center gap-2">
                 <div className="flex items-center gap-2">
                   {!sidebarOpen ? (
                     <div className="flex items-center gap-2 lg:hidden">
@@ -3449,7 +3611,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
               <MapUpdater center={mapCenter} zoom={mapZoom} />
               <MapRefCapture mapRef={leafletMapRef} />
               <MapInteractionController sidebarActive={isSidebarInteracting} />
-              <MapClickHandler onMapClick={handleMapClick} />
+              <MapClickHandler onMapClick={handleMapClick} onMapContextMenu={handleMapContextMenu} />
               <CompanyBoundaryMapLayer
                 companyBoundaries={companyBoundaries}
                 floorPlans={floorPlans}
@@ -3516,6 +3678,19 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
               )}
             </MapContainer>
           </div>
+
+          {mapContextMenu ? (
+            <MapLocationContextMenu
+              menu={mapContextMenu}
+              canAddAsset={canEditAssets}
+              onClose={() => setMapContextMenu(null)}
+              onShowAddress={handleMapContextShowAddress}
+              onAddAsset={handleMapContextAddAsset}
+              onOpenGoogleMaps={handleMapContextOpenGoogleMaps}
+              onShareLocation={handleMapContextShareLocation}
+              onSearchAsset={handleMapContextSearchAsset}
+            />
+          ) : null}
 
           {companyBoundaryDraft ? (
             <div className="app-bottom-banner pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center">
@@ -3723,7 +3898,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       />
 
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-[960px]">
+        <DialogContent className="mobile-form-dialog max-w-[960px]">
           <DialogHeader>
             <div className="flex flex-col gap-3 pr-8 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -3772,7 +3947,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             </div>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex-shrink-0 space-y-4 p-4 sm:p-5">
+            <div className="flex-shrink-0 max-h-[45vh] overflow-y-auto overscroll-contain space-y-4 p-4 sm:max-h-none sm:p-5">
               <Card>
                 <CardHeader>
                   <CardTitle>Asset owner visibility</CardTitle>
@@ -3873,7 +4048,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
               )}
             </div>
             {isAdmin && (
-              <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4 sm:px-5 sm:pb-5">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-5 sm:pb-5">
                 <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
               </div>
             )}
@@ -4524,10 +4699,13 @@ function MapRefCapture({ mapRef }) {
   return null;
 }
 
-function MapClickHandler({ onMapClick }) {
+function MapClickHandler({ onMapClick, onMapContextMenu }) {
   useMapEvents({
     click: (event) => {
       onMapClick(event);
+    },
+    contextmenu: (event) => {
+      onMapContextMenu?.(event);
     },
   });
 

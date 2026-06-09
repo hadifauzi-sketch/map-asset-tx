@@ -278,7 +278,7 @@ export default function DuvalAnalysisModal({ initialGases, initialTransformer })
 
   // ========== RENDER ==========
   return (
-    <div style={{ minHeight: '100%', background: '#0a0a0a', fontFamily: 'system-ui, sans-serif', color: '#e0e0e0' }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', background: '#0a0a0a', fontFamily: 'system-ui, sans-serif', color: '#e0e0e0' }}>
 
       {/* Tab bar */}
       <div style={{ background: '#1a1a1a', borderBottom: '1px solid #333' }}>
@@ -365,12 +365,12 @@ export default function DuvalAnalysisModal({ initialGases, initialTransformer })
       </div>
 
       {/* Content */}
-      <div style={{ padding: '24px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '24px' }}>
 
         {/* =============== INPUT TAB =============== */}
         {activeTab === 'input' && (
           <div style={{ display: 'grid', gap: '24px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(440px, 100%), 1fr))', gap: '24px' }}>
 
               {/* Transformer Info */}
               <Card>
@@ -677,7 +677,7 @@ export default function DuvalAnalysisModal({ initialGases, initialTransformer })
             </Card>
 
             {/* Rogers + CO2/CO */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '20px' }}>
               <Card>
                 <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px', color: '#e0e0e0' }}>📐 Rogers Ratios</h3>
                 {rogersRatios ? (

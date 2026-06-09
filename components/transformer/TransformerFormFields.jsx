@@ -258,15 +258,9 @@ function TransformerFormFields({
         name="paperType"
         value={formData.paperType || ''}
         onChange={onChange}
+        options={[{ value: '', label: 'Not specified' }, ...PAPER_TYPE_OPTIONS]}
         hint="Insulation paper used inside the transformer."
-      >
-        <option value="">Not specified</option>
-        {PAPER_TYPE_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </SelectField>
+      />
     </section>
   );
 }

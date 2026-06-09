@@ -1,68 +1,42 @@
----
-name: core
-description: Top-level source map and project-wide invariants for Asset Tx Map V2
-type: project
----
+# Core — Asset Tx Map V2
 
-# Asset Tx Map V2 — Core
-
-Transformer substation asset management SPA (v3.9). Single repo, frontend-only; all persistence via Supabase (PostgreSQL + Storage).
+## App Identity
+Transformer substation asset management system. Single-page React app (SPA, no routing). v4.0.1.
 
 ## Entry Points
-- `main.jsx` — renders `<App>` or `<SOPStandalonePage>` based on `window.location.hash === '#sop'`
-- `App.jsx` — root component; owns map state, transformer list, DGA trend charts, auth idle sign-out, theme
-- `index.html` → Vite dev server on port 3000
+- `index.html` → `main.jsx` → `App.jsx`
+- `App.jsx` is the monolithic state hub: all transformer/map/modal/auth state lives here.
 
-## Directory Map
+## Top-Level Source Map
 ```
-App.jsx                     Root; map, markers, sidebar orchestration
-App.css                     CSS variables (--card, --primary, --foreground, etc.) + global styles
-main.jsx                    ReactDOM entry point
-lib/
-  supabaseClient.js         Supabase client (env: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)
-  transformerService.js     Transformer CRUD
-  oilTestService.js         Oil test CRUD
-  documentService.js        File upload/download (bucket: transformer-documents)
-  floorPlanService.js       Floor plan CRUD
-  companyBoundaryService.js Company boundary CRUD
-  locationService.js        Location register CRUD
-  dga/                      DGA analysis: diagnostics, Duval geometry, heptagon analysis
-  dga-import/               DGA import from PDF/Excel/image
-  standards/                IEC 60422, 61203, 62975 oil quality profiles
-  transformer-import/       Transformer PDF import
-  appMetadata.js            App version/metadata
-  utils.js                  General utilities
-components/
-  TransformerSidebar.jsx    Asset list panel
-  TransformerMarker.jsx     Leaflet marker
-  TransformerModal.jsx      Add/edit form
-  TransformerDetailModal.jsx Asset detail view
-  OilTestSection.jsx        Oil test management tab
-  DocumentSection.jsx       Document management tab
-  DGAWorkbenchModal.jsx     Full DGA workbench
-  TransformerHealthDashboard.jsx Health overview
-  CompanyBoundaryMapLayer.jsx  Company polygon drawing
-  FloorPlanMapLayer.jsx     Floor plan overlay
-  compareTX.jsx             Multi-asset DGA/oil compare view
-  Authentic/                sign-in, register, roles
-  dga-workbench/            AnalysisBoard, DuvalDiagram, DgaTrendingSection
-  standards/                DgaAssessmentPanel, Iec60422Panel, SupplementaryOilReferencePanel
-  transformer/              TransformerFormFields, TransformerPdfImportPanel
-  ui/                       badge, button, card, dialog, input, switch, tabs, textarea (Radix-based)
+App.jsx                  — main state + event handlers; ~80+ imports
+App.css                  — all CSS (variables, global, component styles)
+components/              — all React components
+  ui/                    — shared primitives (Radix-based + custom)
+  Authentic/             — auth: sign-in.jsx, register.jsx, roles.jsx
+  dga-workbench/         — DGA analysis UI (AnalysisBoard, DuvalDiagram, DgaTrendingSection)
+  location-register/     — LocationRegisterModule
+  standards/             — oil standard panels (IEC 60422, DGA assessment, supplementary refs)
+  transformer/           — TransformerFormFields, TransformerPdfImportPanel
+lib/                     — service + utility layer (no React)
+  *Service.js            — Supabase CRUD per domain (transformer, oilTest, document, floorPlan, companyBoundary, location, weather, lst)
+  dga/                   — DGA logic (diagnostics, heptagon, duval geometry, appConfig)
+  dga-import/            — file import parsers (excel, pdf, image, shared)
+  standards/             — oil profile data (IEC 62975, 61203, 60422, modified ester, oilQuality)
+  transformer-import/    — transformerPdfImport
 supabase/
-  migrations/               All DB migrations (initial + incremental by date)
-  seed.sql                  Seed data
+  migrations/            — numbered SQL migrations (format: YYYYMMDDNNNNNN_description.sql)
+  seed.sql
 ```
 
 ## Key Invariants
-- No SSR; pure CSR SPA via Vite + React 18
-- Auth: custom Supabase auth with roles (`app_users` table, RLS policies); idle sign-out timer in App.jsx
-- Map: Leaflet + react-leaflet, default center Malaysia (3.139, 101.687), zoom 11
-- Data returned from Supabase services is transformed to camelCase before entering UI
-- CSS theming via variables in `App.css`; Tailwind 4 utility classes used throughout
-- DGA analysis uses IEC 60599 / Duval Triangle / Duval Pentagon / Roger's ratio methods
+- State flows one-way: `App.jsx` → props → children. No Redux/Zustand/Context for app state.
+- All Supabase calls go through `lib/*Service.js` — never call supabaseClient directly from components.
+- Malaysia-specific geography: `lib/malaysiaStates.js`.
+- Supabase project ref: `rgtwfmhnnmkbsdjgtxjb`.
+- Auth: custom session via `components/Authentic/sign-in.jsx`; roles in `roles.jsx`.
 
 ## Domain References
-- Oil test details and DGA logic: `mem:tech_stack` for library versions
-- Code style and naming: `mem:conventions`
-- DB schema: `supabase/migrations/` (chronological, named by date)
+- Oil analysis standards: `mem:tech_stack` for packages; `lib/standards/` for profile data
+- DB schema: read migration files in `supabase/migrations/` chronologically
+- UI components: `mem:conventions` for which primitive to use where

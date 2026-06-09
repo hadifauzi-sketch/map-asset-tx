@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, FileText, TestTubeDiagonal } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, Info, TestTubeDiagonal } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import {
@@ -20,6 +20,15 @@ const VARIANT_CONFIG = {
     panelClass:
       'bg-[linear-gradient(135deg,color-mix(in_srgb,var(--success-strong)_18%,var(--card)),var(--card)_55%,color-mix(in_srgb,var(--success-strong)_8%,var(--card)))]',
     detailClass: 'border-[color:var(--success-soft)] bg-[var(--success-soft)]/35 text-[var(--success-strong)]',
+  },
+  info: {
+    icon: Info,
+    badgeLabel: 'Information',
+    badgeVariant: 'default',
+    iconShellClass: 'bg-[var(--primary-soft)] text-[var(--primary-strong)]',
+    panelClass:
+      'bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_16%,var(--card)),var(--card)_55%,color-mix(in_srgb,var(--primary)_8%,var(--card)))]',
+    detailClass: 'border-[color:var(--primary-soft)] bg-[var(--primary-soft)]/35 text-[var(--primary-strong)]',
   },
   warning: {
     icon: AlertTriangle,

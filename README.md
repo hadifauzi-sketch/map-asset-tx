@@ -4,6 +4,54 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 4.1 - Map Right-Click & Mobile Polish
+
+Version 4.1 introduces a right-click map context menu for fast location actions, plus targeted mobile usability fixes across the Settings, DGA, Duval, and Compare dialogs. The sidebar quick-stats grid is also tightened so more content fits above the fold on smaller screens.
+
+### Map Right-Click Context Menu
+
+- Right-click anywhere on the map to open a location-aware context menu.
+- Menu header displays the latitude and longitude of the right-clicked point to six decimal places.
+- `Show address` — opens an info notice with the formatted coordinates for quick reference.
+- `Add asset TX here` — opens the transformer form pre-filled with the clicked coordinates (disabled in read-only mode).
+- `Open this on Google Maps` — launches the coordinate in a new browser tab on Google Maps.
+- `Share this location` — uses the native share sheet when available, otherwise copies the Google Maps link to the clipboard and confirms with a success notice.
+- `Search the Asset` — opens the sidebar (mobile or collapsed desktop) and auto-focuses the asset search input.
+- Menu closes on outside click, on Escape, or after any action runs.
+- Default browser context menu is suppressed on the map and app surfaces while signed in, but preserved on form inputs, textareas, dropdowns, and elements opted-in via `data-allow-browser-context-menu="true"`.
+
+### Sidebar
+
+- Asset search input now accepts a focus request from the map context menu and auto-selects existing text for fast replacement.
+- Quick-stats grid (Assets, Companies, Floors, States) uses tighter padding, smaller icon shells, and reduced typography so all four cards fit comfortably on small screens.
+
+### Notice Dialog
+
+- Added a new `info` notice variant with a primary-color icon shell and panel gradient, used by `Show address` and other neutral confirmations.
+
+### Combobox
+
+- `Combobox` now supports `forwardRef` so parent components can attach refs for focus, measurement, or scroll behaviour.
+- Dropdown portal z-index raised to 30000 so combobox menus always render above the map context menu and other overlays.
+
+### Mobile Scrolling Fixes
+
+- Settings dialog tagged as a mobile form dialog; the asset-owner visibility block now scrolls within a capped 45vh region instead of pushing the dialog off-screen.
+- Admin Roles section in Settings scrolls vertically when the user list is long.
+- DGA Analysis modal content area scrolls independently with overscroll containment.
+- Duval Analysis modal switches to a flex column layout with a scrollable content region; auto-fit grids use `minmax(min(440px, 100%), 1fr)` and `minmax(min(320px, 100%), 1fr)` to prevent horizontal overflow on narrow viewports.
+- Compare TX dialog tagged as a mobile form dialog so its content scrolls cleanly on phones.
+
+### Form Fields
+
+- Transformer add/edit form now drives the Paper Type selector through the shared `SelectField` `options` prop (including the `Not specified` placeholder) instead of inline `<option>` children, keeping the component API consistent across all selects.
+
+### Top Map Overlay
+
+- The mobile top bar consolidates the hamburger toggle, base-layer picker, and other quick controls into a single wrap-friendly row, saving vertical space on small screens.
+
+---
+
 ## Version 4.0.1 - Weather And LST Intelligence Update
 
 Version 4.0.1 adds an Open-Meteo weather workflow for oil sampling context, frontend-only NASA GIBS land surface temperature and urban heat overlays, plus asset visibility improvements for the sidebar hierarchy.
@@ -416,7 +464,7 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 4.0.1 (Supabase Edition)  
+**Version**: 4.1 (Supabase Edition)  
 **Last Updated**: June 2026  
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  

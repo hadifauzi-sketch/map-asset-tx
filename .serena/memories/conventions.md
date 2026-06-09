@@ -1,41 +1,42 @@
----
-name: conventions
-description: Code style, naming, and design patterns specific to Asset Tx Map V2
-type: project
----
-
 # Conventions
 
-## Component Style
-- Function components only (no class components)
-- Files: `.jsx` by default; only `DGAToolsV2.tsx` uses TypeScript
-- One component per file; file name matches default export
+## Component Rules
+- Functional components + hooks only; no class components.
+- All app-wide state lives in `App.jsx`; children receive props.
+- No global state library (Redux, Zustand, Context) for app state — props drill down.
+- `data-tour="<key>"` attributes on elements to register spotlight tour stops (see `AppOnboardingTour.jsx`).
 
-## Naming
-- Components: PascalCase (`TransformerSidebar`, `OilTestSection`)
-- Services / utilities in `lib/`: camelCase module files
-- CSS variables: kebab-case (`--card`, `--primary-foreground`)
-- Supabase column names: snake_case in DB; services map to camelCase for UI consumption
+## UI Primitives — Always Use These
+| Need | Component |
+|------|-----------|
+| Dropdown select | `components/ui/combobox.jsx` — replaces all `<select>` |
+| Date input | `components/ui/date-picker.jsx` — replaces all `<input type="date">` |
+| Action button tooltips | `<AppTooltip>` from `components/ui/app-tooltip.jsx` |
+| Dialogs/modals | `<Dialog>` from `components/ui/dialog.jsx` (Radix) |
+| Tabs | `components/ui/tabs.jsx` (Radix) |
+| Badges | `components/ui/badge.jsx` |
 
-## Styling
-- Tailwind 4 utility classes inline on JSX elements
-- Design tokens come from CSS variables in `App.css`; Tailwind uses `var(--token)` references
-- No CSS Modules; component-scoped styles handled via Tailwind or inline style props
+## Animation Pattern (framer-motion)
+- Modal enter: scale + fade in
+- Modal exit: slide out + fade
+- Collapsible panels: height animation + chevron rotation
 
-## State Management
-- No Redux/Zustand; all state via `useState`/`useEffect` in App.jsx or local component state
-- Supabase real-time not fully wired for live push; data re-fetched on relevant mutations
+## Service Layer
+- Supabase calls MUST go through `lib/*Service.js`; never import supabaseClient directly into components.
+- Each domain has one service file: `transformerService`, `oilTestService`, `documentService`, `floorPlanService`, `companyBoundaryService`, `locationService`, `weatherService`, `lstService`.
 
-## Data Layer
-- All DB access goes through service modules in `lib/` (not direct Supabase calls from components)
-- Services return camelCase objects; DB migrations use snake_case columns
-- Env-gated: `isSupabaseConfigured` flag from `lib/supabaseClient.js` guards calls
+## File Naming
+- Components: PascalCase `.jsx`
+- Lib utilities: camelCase `.js`
+- One `.tsx` exception: `components/DGAToolsV2.tsx`
 
-## UI Primitives
-- Shared low-level components in `components/ui/` (button, card, dialog, input, badge, switch, tabs, textarea)
-- Built on `@radix-ui` primitives; styled with Tailwind
+## DB Migrations
+- File format: `supabase/migrations/YYYYMMDDNNNNNN_description.sql`
+- Always write a new migration file; never edit existing ones.
 
-## DGA Domain
-- Duval Triangle, Duval Pentagon, Roger's Ratio, and IEC 60599 methods coexist
-- DGA assessment profiles live in `lib/standards/`
-- Per-transformer DGA method preferences are resolved in `App.jsx` via `resolveTransformerDgaPreferences`
+## DGA Analysis
+- Standards data lives in `lib/standards/`
+- Diagnostic logic in `lib/dga/diagnostics.js`
+- Heptagon geometry: `lib/dga/heptagonGeometry.js` + `heptagonAnalysis.js`
+- Duval geometry: `lib/dga/duvalGeometry.js`
+- Per-oil-type config: `lib/dga/appConfig.js` — `getStandardOptionsForOilType()`
