@@ -4,6 +4,124 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 4.1.4 - Company & Area on the Asset Record
+
+Version 4.1.4 puts the ownership context back on the asset itself. A transformer record showed its site and state but never named the **company that owns it** or the **area it sits in** — that was only visible by opening the boundary on the map, even though the asset had already been assigned to an Area Plan. The Information tab now opens with both.
+
+### Company / Parent and Area
+
+The two fields sit at the top of **Asset identity**, before Site name:
+
+| Field | Source |
+|---|---|
+| `Company / Parent` | The `Company / Parent name` on the Area Plan the asset belongs to |
+| `Area` | The `Area Name` of that plan |
+
+Resolution runs in three steps, so a value appears whether or not the asset was ever ticked into an area:
+
+1. **Saved assignment** — the Area Plan whose stored transformer list contains the asset. This is what you tick under *Transformers inside this Area*, so the name shown always matches the boundary drawn on the map.
+2. **Geometric fallback** — if no plan lists the asset, the area polygon that contains its coordinates. A newly added asset is labelled straight away, before anyone opens the Area Plan to tick it in.
+3. **Parent boundary** — if no area covers the asset at all, the `Company / Parent` boundary drawn around the site still supplies the company name.
+
+An asset outside every polygon shows `-` in both fields rather than a blank row.
+
+### Owner switch in Asset Management
+
+- Every row of the Asset Access tree carries a `TNB` / `Non-TNB` switch. Retyping an asset previously meant opening its edit form one at a time.
+- A **state or site row retypes its whole subtree** in one write, and reads `TNB`, `Non-TNB`, or *mixed* — a mixed branch shows its `n TNB · n Non-TNB` split in the tooltip and can be settled either way in one click.
+- Map badges and the owner filters follow a bulk retype immediately, with no reload behind the open window.
+
+### Under the hood
+
+- `lib/assetPlacement.js` — `resolveAssetPlacement(transformer, floorPlans, companyBoundaries)` as a pure function, covered by `tests/assetPlacement.test.mjs` (6 cases).
+- Asset ids compare as strings on both sides of the lookup, and malformed overlay rows are skipped instead of throwing.
+
+---
+
+## Version 4.1.3 - Asset Management, Access Tree & Owner Filter
+
+Version 4.1.3 rebuilds per-user asset access and moves it out of Settings. Permissions were previously a flat, paginated table buried in a Settings tab — with 309 assets that meant 31 pages of transformer names with no indication of where any asset actually sat. Access is now its own **Asset Management** window, reached from a sidebar button, holding a collapsible **State → Site → Transformer** tree with bulk grant/revoke at every level, plus a TNB / Non-TNB quick filter.
+
+### Asset Management (new window)
+
+- **Out of Settings** - Access assignment lived two levels deep in Settings, sharing the modal with the account panels. It is now `components/Authentic/AssetManagement.jsx`, a standalone dialog that gives the tree the full dialog height.
+- **Sidebar `Asset` button** - Opens the window. It appears full-width under Transformer / GPS register in the expanded sidebar, and as an icon tile in the collapsed rail. The button renders only when `onOpenAssetManagement` is supplied, and `App.jsx` supplies it for administrators only.
+- **Tabbed and extensible** - The window opens on a **User Access** tab. Tabs come from the `ASSET_MANAGEMENT_TABS` array, so adding a future asset-wide function is one array entry plus one `<Tabs.Content>` block.
+- **Header summary** - Total assets, managed (non-admin) user count, and a reload button.
+- **Per-user coverage** - The user picker shows each account's granted-asset count, and the selected account, username, and role are confirmed in a strip above the tree.
+- **Fresh on open** - Data loads when the window opens rather than once on mount, so access changed elsewhere is current the next time it is opened.
+- **Settings slimmed down** - Settings is now account, asset owner visibility, App Tour, and Users. `roles.jsx` lost its tab bar and the whole permissions panel, and loads only `admin_list_users`.
+
+### Asset Access Tree
+
+- **Location hierarchy** - Assets group as State → Site → Transformer. States sort in the app's standard Malaysian state order; sites sort alphabetically with `Unassigned site` at the bottom of its state; transformers sort numerically-aware by name.
+- **State inference** - Assets with an empty `state` column are placed using the existing site/name/mnemonic alias matching, falling back to an `Unassigned` group.
+- **Tri-state branch switches** - Every state and site row carries a switch with three positions: no access, partial access (centred knob), or full access. Clicking grants the whole subtree, or revokes it if already fully granted.
+- **Coverage counters** - Each branch shows `granted/total` (e.g. `147/154`), so coverage is readable without expanding the branch.
+- **Bulk writes** - Branch toggles use the existing `admin_grant_many` / `admin_revoke_many` RPCs and send only the ids that would actually change, so toggling a half-granted site does not rewrite rows that are already correct.
+- **Pagination removed** - The tree collapses to one row per state, so the previous 10-per-page navigation is gone. The tree body scrolls in place.
+- **Expand / Collapse** - One button flips the default open state for all branches.
+
+### TNB / Non-TNB Filter
+
+- **Owner quick filter** - An All / TNB / Non-TNB segmented control sits directly above the tree, reusing the same owner classification as the Asset owner visibility card.
+- **Live counts** - Counts are tallied before the owner filter is applied, so each button shows what it would reveal rather than what is currently on screen. They narrow with the search box.
+- **Filter-aware bulk actions** - `Grant all` and `Revoke all`, and every branch switch, operate on the current owner filter. Selecting Non-TNB and pressing `Grant all` grants only that user's Non-TNB assets.
+- **Per-row owner switch** - Each row carries a `TNB` / `Non-TNB` segmented switch in an **Owner** column, next to the Access switch. Clicking a segment writes `transformers.owner_type` directly — no need to open the asset's edit form. A state or site row retypes everything beneath it in one write, and reads *mixed* (dashed outline) while its assets disagree; the tooltip carries the `n TNB · n Non-TNB` split.
+- **Not the same scope as Access** - Owner type belongs to the asset, so it changes for every account; Access belongs to the selected account only. The tree says so in a line above it, since the two switches sit in adjacent columns.
+
+### Search
+
+- Filter now matches **transformer name, site, state, and mnemonic** (previously name and site only).
+- An active search auto-expands every surviving branch; clearing it restores the collapsed overview.
+
+### Asset Hover Preview
+
+- Hovering, focusing, or tapping a transformer row opens a floating detail card anchored beside the row.
+- The card embeds a static tile minimap centred on the asset, with **Map / Satellite** base layers and zoom controls. No Leaflet instance is created, so sweeping the pointer down a long list stays cheap.
+- Shows site, owner, state, mnemonic, serial, load, maker, year built, plus on-demand oil-test and document counts (cached per asset).
+- Clicking the transformer name pins the card open; scroll, resize, or Escape dismisses it.
+
+### Fixed
+
+- **Tree no longer collapses on every click** - Permission writes called a full reload that flipped the panel's loading state and unmounted the tree, discarding which branches were open. Writes now re-read only the permissions table.
+- **Optimistic toggles** - Switches and counters move the instant they are clicked instead of after the server round-trip. In-flight writes are layered over server state and dropped once the re-read lands; a failed write reverts.
+- **Lighter writes** - A single toggle no longer refetches the full user list and all 309 transformer rows.
+
+### Verification
+
+- Added `lib/assetAccessTree.js` holding the grouping and branch maths as pure functions, with regression tests for state/site grouping, sort order, and the off/partial/on branch states.
+- `AssetAccessTree.jsx` and `lib/assetAccessTree.js` were reused unchanged by the new Asset Management window, so their regression tests still cover it.
+- Production build and the full test suite (12 tests) pass.
+
+---
+
+## Version 4.1.2 - Single-Sample PDF Test Import
+
+Version 4.1.2 expands the Documents oil-test importer to read scanned single-sample PDF laboratory certificates while preserving the existing historical PDF import workflow. It also improves document-upload reliability when Supabase returns a temporary storage error.
+
+### PDF Oil-Test Import
+
+- **Scanned single-sample certificates** - PDF pages are rendered and read with OCR when a historical results table is not available, and every page is checked for supported test results.
+- **Complete supported result capture** - Reads the Sampling Date (or falls back to the Test Date), all nine supported DGA gases, and recognized oil-quality results such as water content, dielectric breakdown, acidity, interfacial tension, appearance, colour, flash point, inhibitor, density, furan, metals, and other supported fields.
+- **Review before import** - Extracted values open as one editable sample in the existing review screen before the PDF is stored in Documents and the dated result is created or updated in Oil Tests.
+- **Automatic TDCG** - Total Dissolved Combustible Gas is recalculated from the imported combustible-gas values before saving.
+- **Historical PDF compatibility** - Existing multi-date DGA history tables and date-matched additional test sections remain supported.
+- **Consistent field storage** - Single-sample and historical imports now use the same normalization and comparison path, including the Appearance result.
+
+### Document Upload Reliability
+
+- **Safe temporary-error retries** - Supabase Storage uploads retry temporary HTTP 520 and related server or network failures using the same generated object path.
+- **Duplicate prevention** - The importer checks whether an ambiguous upload already succeeded before replaying it, so a lost gateway response does not create another stored PDF.
+- **Recoverable failure messages** - If all retries fail, the reviewed results remain open for another submission attempt and the app shows a clearer storage error.
+
+### Verification
+
+- Added regression tests for scanned single-sample certificates, supported result mapping, TDCG, Appearance preservation, historical PDF formats, and safe Storage retries.
+- Verified the new single-sample workflow with a two-page scanned PDF containing DGA, water-content, and dielectric-breakdown results.
+
+---
+
 ## Version 4.1 - Map Right-Click & Mobile Polish
 
 Version 4.1 introduces a right-click map context menu for fast location actions, plus targeted mobile usability fixes across the Settings, DGA, Duval, and Compare dialogs. The sidebar quick-stats grid is also tightened so more content fits above the fold on smaller screens.
@@ -247,6 +365,8 @@ Open http://localhost:3000
 - Complete physical and chemical test parameters
 - DGA (Dissolved Gas Analysis) with all 7 gases
 - Historical test records with trending
+- OCR import for scanned single-sample PDF certificates
+- Review and import supported PDF results into dated Oil Test records
 - Edit and delete capabilities
 
 ### Document Management
@@ -254,7 +374,7 @@ Open http://localhost:3000
 - **Multiple file uploads** at once
 - **View/Download** documents
 - Support for PDF, Word, Excel, Images
-- Up to 50MB per file
+- Up to 10MB per file through the Documents interface
 
 ### Database Features
 - **PostgreSQL** for reliable data storage
@@ -464,8 +584,8 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 4.1 (Supabase Edition)  
-**Last Updated**: June 2026  
+**Version**: 4.1.4 (Supabase Edition)
+**Last Updated**: August 2026
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  
 **Status**: Personal Project

@@ -11,7 +11,10 @@
         "ide",
         "--project",
         "F:\\Project Lab\\Asset Tx Map V2"
-      ]
+      ],
+      "env": {
+        "SSLKEYLOGFILE": ""
+      }
     }
   }
 }

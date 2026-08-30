@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   Calendar,
+  ChevronDown,
   ClipboardList,
   Eye,
   FileText,
@@ -618,11 +619,14 @@ function TransformerAssetCard({
   onToggleCompare,
   onDelete,
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const dgaStatus = getAssetDgaStatus(asset);
   const dgaStyle = DGA_STATUS_STYLES[dgaStatus.status] || DGA_STATUS_STYLES.noData;
   const latestOilTestDate = formatDate(dgaStatus.latestTest?.testDate);
   const transformerState = getTransformerState(asset);
   const assetOwnerLabel = getAssetOwnerLabel(asset.ownerType);
+  const oilTestCount = asset.oilTests?.length || 0;
+  const documentCount = asset.documents?.length || 0;
 
   return (
     <article
@@ -679,27 +683,51 @@ function TransformerAssetCard({
           <AssetFact icon={Gauge} label="Load" value={asset.loadMVA ? `${asset.loadMVA} MVA` : '-'} />
           <AssetFact icon={Building2} label="Owner" value={assetOwnerLabel} />
           <AssetFact icon={Calendar} label="Built" value={formatValue(asset.yearBuilt)} />
+          <AssetFact icon={Building2} label="Maker" value={formatValue(asset.maker, 'Maker not set')} />
         </dl>
 
-        <div className="mt-2 rounded-lg border border-[color:var(--border)] bg-[var(--card-muted)]/72 p-2">
-          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-            <CompactMetric label="Oil tests" value={asset.oilTests?.length || 0} />
-            <CompactMetric label="Documents" value={asset.documents?.length || 0} />
-          </div>
-          <div className="mt-2 space-y-1 text-[10px] text-[var(--muted)]">
-            <p className="flex items-center gap-1.5">
-              <Calendar className="h-3 w-3" />
-              Latest oil test: <span className="font-medium text-[var(--foreground)]">{latestOilTestDate || 'No test yet'}</span>
-            </p>
-            <p className="flex items-center gap-1.5">
-              <MapPin className="h-3 w-3" />
-              <span className="truncate">{formatPosition(asset.position)}</span>
-            </p>
-            <p className="flex items-center gap-1.5">
-              <Building2 className="h-3 w-3" />
-              <span className="truncate">{formatValue(asset.maker, 'Maker not set')}</span>
-            </p>
-          </div>
+        <div className="mt-2 rounded-lg border border-[color:var(--border)] bg-[var(--card-muted)]/72">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--card-muted)]"
+            onClick={() => setDetailsOpen((open) => !open)}
+            aria-expanded={detailsOpen}
+            title={detailsOpen ? 'Hide record details' : 'Show record details'}
+          >
+            <span className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
+              Record details
+            </span>
+            <span className="flex items-center gap-1.5">
+              {detailsOpen ? null : (
+                <span className="text-[10px] font-medium text-[var(--muted)]">
+                  {oilTestCount} tests · {documentCount} docs
+                </span>
+              )}
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 text-[var(--muted)] transition-transform duration-200 ${
+                  detailsOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </span>
+          </button>
+          {detailsOpen ? (
+            <div className="border-t border-[color:var(--border)] p-2">
+              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                <CompactMetric label="Oil tests" value={oilTestCount} />
+                <CompactMetric label="Documents" value={documentCount} />
+              </div>
+              <div className="mt-2 space-y-1 text-[10px] text-[var(--muted)]">
+                <p className="flex items-center gap-1.5">
+                  <Calendar className="h-3 w-3" />
+                  Latest oil test: <span className="font-medium text-[var(--foreground)]">{latestOilTestDate || 'No test yet'}</span>
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <MapPin className="h-3 w-3" />
+                  <span className="truncate">{formatPosition(asset.position)}</span>
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 

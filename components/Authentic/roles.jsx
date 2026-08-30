@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Users,
   ShieldCheck,
@@ -7,9 +7,6 @@ import {
   Trash2,
   Loader2,
   AlertTriangle,
-  Search,
-  Check,
-  X,
   User as UserIcon,
   Lock,
   IdCard,
@@ -20,7 +17,6 @@ import {
   CheckCircle2,
   Pencil,
 } from 'lucide-react';
-import * as Tabs from '@radix-ui/react-tabs';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -36,7 +32,10 @@ import {
 import { cn } from '../../lib/utils';
 
 /**
- * User & Asset-Access Management — rendered inside the Settings modal.
+ * User management — rendered inside the Settings modal.
+ *
+ * Per-user asset access used to be a second tab here; it now lives in its own
+ * sidebar-level surface, components/Authentic/AssetManagement.jsx.
  *
  * All writes go through SECURITY DEFINER RPCs defined in migration
  * 20260423000001_app_users_and_permissions.sql. The anon key cannot
@@ -47,11 +46,8 @@ function Roles({ currentUser, onClose }) {
   const isAdmin = currentUser?.role === 'admin';
 
   const [users, setUsers] = useState([]);
-  const [transformers, setTransformers] = useState([]);
-  const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('users');
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -62,17 +58,11 @@ function Roles({ currentUser, onClose }) {
     setLoading(true);
     setError(null);
     try {
-      const [usersRes, txRes, permsRes] = await Promise.all([
-        supabase.rpc('admin_list_users', { p_admin_id: currentUser.id }),
-        supabase.from('transformers').select('id, tx_name, site_name').order('tx_name', { ascending: true }),
-        supabase.rpc('admin_list_permissions', { p_admin_id: currentUser.id }),
-      ]);
-      if (usersRes.error) throw usersRes.error;
-      if (txRes.error) throw txRes.error;
-      if (permsRes.error) throw permsRes.error;
-      setUsers(usersRes.data ?? []);
-      setTransformers(txRes.data ?? []);
-      setPermissions(permsRes.data ?? []);
+      const { data, error: rpcError } = await supabase.rpc('admin_list_users', {
+        p_admin_id: currentUser.id,
+      });
+      if (rpcError) throw rpcError;
+      setUsers(data ?? []);
     } catch (err) {
       setError(err.message || 'Failed to load.');
     } finally {
@@ -94,11 +84,11 @@ function Roles({ currentUser, onClose }) {
   }
 
   return (
-    <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
-      <Tabs.List className="mb-4 flex gap-1 rounded-md bg-[var(--card-muted)] p-1">
-        <TabTrigger value="users" icon={Users}>Users</TabTrigger>
-        <TabTrigger value="permissions" icon={ShieldCheck}>Asset Access</TabTrigger>
-      </Tabs.List>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-4 flex items-center gap-2 rounded-md bg-[var(--card-muted)] px-3 py-2 text-sm font-medium text-[var(--foreground)]">
+        <Users className="h-4 w-4 text-[var(--primary-strong)]" />
+        Users
+      </div>
 
       {error ? (
         <div className="mb-3 flex items-start gap-2 rounded-md border border-[color:var(--danger-soft)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-strong)]">
@@ -107,28 +97,16 @@ function Roles({ currentUser, onClose }) {
         </div>
       ) : null}
 
-      <Tabs.Content value="users" className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
         <UsersPanel users={users} loading={loading} currentUser={currentUser} onChanged={refresh} onError={setError} />
-      </Tabs.Content>
-
-      <Tabs.Content value="permissions" className="min-h-0 flex-1 overflow-auto">
-        <PermissionsPanel
-          users={users}
-          transformers={transformers}
-          permissions={permissions}
-          loading={loading}
-          currentUser={currentUser}
-          onChanged={refresh}
-          onError={setError}
-        />
-      </Tabs.Content>
+      </div>
 
       {onClose ? (
         <div className="mt-4 flex justify-end border-t border-[color:var(--border)] pt-3">
           <Button variant="outline" onClick={onClose}>Close</Button>
         </div>
       ) : null}
-    </Tabs.Root>
+    </div>
   );
 }
 
@@ -140,21 +118,6 @@ function getRoleBadgeVariant(role) {
     return 'outline';
   }
   return 'secondary';
-}
-
-function TabTrigger({ value, icon: Icon, children }) {
-  return (
-    <Tabs.Trigger
-      value={value}
-      className={cn(
-        'inline-flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[var(--muted)] transition',
-        'data-[state=active]:bg-[var(--card)] data-[state=active]:text-[var(--foreground)] data-[state=active]:shadow-[var(--shadow-card)]'
-      )}
-    >
-      <Icon className="h-4 w-4" />
-      {children}
-    </Tabs.Trigger>
-  );
 }
 
 /* ─────────────────────── Users panel ─────────────────────── */
@@ -309,204 +272,6 @@ function UsersPanel({ users, loading, currentUser, onChanged, onError }) {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-/* ─────────────────────── Permissions panel ─────────────────────── */
-
-function PermissionsPanel({ users, transformers, permissions, loading, currentUser, onChanged, onError }) {
-  const pageSize = 10;
-  const regularUsers = useMemo(() => users.filter((u) => u.role !== 'admin'), [users]);
-  const [selectedUserId, setSelectedUserId] = useState(null);
-  const [filter, setFilter] = useState('');
-  const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    if (!selectedUserId && regularUsers.length > 0) {
-      setSelectedUserId(regularUsers[0].id);
-    }
-  }, [regularUsers, selectedUserId]);
-
-  const grantedIds = useMemo(() => {
-    const set = new Set();
-    permissions.forEach((p) => {
-      if (p.user_id === selectedUserId) set.add(p.transformer_id);
-    });
-    return set;
-  }, [permissions, selectedUserId]);
-
-  const filteredTransformers = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return transformers;
-    return transformers.filter(
-      (t) =>
-        (t.tx_name || '').toLowerCase().includes(q) ||
-        (t.site_name || '').toLowerCase().includes(q)
-    );
-  }, [transformers, filter]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [selectedUserId, filter]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredTransformers.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pageStart = (currentPage - 1) * pageSize;
-  const pagedTransformers = filteredTransformers.slice(pageStart, pageStart + pageSize);
-
-  const toggle = async (transformerId) => {
-    if (!selectedUserId) return;
-    onError(null);
-    try {
-      const fn = grantedIds.has(transformerId) ? 'admin_revoke_access' : 'admin_grant_access';
-      const { error } = await supabase.rpc(fn, {
-        p_admin_id: currentUser.id,
-        p_user_id: selectedUserId,
-        p_transformer_id: transformerId,
-      });
-      if (error) throw error;
-      await onChanged();
-    } catch (err) {
-      onError(err.message);
-    }
-  };
-
-  const setAll = async (grant) => {
-    if (!selectedUserId) return;
-    onError(null);
-    try {
-      const ids = grant
-        ? filteredTransformers.filter((t) => !grantedIds.has(t.id)).map((t) => t.id)
-        : filteredTransformers.map((t) => t.id);
-      if (ids.length === 0) return;
-      const fn = grant ? 'admin_grant_many' : 'admin_revoke_many';
-      const { error } = await supabase.rpc(fn, {
-        p_admin_id: currentUser.id,
-        p_user_id: selectedUserId,
-        p_transformer_ids: ids,
-      });
-      if (error) throw error;
-      await onChanged();
-    } catch (err) {
-      onError(err.message);
-    }
-  };
-
-  if (loading) {
-    return <div className="flex justify-center p-6 text-[var(--muted)]"><Loader2 className="h-4 w-4 animate-spin" /></div>;
-  }
-
-  if (regularUsers.length === 0) {
-    return (
-      <div className="rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card-muted)] p-6 text-center text-sm text-[var(--muted)]">
-        Create a non-admin user to start assigning asset access.
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-      <aside className="flex flex-col gap-1 rounded-md border border-[color:var(--border)] bg-[var(--card)] p-2">
-        <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Select user</p>
-        {regularUsers.map((user) => (
-          <button
-            key={user.id}
-            type="button"
-            onClick={() => setSelectedUserId(user.id)}
-            className={cn(
-              'flex items-center justify-between rounded-md px-3 py-2 text-left text-sm transition',
-              selectedUserId === user.id
-                ? 'bg-[var(--primary-soft)] text-[var(--primary-strong)]'
-                : 'text-[var(--foreground)] hover:bg-[var(--card-muted)]'
-            )}
-          >
-            <span className="truncate">
-              <span className="block font-medium">{user.username}</span>
-              <span className="block text-xs text-[var(--muted)]">{user.full_name}</span>
-            </span>
-            {!user.is_active ? <Badge variant="danger">off</Badge> : null}
-          </button>
-        ))}
-      </aside>
-
-      <section className="flex min-h-0 flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-            <Input className="pl-9" placeholder="Filter by transformer or site" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setAll(true)}>
-            <Check className="h-3.5 w-3.5" /> Grant all
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setAll(false)}>
-            <X className="h-3.5 w-3.5" /> Revoke all
-          </Button>
-        </div>
-
-        <div className="overflow-hidden rounded-md border border-[color:var(--border)]">
-          <table className="w-full text-sm">
-            <thead className="bg-[var(--card-muted)] text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
-              <tr>
-                <th className="w-[60px] px-3 py-2 text-center">Access</th>
-                <th className="px-3 py-2 text-left">Transformer</th>
-                <th className="px-3 py-2 text-left">Site</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTransformers.length === 0 ? (
-                <tr><td colSpan={3} className="p-6 text-center text-[var(--muted)]">No transformers match the filter.</td></tr>
-              ) : pagedTransformers.map((tx) => {
-                const granted = grantedIds.has(tx.id);
-                return (
-                  <tr key={tx.id} className="border-t border-[color:var(--border)]">
-                    <td className="px-3 py-2 text-center">
-                      <button
-                        type="button"
-                        onClick={() => toggle(tx.id)}
-                        className={cn(
-                          'inline-flex h-6 w-10 items-center rounded-full border transition',
-                          granted ? 'border-transparent bg-[var(--primary)]' : 'border-[color:var(--border)] bg-[var(--card-muted)]'
-                        )}
-                        aria-pressed={granted}
-                        aria-label={granted ? 'Revoke access' : 'Grant access'}
-                      >
-                        <span className={cn('h-5 w-5 rounded-full bg-white shadow transition', granted ? 'translate-x-4' : 'translate-x-0.5')} />
-                      </button>
-                    </td>
-                    <td className="px-3 py-2 font-semibold">{tx.tx_name}</td>
-                    <td className="px-3 py-2 text-[var(--muted)]">{tx.site_name}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {filteredTransformers.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--muted)]">
-            <p>
-              Showing {pageStart + 1}-{pageStart + pagedTransformers.length} of {filteredTransformers.length}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={currentPage === 1}>
-                Previous
-              </Button>
-              <span>
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </section>
     </div>
   );
 }

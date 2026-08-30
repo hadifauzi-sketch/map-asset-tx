@@ -62,6 +62,7 @@ import SignIn, {
   touchSessionActivity,
 } from './components/Authentic/sign-in';
 import Roles from './components/Authentic/roles';
+import AssetManagementDialog from './components/Authentic/AssetManagement';
 import { getStandardOptionsForOilType } from './lib/dga/appConfig';
 import { analyzeSample } from './lib/dga/diagnostics';
 import {
@@ -72,6 +73,7 @@ import {
   normalizeFloorPlan,
 } from './lib/floorPlanStorage';
 import { floorPlanService } from './lib/floorPlanService';
+import { resolveAssetPlacement } from './lib/assetPlacement';
 import { createDraftCompanyBoundary, normalizeCompanyBoundary } from './lib/companyBoundaryStorage';
 import { companyBoundaryService } from './lib/companyBoundaryService';
 import { getTransformerState } from './lib/malaysiaStates';
@@ -87,10 +89,14 @@ import {
 } from './lib/assetOwner';
 import {
   DEFAULT_WEATHER_OPTIONS,
+  buildObservationsFromRecords,
+  buildRecordsFromObservations,
+  buildWeatherRequestUrl,
   fetchTransformerHourlyWeather,
   fetchTransformerWeather,
   getLocalDateInput,
 } from './lib/weatherService';
+import { weatherObservationService } from './lib/weatherObservationService';
 import {
   DEFAULT_ARCGIS_MOSAIC_WINDOW_DAYS,
   DEFAULT_ESRI_LANDSAT_RENDERING_RULE,
@@ -438,6 +444,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(() => readSession());
   const [authNotice, setAuthNotice] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAssetManagementOpen, setIsAssetManagementOpen] = useState(false);
   const [isSOPOpen, setIsSOPOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourEnabled, setTourEnabled] = useState(() => readTourEnabled());
@@ -525,6 +532,8 @@ function App() {
   const [weatherError, setWeatherError] = useState('');
   const [weatherUpdatedAt, setWeatherUpdatedAt] = useState(null);
   const [weatherRefreshKey, setWeatherRefreshKey] = useState(0);
+  const [weatherStoredNotice, setWeatherStoredNotice] = useState('');
+  const [weatherObservations, setWeatherObservations] = useState([]);
   const [weatherPanelPosition, setWeatherPanelPosition] = useState(null);
   const [isWeatherPanelDragging, setIsWeatherPanelDragging] = useState(false);
   const [isWeatherHourlyChartOpen, setIsWeatherHourlyChartOpen] = useState(false);
@@ -974,6 +983,13 @@ function App() {
   const selectedFloorPlan = useMemo(
     () => floorPlans.find((floorPlan) => floorPlan.id === selectedFloorPlanId) || null,
     [floorPlans, selectedFloorPlanId]
+  );
+
+  // Company / parent and area come from the drawn overlays: the saved floor-plan assignment
+  // first, then whichever polygon geometrically contains the asset.
+  const selectedTransformerPlacement = useMemo(
+    () => resolveAssetPlacement(selectedTransformer, floorPlans, companyBoundaries),
+    [companyBoundaries, floorPlans, selectedTransformer]
   );
 
   const selectedCompanyFloors = useMemo(() => {
@@ -1434,6 +1450,18 @@ function App() {
     async function loadWeather() {
       setWeatherLoading(true);
       setWeatherError('');
+      setWeatherStoredNotice('');
+
+      // Loaded up front so there is something to fall back on if the API call fails.
+      let observations = [];
+      try {
+        observations = await weatherObservationService.getByDate(weatherDate);
+        if (!ignore) {
+          setWeatherObservations(observations);
+        }
+      } catch (err) {
+        console.error('Failed to load saved weather observations:', err);
+      }
 
       try {
         const records = await fetchTransformerWeather(
@@ -1457,14 +1485,38 @@ function App() {
         if (records.length === 0) {
           setWeatherError('No mapped assets have coordinates for weather lookup.');
         }
+
+        // Cache one reading per site so the panel still works if Open-Meteo goes down.
+        try {
+          await weatherObservationService.upsertMany(buildObservationsFromRecords(records, weatherDate));
+        } catch (err) {
+          console.error('Failed to cache weather observations:', err);
+        }
       } catch (err) {
         if (ignore || err?.name === 'AbortError') {
           return;
         }
 
         console.error('Failed to load Open-Meteo weather:', err);
-        setWeatherRecords([]);
-        setWeatherError(err?.message || 'Unable to load Open-Meteo weather for the selected date and time.');
+
+        const storedRecords = buildRecordsFromObservations(
+          filteredTransformers,
+          observations,
+          weatherDate
+        );
+
+        setWeatherRecords(storedRecords);
+
+        if (storedRecords.length > 0) {
+          setWeatherStoredNotice(
+            `Open-Meteo unreachable - showing saved readings for ${weatherDate}.`
+          );
+          setWeatherError('');
+        } else {
+          setWeatherError(
+            err?.message || 'Unable to load Open-Meteo weather for the selected date and time.'
+          );
+        }
       } finally {
         if (!ignore) {
           setWeatherLoading(false);
@@ -1551,6 +1603,13 @@ function App() {
   const weatherPanelEmptyMessage = selectedTransformer
     ? 'No weather record is available for the selected site yet.'
     : 'Select a site on the map to show its weather history here.';
+
+  // The exact Open-Meteo request behind the numbers on screen, as a browser-readable
+  // JSON URL for the selected site so it can be opened or copied straight from the panel.
+  const weatherApiUrl = useMemo(
+    () => buildWeatherRequestUrl(selectedTransformer, { date: weatherDate }),
+    [selectedTransformer, weatherDate]
+  );
 
   const handleWeatherRecordSelect = useCallback((record) => {
     const nextTransformer = filteredTransformers.find(
@@ -2105,6 +2164,26 @@ function App() {
     setTimeout(() => setSelectedTransformer(null), 550);
     loadTransformers();
   };
+
+  /**
+   * Asset Management retypes assets TNB ↔ Non-TNB in bulk. Patching the loaded
+   * list keeps the map badges and the TNB / Non-TNB filters honest without a
+   * full reload behind the still-open dialog.
+   */
+  const handleAssetOwnerChanged = useCallback((transformerIds, ownerType) => {
+    const changed = new Set(transformerIds);
+    if (changed.size === 0) return;
+    setTransformers((current) =>
+      current.map((transformer) =>
+        changed.has(transformer.id) ? { ...transformer, ownerType } : transformer
+      )
+    );
+    setSelectedTransformer((currentSelected) =>
+      currentSelected && changed.has(currentSelected.id)
+        ? { ...currentSelected, ownerType }
+        : currentSelected
+    );
+  }, []);
 
   const handleUpdateOilTests = (transformerId, oilTests) => {
     setTransformers((current) =>
@@ -2926,6 +3005,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             theme={theme}
             onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenAssetManagement={isAdmin ? () => setIsAssetManagementOpen(true) : undefined}
             onOpenSOP={() => setIsSOPOpen(true)}
             onCloseMobile={() => setSidebarOpen(false)}
             collapsed={isDesktopSidebarCollapsed}
@@ -3469,6 +3549,8 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   hourlyChartOpen={isWeatherHourlyChartOpen}
                   hourlyChartCollapsed={isWeatherHourlyChartCollapsed}
                   hourlyChartDisabled={!selectedTransformer}
+                  storedNotice={weatherStoredNotice}
+                  apiUrl={weatherApiUrl}
                   isDragging={isWeatherPanelDragging}
                   dragHandleProps={{
                     onPointerDown: handleWeatherPanelDragStart,
@@ -3838,6 +3920,8 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       <TransformerDetailModal
         open={isDetailModalOpen}
         transformer={selectedTransformer}
+        companyName={selectedTransformerPlacement.companyName}
+        areaName={selectedTransformerPlacement.areaName}
         readOnly={isViewer}
         onClose={handleCloseDetailModal}
         onUpdateOilTests={handleUpdateOilTests}
@@ -3897,6 +3981,13 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onShowNotice={showAppNotice}
       />
 
+      <AssetManagementDialog
+        open={isAssetManagementOpen}
+        onOpenChange={setIsAssetManagementOpen}
+        currentUser={currentUser}
+        onAssetOwnerChanged={handleAssetOwnerChanged}
+      />
+
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent className="mobile-form-dialog max-w-[960px]">
           <DialogHeader>
@@ -3908,7 +3999,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 </DialogTitle>
                 <DialogDescription>
                   Manage your account
-                  {isAdmin ? ', users, and per-user asset access.' : '.'}
+                  {isAdmin ? ' and users. Asset access moved to Asset Management in the sidebar.' : '.'}
                 </DialogDescription>
               </div>
               <div className="flex flex-col items-stretch gap-2 sm:items-end">

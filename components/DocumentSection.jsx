@@ -16,43 +16,15 @@ import {
 } from './ui/dialog';
 import { documentService } from '../lib/documentService';
 import { extractDgaImportFromFile } from '../lib/dga-import/dgaFileImport';
+import {
+  buildImportedOilTestPayloadsFromRows,
+  isSameImportedOilTestPayload,
+} from '../lib/oilTestImportUtils';
 import { oilTestService } from '../lib/oilTestService';
-import { normaliseTestTypeForStorage } from '../lib/testTypeUtils';
+import { getDocumentUploadErrorMessage } from '../lib/storageUploadUtils';
 import { cn } from '../lib/utils';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-const DGA_FIELDS = ['h2', 'ch4', 'c2h6', 'c2h4', 'c2h2', 'co', 'co2', 'o2', 'n2'];
-const ADDITIONAL_IMPORT_FIELDS = [
-  'breakdown',
-  'waterContent',
-  'acidity',
-  'interfacialTension',
-  'color',
-  'flashPoint',
-  'inhibitor',
-  'copperCorrosive',
-  'density',
-  'dbds',
-  'viscosity40',
-  'methanol',
-  'pcb',
-  'powerFactor',
-  'resistivity',
-  'specificGravity',
-  'passivator',
-  'fol2',
-  'hmf5',
-  'fal2',
-  'acf2',
-  'mef5',
-  'copperCu',
-  'ironFe',
-  'aluminumAl',
-  'estimatedDpFuran',
-  'estimatedDpMethanol',
-];
-const IMPORT_FIELDS = [...DGA_FIELDS, ...ADDITIONAL_IMPORT_FIELDS];
-const TDCG_FIELDS = ['h2', 'ch4', 'c2h2', 'c2h4', 'c2h6', 'co'];
 const STORAGE_ACCEPT = {
   'application/pdf': ['.pdf'],
   'application/msword': ['.doc'],
@@ -150,60 +122,6 @@ function isDgaImportableFile(file) {
   return IMPORTABLE_EXTENSIONS.some((extension) => name.endsWith(extension)) || type === 'application/pdf' || type.startsWith('image/') || type.includes('excel') || type.includes('spreadsheet');
 }
 
-function calculateTdcg(row) {
-  const total = TDCG_FIELDS.reduce((sum, key) => {
-    const parsedValue = Number.parseFloat(String(row?.[key] ?? '').replace(/,/g, ''));
-    return sum + (Number.isFinite(parsedValue) ? parsedValue : 0);
-  }, 0);
-
-  return total > 0 ? String(Number(total.toFixed(6))) : null;
-}
-
-function hasImportedValues(row) {
-  return IMPORT_FIELDS.some((key) => String(row?.[key] ?? '').trim() !== '');
-}
-
-function normaliseImportedOilTest(row) {
-  const payload = {
-    testDate: row.testDate,
-    testType: normaliseTestTypeForStorage(row.testType),
-    notes: row.notes?.trim() || null,
-    tdcg: calculateTdcg(row),
-  };
-
-  DGA_FIELDS.forEach((field) => {
-    payload[field] = String(row?.[field] ?? '').trim();
-  });
-
-  ADDITIONAL_IMPORT_FIELDS.forEach((field) => {
-    payload[field] = String(row?.[field] ?? '').trim();
-  });
-
-  return payload;
-}
-
-function normaliseComparableValue(value) {
-  if (value === null || value === undefined) {
-    return '';
-  }
-
-  return String(value).trim();
-}
-
-function isSameOilTestPayload(existingTest, incomingPayload) {
-  if (!existingTest || !incomingPayload) {
-    return false;
-  }
-
-  const fieldsToCompare = ['testDate', 'testType', 'notes', 'tdcg', ...IMPORT_FIELDS];
-
-  return fieldsToCompare.every((field) => {
-    const existingValue = existingTest[field];
-    const incomingValue = incomingPayload[field];
-    return normaliseComparableValue(existingValue) === normaliseComparableValue(incomingValue);
-  });
-}
-
 function getFeedbackClasses(type) {
   if (type === 'error') {
     return 'border-[color:var(--danger-soft)] bg-[var(--danger-soft)] text-[var(--danger-strong)]';
@@ -276,7 +194,7 @@ function DocumentSection({
         return uploadedDocuments;
       } catch (error) {
         console.error('Error uploading files:', error);
-        setFeedback({ type: 'error', text: 'Failed to upload the selected files. Please try again.' });
+        setFeedback({ type: 'error', text: getDocumentUploadErrorMessage(error) });
         return null;
       } finally {
         setIsUploading(false);
@@ -492,17 +410,7 @@ function DocumentSection({
       return;
     }
 
-    const validRows = rows
-      .filter((row) => row.testDate && hasImportedValues(row))
-      .map(normaliseImportedOilTest);
-
-    const rowsByDate = validRows.reduce((map, row) => {
-      if (row.testDate) {
-        map.set(row.testDate, row);
-      }
-      return map;
-    }, new Map());
-    const dedupedRows = Array.from(rowsByDate.values());
+    const dedupedRows = buildImportedOilTestPayloadsFromRows(rows);
 
     if (dedupedRows.length === 0) {
       setFeedback({
@@ -520,10 +428,10 @@ function DocumentSection({
 
     try {
       const storedDocument = await documentService.upload(transformerId, importSession.file);
+      documentStored = true;
       if (storedDocument?.id && onAssignDocumentCompartment) {
         onAssignDocumentCompartment(storedDocument.id, activeCompartment);
       }
-      documentStored = true;
 
       const existingByDate = new Map();
       oilTests.forEach((test) => {
@@ -538,7 +446,7 @@ function DocumentSection({
         const existingTest = existingByDate.get(row.testDate);
 
         if (existingTest?.id) {
-          if (isSameOilTestPayload(existingTest, row)) {
+          if (isSameImportedOilTestPayload(existingTest, row)) {
             unchangedCount += 1;
             continue;
           }
@@ -589,7 +497,7 @@ function DocumentSection({
         text:
           documentStored || touchedCount > 0 || unchangedCount > 0
             ? `The report was stored and ${createdCount} created / ${updatedCount} updated / ${unchangedCount} unchanged before the import stopped.`
-            : 'Failed to submit the imported report. Please try again.',
+            : getDocumentUploadErrorMessage(error, { reviewOpen: true }),
       });
     } finally {
       setIsSubmittingImport(false);
@@ -631,7 +539,7 @@ function DocumentSection({
       </div>
 
       <div className="upload-info">
-        <p>Store lab reports in Documents, or let the app read DGA and key oil-test values before sending them into Oil Tests.</p>
+        <p>Store lab reports in Documents, or read every supported result from single-sample certificates and history reports before sending them into Oil Tests.</p>
         <p>Supported formats: PDF, Word, Excel, Images (JPG, PNG, WEBP, BMP). Maximum file size: 10MB per file.</p>
         {readOnly ? <p>Viewer mode: document upload, import, reassignment, and deletion are disabled.</p> : null}
       </div>
@@ -675,8 +583,8 @@ function DocumentSection({
               <div>
                 <p className="text-base font-semibold text-[var(--foreground)]">{dropzoneLabel}</p>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                  Upload a single PDF, Excel file, or screenshot image to review extracted lab results
-                  first. Multiple files are stored in Documents only.
+                  Upload one PDF, Excel file, or screenshot to review all supported extracted results.
+                  Scanned single-sample PDFs and historical PDF tables are supported. Multiple files are stored in Documents only.
                 </p>
               </div>
             </div>

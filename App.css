@@ -315,8 +315,10 @@ body {
 }
 
 .weather-panel-card {
-  max-height: min(620px, calc(100vh - 32px));
-  max-height: min(620px, calc(100dvh - 32px));
+  /* Sized to its content so the panel never scrolls; the viewport cap is only a
+     last-resort guard on very short screens. */
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   overflow: auto;
 }
 

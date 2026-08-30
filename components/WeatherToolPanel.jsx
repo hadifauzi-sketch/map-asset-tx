@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Activity, CalendarDays, ChevronDown, CloudRain, CloudSun, Droplet, Droplets, GripVertical, Loader2, RefreshCw, Thermometer, Wind, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, CalendarDays, Check, ChevronDown, CloudRain, CloudSun, Copy, Database, Droplet, Droplets, ExternalLink, GripVertical, Loader2, RefreshCw, Thermometer, Wind, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { DatePicker } from './ui/date-picker';
 import { Switch } from './ui/switch';
@@ -31,6 +31,8 @@ function WeatherToolPanel({
   hourlyChartOpen = false,
   hourlyChartCollapsed = false,
   hourlyChartDisabled = false,
+  storedNotice = '',
+  apiUrl = '',
   dragHandleProps = {},
   isDragging = false,
   onDateChange,
@@ -42,6 +44,36 @@ function WeatherToolPanel({
   onClose,
 }) {
   const { className: dragHandleClassName, ...dragHandleRest } = dragHandleProps;
+  const [copied, setCopied] = useState(false);
+
+  // Reset the copied tick so it never sticks once the request changes.
+  useEffect(() => {
+    if (!copied) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(timeoutId);
+  }, [copied]);
+
+  useEffect(() => {
+    setCopied(false);
+  }, [apiUrl]);
+
+  const handleCopyApiUrl = useCallback(async () => {
+    if (!apiUrl) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(apiUrl);
+      setCopied(true);
+    } catch {
+      // Clipboard is blocked outside a secure context; the URL is still selectable.
+      setCopied(false);
+    }
+  }, [apiUrl]);
+
   const activeOptionKeys = useMemo(
     () => Object.keys(WEATHER_OPTION_LABELS).filter((key) => options?.[key]),
     [options]
@@ -66,6 +98,25 @@ function WeatherToolPanel({
     };
   }, [records]);
 
+  // Tells the user which of the three sources the numbers above are coming from.
+  const { sourceStateLabel, SourceIcon } = useMemo(() => {
+    if (loading) {
+      return { sourceStateLabel: 'Loading...', SourceIcon: CloudSun };
+    }
+
+    const firstRecord = Array.isArray(records) ? records[0] : null;
+
+    if (!firstRecord) {
+      return { sourceStateLabel: 'No reading for this site yet', SourceIcon: CloudSun };
+    }
+
+    if (firstRecord.isStored) {
+      return { sourceStateLabel: 'Saved reading - Open-Meteo offline', SourceIcon: Database };
+    }
+
+    return { sourceStateLabel: 'Live from Open-Meteo', SourceIcon: CloudSun };
+  }, [loading, records]);
+
   const selectedSampleDate = useMemo(
     () => sampleDateOptions.find((sampleDateOption) => sampleDateOption.value === date)?.value || '',
     [date, sampleDateOptions]
@@ -83,7 +134,7 @@ function WeatherToolPanel({
       <div
         {...dragHandleRest}
         className={cn(
-          'flex touch-none select-none items-start justify-between gap-3 border-b border-[color:var(--border)]/60 px-3 py-2.5',
+          'flex touch-none select-none items-start justify-between gap-3 border-b border-[color:var(--border)]/60 px-3 py-2',
           isDragging ? 'cursor-grabbing' : 'cursor-grab',
           dragHandleClassName
         )}
@@ -118,7 +169,7 @@ function WeatherToolPanel({
         </div>
       </div>
 
-      <div className="space-y-3 px-3 py-3">
+      <div className="space-y-2 px-3 py-2">
         <div className="grid grid-cols-2 gap-2">
           <label className="space-y-1">
             <span className="text-[11px] font-medium uppercase text-[var(--muted)]">Date</span>
@@ -199,7 +250,7 @@ function WeatherToolPanel({
             return (
               <div
                 key={optionKey}
-                className="flex items-center justify-between gap-2 rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/60 px-2 py-1.5"
+                className="flex items-center justify-between gap-2 rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/60 px-2 py-1"
               >
                 <div className="flex min-w-0 items-center gap-1.5">
                   <OptionIcon className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
@@ -240,12 +291,30 @@ function WeatherToolPanel({
         </div>
 
         {error ? (
-          <div className="rounded-md border border-[color:var(--warning-strong)]/30 bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--foreground)]">
-            {error}
+          <div className="space-y-2 rounded-md border border-[color:var(--warning-strong)]/30 bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--foreground)]">
+            <p>{error}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 px-2 text-[11px]"
+              onClick={onRefresh}
+              disabled={loading}
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loading ? 'animate-spin' : '')} />
+              Retry API
+            </Button>
           </div>
         ) : null}
 
-        <div className="max-h-[15rem] overflow-y-auto rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/55">
+        {storedNotice ? (
+          <div className="flex items-center gap-1.5 rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/60 px-3 py-1.5 text-[11px] text-[var(--muted)]">
+            <Database className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{storedNotice}</span>
+          </div>
+        ) : null}
+
+        <div className="rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/55">
           {loading ? (
             <div className="flex items-center gap-2 px-3 py-3 text-sm text-[var(--muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -253,7 +322,7 @@ function WeatherToolPanel({
             </div>
           ) : records?.length ? (
             records.slice(0, 12).map((record) => (
-              <div key={record.id} className="border-b border-[color:var(--border)]/50 px-3 py-2 last:border-b-0">
+              <div key={record.id} className="border-b border-[color:var(--border)]/50 px-3 py-1.5 last:border-b-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-[var(--foreground)]">{record.name}</p>
@@ -294,6 +363,50 @@ function WeatherToolPanel({
             <div className="px-3 py-3 text-sm text-[var(--muted)]">{emptyMessage}</div>
           )}
         </div>
+
+        <div className="space-y-1.5 rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/60 px-2 py-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <SourceIcon className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
+              <span className="truncate text-[11px] text-[var(--muted)]">{sourceStateLabel}</span>
+            </div>
+            <span className="shrink-0 text-[10px] font-medium uppercase text-[var(--muted)]">API request</span>
+          </div>
+          {apiUrl ? (
+            <div className="flex items-center gap-1">
+              <code
+                className="min-w-0 flex-1 truncate rounded bg-[var(--card-elevated)]/70 px-1.5 py-1 text-[10px] text-[var(--foreground)]"
+                title={apiUrl}
+              >
+                {apiUrl}
+              </code>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 p-0"
+                onClick={handleCopyApiUrl}
+                aria-label="Copy API request URL"
+                title="Copy API request URL"
+              >
+                {copied ? <Check className="h-3.5 w-3.5 text-[var(--primary)]" /> : <Copy className="h-3.5 w-3.5" />}
+              </Button>
+              <a
+                href={apiUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open API request in a new tab"
+                title="Open API request in a new tab"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] transition-colors hover:bg-[var(--card-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          ) : (
+            <p className="px-1 py-1 text-[10px] text-[var(--muted)]">
+              Select a site on the map to see its Open-Meteo request.
+            </p>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -301,7 +414,7 @@ function WeatherToolPanel({
 
 function SummaryCell({ label, value }) {
   return (
-    <div className="rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/60 px-2 py-1.5">
+    <div className="rounded-md border border-[color:var(--border)]/60 bg-[var(--card)]/60 px-2 py-1">
       <p className="text-[10px] font-medium uppercase text-[var(--muted)]">{label}</p>
       <p className="truncate text-sm font-semibold text-[var(--foreground)]">{value}</p>
     </div>

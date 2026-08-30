@@ -14,6 +14,7 @@ import {
   Plus,
   Search,
   Settings as SettingsIcon,
+  ShieldCheck,
   SunMedium,
   Trash2,
   X,
@@ -385,6 +386,7 @@ function TransformerSidebar({
   theme,
   onToggleTheme,
   onOpenSettings,
+  onOpenAssetManagement,
   onOpenSOP,
   onCloseMobile,
   collapsed,
@@ -848,6 +850,22 @@ function TransformerSidebar({
                 </Badge>
               )}
 
+              {onOpenAssetManagement ? (
+                <AppTooltip content="Asset Management">
+                  <button
+                    type="button"
+                    className="flex w-full flex-col items-center gap-1 rounded-md px-2 py-2 text-center text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
+                    onClick={onOpenAssetManagement}
+                    aria-label="Open Asset Management"
+                  >
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                      <ShieldCheck className="h-4 w-4" />
+                    </div>
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em]">Asset</span>
+                  </button>
+                </AppTooltip>
+              ) : null}
+
               <Button
                 variant="outline"
                 size="icon"
@@ -1170,6 +1188,20 @@ function TransformerSidebar({
                 Viewer mode
               </Badge>
             )}
+
+            {onOpenAssetManagement ? (
+              <AppTooltip content="Asset Management — assign per-user asset access">
+                <Button
+                  data-tour="asset-management"
+                  variant="outline"
+                  className="h-10 w-full justify-center lg:h-11"
+                  onClick={onOpenAssetManagement}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span className="truncate">Asset</span>
+                </Button>
+              </AppTooltip>
+            ) : null}
 
             <label data-tour="search" className="space-y-2">
               <span className="hidden text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)] lg:inline">

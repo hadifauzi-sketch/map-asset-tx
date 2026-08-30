@@ -140,6 +140,8 @@ function persistCompartmentConfig(transformerId, config) {
 function TransformerDetailModal({
   open,
   transformer,
+  companyName = '',
+  areaName = '',
   readOnly = false,
   onClose,
   onUpdateOilTests,
@@ -811,6 +813,8 @@ function TransformerDetailModal({
                       <CardTitle>Asset identity</CardTitle>
                     </CardHeader>
                     <CardContent className="grid gap-4 sm:grid-cols-2">
+                      <DetailField label="Company / Parent" value={companyName} />
+                      <DetailField label="Area" value={areaName} />
                       <DetailField label="Site name" value={transformer.siteName} />
                       <DetailField label="Asset owner" value={assetOwnerLabel} />
                       <DetailField label="State / territory" value={transformerState} />
