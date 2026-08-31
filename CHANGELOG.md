@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Extension `appOrigin` now defaults to the deployed app (`https://map-asset-tx.vercel.app`) rather than `http://localhost:3000`, so a fresh install on a work machine sends records to production without opening the popup first. Both Vercel hosts are declared in `host_permissions`, so there is no grant step either. Point it back at localhost in the popup when developing — that host is still in the manifest.
+- Extension version bumped to 0.2.0.
+
 ## 4.2 - Maintenance History & LIMS Capture
 
 The asset record could show what the oil looked like at each sample but not what

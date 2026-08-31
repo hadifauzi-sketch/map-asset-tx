@@ -35,12 +35,22 @@ Job No., Certificate No., and Sampling Point are written into the oil test's
 
 ## Install (unpacked)
 
-1. `chrome://extensions` → enable **Developer mode**.
-2. **Load unpacked** → select this `extension/` folder.
+1. Copy the `extension/` folder onto the machine (or clone the repo there).
+2. `chrome://extensions` → enable **Developer mode**.
+3. **Load unpacked** → select the `extension/` folder.
 
-Access to `actms.tnbr.com.my` and `localhost:3000` is declared in the manifest,
-so it is granted at install — there is no permission step for the normal setup.
-The popup's grant button is only needed if you point it at a different host.
+That is the whole setup. It targets the deployed app at
+`https://map-asset-tx.vercel.app` out of the box, and access to that host, to
+its `git-main` preview alias, and to `actms.tnbr.com.my` is declared in the
+manifest — so it is granted at install with no permission step and nothing to
+configure.
+
+**Developing against a local server?** Open the popup and set *Asset Map origin*
+to `http://localhost:3000`; that host is in the manifest too. The value is
+stored in `chrome.storage.sync`, so it follows your Chrome profile.
+
+The popup's grant button is only needed for a host that is not in the manifest —
+a custom domain, say.
 
 ## Use — right-click
 

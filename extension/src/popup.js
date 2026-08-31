@@ -7,9 +7,10 @@ const statusEl = document.getElementById('status');
 const diagnosticsEl = document.getElementById('diagnostics');
 const diagnosticsBody = document.getElementById('diagnosticsBody');
 
+// Must match DEFAULT_CONFIG in src/background.js.
 const DEFAULT_CONFIG = {
   limsBaseUrl: 'https://actms.tnbr.com.my',
-  appOrigin: 'http://localhost:3000',
+  appOrigin: 'https://map-asset-tx.vercel.app',
 };
 
 function setStatus(message, tone = '') {

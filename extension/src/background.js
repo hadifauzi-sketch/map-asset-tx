@@ -7,9 +7,12 @@ import {
 } from './shared/canonical.js';
 import { extractRecordRef, scrapeActmsPage, toCanonical } from './lims/adapter.js';
 
+// The deployed app is the default target: a fresh install on a work machine
+// should work without opening the popup first. Point `appOrigin` at
+// http://localhost:3000 there when developing against a local dev server.
 const DEFAULT_CONFIG = {
   limsBaseUrl: 'https://actms.tnbr.com.my',
-  appOrigin: 'http://localhost:3000',
+  appOrigin: 'https://map-asset-tx.vercel.app',
 };
 
 const MENU_ITEMS = [
