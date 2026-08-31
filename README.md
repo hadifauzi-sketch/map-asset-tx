@@ -4,6 +4,65 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 4.2 - Maintenance History & LIMS Capture
+
+The asset record could show what the oil looked like at each sample, but not what had been **done** to it. That gap matters: a filtration and an incipient fault leave the same signature on a trend line — moisture drops sharply, the DGA baseline restarts near zero — and nothing on the chart distinguished them. Version 4.2 adds the maintenance history, draws it onto the trending charts, and measures whether each job worked.
+
+### Maintenance tab (new)
+
+A new tab on the transformer record, beside Oil tests and Documents, recording what was physically done to the oil:
+
+| Field | Notes |
+|---|---|
+| Event date | Anchors the marker on the trending charts |
+| Event type | One of ten types, each explaining what it changes |
+| Compartment | Filtered like oil tests, so an OLTC job can't annotate main-tank trending |
+| Oil volume, performed by, notes | Free-text context for the record |
+
+The ten types are **filtration**, **reclamation**, **degassing**, **top-up**, **retrofill**, **inhibitor dosing**, **passivator dosing**, **repair**, **OLTC maintenance**, and **inspection**. Each declares which readings it invalidates — a degas restarts the whole DGA baseline, a reclamation restarts acidity, IFT and colour, a top-up shifts inhibitor and furan by dilution rather than by condition.
+
+### Markers on the trending charts
+
+Each event draws a dashed vertical line on Trending, anchored to the first sample taken on or after it — both the only date a category axis can draw, and the first reading that actually shows the effect. A step change now reads as maintenance rather than as a developing fault.
+
+- Several jobs between two samples group into one labelled line instead of overlapping.
+- An event newer than the last sample is reported as pending — nothing has been measured since, so there is nothing to anchor to.
+
+### Did the job work?
+
+Each event pairs the **last sample before it** with the **first sample after it** — the only honest comparison available, since anything further out has other changes mixed in — across **TDCG**, **BDV**, **Moisture**, and **2-FAL**. Each measure declares its own direction of improvement, so a rise in BDV reads as a success and a rise in moisture does not.
+
+### Lifetime furan
+
+Filtration and retrofill strip furan out of the oil, so the measured 2-FAL curve drops even though the paper degradation that produced it has not reversed — making a treated transformer look younger than it is, which is the dangerous direction to be wrong in.
+
+Furan accumulates within a single fill, so that fill contributes its **peak** reading, not the sum of its readings. A recorded strip starts a new fill that stacks on top: 250 ppb → filtered → 30 ppb at the next test totals **280 ppb**. Resets come from recorded maintenance, never from the shape of the curve.
+
+### ACTMS Chrome extension (new)
+
+`extension/` captures a transformer and its oil test results from a TNB Research **Sample Result List** page. ACTMS is a classic ASP application with no JSON API, so the extension reads the page **already open in your signed-in tab** — it fetches nothing, stores no credentials, and never sees a password or session token.
+
+Right-click an ACTMS sample result with the Asset Map open in another tab:
+
+- **Add or update the asset** — sends identity fields only, into the normal edit form. Nothing is written until you click Save, and existing assets only have blanks filled.
+- **File this test result** — files the sample into the matched asset, keyed on test date, so re-sending updates that row instead of duplicating it.
+
+Matching is by serial number first, then by site **and** transformer name together — names like `T1` repeat across sites, so a name alone would file a Kedah sample against an unrelated `T1`. See [extension/README.md](extension/README.md) for install and usage.
+
+### Oil test fixes
+
+- **A reading of 0 is no longer discarded on save.** Every numeric column was written as `value || null`, and `0` is falsy — so `NIL` acetylene, correctly read as 0, was stored as *not measured*. For C2H2 those mean opposite things: no acetylene is a healthy transformer, no acetylene *reading* tells you nothing.
+- **`ND`, `N.D.`, `Not Detected`, `None Detected`** now read as 0 alongside `NIL`, in both the extension and the PDF importer. `Not Specified`, `N/A` and blanks stay null — still *not measured*.
+- **The furan DP estimate was returning nothing.** The correlation takes 2-FAL in ppm and was being fed the stored ppb figure, which zeroes out at about 66 ppb — so every realistic reading produced null.
+- **Ethanol** added alongside methanol as a cellulose degradation marker.
+- **Cancel / Save at the top of the oil test form** as well as the bottom, so a long edit doesn't need scrolling past every section to save.
+
+### Under the hood
+
+`lib/oilTestChartData.js` and `lib/paperLife.js` are shared by the Trending tab, the Maintenance tab, the health dashboard and the oil test table, so they can never disagree about the same transformer. 108 tests pass.
+
+---
+
 ## Version 4.1.4 - Company & Area on the Asset Record
 
 Version 4.1.4 puts the ownership context back on the asset itself. A transformer record showed its site and state but never named the **company that owns it** or the **area it sits in** — that was only visible by opening the boundary on the map, even though the asset had already been assigned to an Area Plan. The Information tab now opens with both.
@@ -556,6 +615,7 @@ npm run build
 - **[SUPABASE_SETUP.md](SUPABASE_SETUP.md)** - Complete Supabase setup guide
 - **[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)** - How the app uses Supabase
 - **[API_REFERENCE.md](API_REFERENCE.md)** - Service functions reference
+- **[extension/README.md](extension/README.md)** - ACTMS Chrome extension: install, right-click actions, and the conventions it shares with the PDF importer
 - **[CHANGELOG.md](CHANGELOG.md)** - Release notes and version history
 
 ## 🆚 Comparison with LocalStorage Version
@@ -584,8 +644,8 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 4.1.4 (Supabase Edition)
-**Last Updated**: August 2026
+**Version**: 4.2 (Supabase Edition)
+**Last Updated**: September 2026
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  
 **Status**: Personal Project

@@ -4,6 +4,11 @@ import { DatePicker } from './ui/date-picker';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowDownNarrowWide, ArrowUpNarrowWide, Calendar, CalendarRange, Check, ChevronDown, X } from 'lucide-react';
 import { oilTestService } from '../lib/oilTestService';
+import {
+  calculateDpFromFuran,
+  calculateDpFromMethanol,
+  lifeUsedPercent,
+} from '../lib/paperLife';
 import DGAWorkbenchModal from './DGAWorkbenchModal';
 import { AppTooltip } from './ui/app-tooltip';
 import { Button } from './ui/button';
@@ -58,22 +63,6 @@ function getOilTestSortTimestamp(test) {
   return Number.isNaN(parsedCreatedAt) ? 0 : parsedCreatedAt;
 }
 
-// DP estimation formulas
-function calculateDpFromFuran(fal2) {
-  const val = parseFloat(fal2);
-  if (!val || val <= 0) return null;
-    // DONG ET AL [2] . correlation: 402.47 - 220.87×log₁₀(2FAL)
-  const dp = 402.47 - 220.87 * Math.log10(val);
-  return dp > 0 ? Math.round(dp) : null;
-}
-
-function calculateDpFromMethanol(methanol) {
-  const val = parseFloat(methanol);
-  if (!val || val <= 0) return null;
-  // Jalbert et al. correlation: log10(CH3OH) = -0.00283 × DP + 3.837 
-  const dp = (3.837 - Math.log10(val)) / 0.00283;
-  return dp > 0 ? Math.round(dp) : null;
-}
 
 function calculateTdcg(formData) {
   const gases = ['h2', 'ch4', 'c2h2', 'c2h4', 'c2h6', 'co'];
@@ -100,6 +89,7 @@ const TEST_DETAIL_SECTIONS = [
       { key: 'dbds', label: 'DBDS', unit: 'mg/kg' },
       { key: 'viscosity40', label: 'Viscosity @40C', unit: 'cSt' },
       { key: 'methanol', label: 'Methanol', unit: 'ppm' },
+      { key: 'ethanol', label: 'Ethanol', unit: 'ppm' },
       { key: 'pcb', label: 'PCB', unit: 'ppm' },
       { key: 'powerFactor', label: 'Power Factor' },
       { key: 'resistivity', label: 'Resistivity', unit: 'GOhm-m' },
@@ -192,10 +182,7 @@ function getDgaResultStatus(metricKey, value) {
 }
 
 function calcLifeUsed(dpFuran, dpMethanol) {
-  const dp = parseFloat(dpFuran) || parseFloat(dpMethanol);
-  if (!dp || dp <= 0) return null;
-  const pct = Math.round(((1000 - dp) / 800) * 100);
-  return Math.min(100, Math.max(0, pct));
+  return lifeUsedPercent(parseFloat(dpFuran) || parseFloat(dpMethanol));
 }
 
 function lifeUsedSeverity(pct) {
@@ -262,6 +249,7 @@ function OilTestSection({
     dbds: '',
     viscosity40: '',
     methanol: '',
+    ethanol: '',
     pcb: '',
     powerFactor: '',
     resistivity: '',
@@ -404,6 +392,7 @@ function OilTestSection({
       dbds: '',
       viscosity40: '',
       methanol: '',
+      ethanol: '',
       pcb: '',
       powerFactor: '',
       resistivity: '',
@@ -593,6 +582,20 @@ function OilTestSection({
     setEditingTest(null);
   };
 
+  // Rendered at both ends of the form. It runs from Test Information down to
+  // Estimate DP, so reaching the only Save meant scrolling past every section.
+  // The top copy is a submit button too — inside the <form>, both do the same.
+  const renderFormActions = () => (
+    <div className="form-actions">
+      <button type="button" className="btn-cancel" onClick={handleCancel}>
+        Cancel
+      </button>
+      <button type="submit" className="btn-save">
+        {editingTest ? 'Update Test' : 'Save Test'}
+      </button>
+    </div>
+  );
+
   const toggleExpand = (testId) => {
     setExpandedTests(prev => ({ ...prev, [testId]: !prev[testId] }));
   };
@@ -672,6 +675,7 @@ function OilTestSection({
             <span className="result-label">Methanol (ppm)</span>
             <span className="result-value">{test.methanol || '-'}</span>
           </div>
+
           <div className="result-item">
             <span className="result-label">PCB (ppm)</span>
             <span className="result-value">{test.pcb || '-'}</span>
@@ -1453,8 +1457,11 @@ function OilTestSection({
       ) : (
         <form onSubmit={handleSubmit} className="test-form">
           <div className="form-header">
-            <h3>{editingTest ? 'Edit Test Record' : 'Add Test Record'}</h3>
-            <p className="text-sm text-[var(--muted)]">Compartment: {activeCompartment}</p>
+            <div className="form-header-titles">
+              <h3>{editingTest ? 'Edit Test Record' : 'Add Test Record'}</h3>
+              <p className="text-sm text-[var(--muted)]">Compartment: {activeCompartment}</p>
+            </div>
+            {renderFormActions()}
           </div>
 
           <div className="form-section">
@@ -1743,6 +1750,18 @@ function OilTestSection({
                   value={formData.methanol}
                   onChange={handleChange}
                   placeholder="e.g., 10"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="ethanol">Ethanol (ppm)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  id="ethanol"
+                  name="ethanol"
+                  value={formData.ethanol}
+                  onChange={handleChange}
+                  placeholder="e.g., 2"
                 />
               </div>
             </div>
@@ -2080,14 +2099,7 @@ function OilTestSection({
             </div>
           </div>
 
-          <div className="form-actions">
-            <button type="button" className="btn-cancel" onClick={handleCancel}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-save">
-              {editingTest ? 'Update Test' : 'Save Test'}
-            </button>
-          </div>
+          {renderFormActions()}
         </form>
       )}
     </div>

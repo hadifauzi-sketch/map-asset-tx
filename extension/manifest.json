@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "LIMS to TX Asset Map",
+  "version": "0.1.0",
+  "description": "Copy transformer details and oil test results from the management LIMS into TX Asset Management.",
+  "permissions": ["storage", "scripting", "tabs", "contextMenus"],
+  "host_permissions": [
+    "https://actms.tnbr.com.my/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Send ACTMS record to Asset Map",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

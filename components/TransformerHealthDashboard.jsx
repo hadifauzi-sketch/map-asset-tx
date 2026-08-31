@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
+import { calculateDpFromFuran, calculateDpFromMethanol } from '../lib/paperLife';
 import {
   Dialog,
   DialogContent,
@@ -333,18 +334,15 @@ function calcLifeUsedFromDp(...dpValues) {
   return Math.min(100, Math.max(0, Math.round(((1000 - dp) / 800) * 100)));
 }
 
+// Delegates to lib/paperLife so this dashboard, the oil test table and the
+// maintenance chart cannot disagree about the same transformer. The 2-FAL unit
+// conversion (ppb -> ppm) lives there; passing the stored ppb value is correct.
 function calculateDpFromFuranValue(fal2) {
-  const val = toNumber(fal2);
-  if (!val || val <= 0) return null;
-  const dp = 402.47 - 220.87 * Math.log10(val);
-  return dp > 0 ? Math.round(dp) : null;
+  return calculateDpFromFuran(toNumber(fal2));
 }
 
 function calculateDpFromMethanolValue(methanol) {
-  const val = toNumber(methanol);
-  if (!val || val <= 0) return null;
-  const dp = (3.837 - Math.log10(val)) / 0.00283;
-  return dp > 0 ? Math.round(dp) : null;
+  return calculateDpFromMethanol(toNumber(methanol));
 }
 
 function getLifetimeUsagePctFromAge(ageYears, referenceLifeYears = REFERENCE_LIFE_YEARS) {

@@ -1,6 +1,6 @@
 {
   "name": "transformer-asset-map",
-  "version": "4.1.4",
+  "version": "4.2.0",
   "description": "Transformer asset management with Supabase PostgreSQL backend and cloud storage",
   "private": true,
   "dependencies": {

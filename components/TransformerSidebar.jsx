@@ -1087,7 +1087,7 @@ function TransformerSidebar({
             </div>
           </div>
 
-          <div data-tour="quick-stats" className="mt-2.5 grid grid-cols-4 gap-1 lg:mt-3 lg:grid-cols-2 lg:gap-1.5">
+          <div data-tour="quick-stats" className="mt-2.5 grid grid-cols-4 gap-1 lg:mt-2.5 lg:grid-cols-2 lg:gap-1">
             {quickStats.map((stat) => {
               const Icon = stat.icon;
               const isAssetsStat = stat.key === 'assets';
@@ -1095,16 +1095,19 @@ function TransformerSidebar({
               const isCompanyParentStat = stat.key === 'companies';
               const isStatesStat = stat.key === 'states';
               const cardBody = (
-                <CardContent className="flex min-h-[52px] flex-col justify-center gap-1 px-2 py-1.5 lg:block lg:min-h-0 lg:space-y-1 lg:p-2.5">
-                  <div className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)] lg:h-6 lg:w-6">
-                    <Icon className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
+                <CardContent className="flex min-h-[52px] flex-col justify-center gap-1 px-2 py-1.5 lg:min-h-0 lg:gap-0.5 lg:px-2.5 lg:py-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <div className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[var(--primary-soft)] text-[var(--primary-strong)]">
+                      <Icon className="h-3 w-3" />
+                    </div>
+                    <p className="hidden text-base font-semibold leading-none lg:block">{stat.value}</p>
                   </div>
                   <div>
-                    <p className="text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)] lg:text-[11px] lg:tracking-[0.12em]">
+                    <p className="text-[8px] font-medium uppercase leading-tight tracking-[0.08em] text-[var(--muted)] lg:text-[9px] lg:tracking-[0.1em]">
                       <span className="lg:hidden">{getCollapsedStatLabel(stat.key, stat.label)}</span>
                       <span className="hidden lg:inline">{stat.label}</span>
                     </p>
-                    <p className="text-base font-semibold leading-none lg:text-lg">{stat.value}</p>
+                    <p className="text-base font-semibold leading-none lg:hidden">{stat.value}</p>
                   </div>
                 </CardContent>
               );

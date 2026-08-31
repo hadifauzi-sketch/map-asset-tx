@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
+  Wrench,
   Building2,
   ChevronDown,
   ChevronUp,
@@ -22,6 +23,8 @@ import OilTestSection from './OilTestSection';
 import DocumentSection from './DocumentSection';
 import ImageSection from './ImageSection';
 import DataTrending from './DataTrending';
+import InterventionSection from './InterventionSection';
+import { interventionService } from '../lib/interventionService';
 import TransformerHealthDashboard from './TransformerHealthDashboard';
 import { AppTooltip } from './ui/app-tooltip';
 import { Badge } from './ui/badge';
@@ -149,6 +152,7 @@ function TransformerDetailModal({
   onDgaPreferencesSaved,
 }) {
   const [activeTab, setActiveTab] = useState('info');
+  const [interventions, setInterventions] = useState([]);
   const [selectedCompartment, setSelectedCompartment] = useState(DEFAULT_COMPARTMENTS[0]);
   const [customCompartments, setCustomCompartments] = useState([]);
   const [oilTestAssignments, setOilTestAssignments] = useState({});
@@ -243,6 +247,33 @@ function TransformerDetailModal({
 
     loadDocuments();
   }, [activeTab, onUpdateDocuments, transformer?.id]);
+
+  // Loaded whenever the record opens rather than only on the Maintenance tab:
+  // the Trending tab needs them too, to mark where a baseline was reset.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadInterventions = async () => {
+      if (!open || !transformer?.id) {
+        return;
+      }
+
+      try {
+        const records = await interventionService.getByTransformerId(transformer.id);
+        if (!cancelled) {
+          setInterventions(records);
+        }
+      } catch (error) {
+        console.error('Error loading interventions:', error);
+      }
+    };
+
+    loadInterventions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, transformer?.id]);
 
   const availableCompartments = useMemo(() => {
     const oilTestCompartments = (transformer?.oilTests || []).map(
@@ -339,6 +370,19 @@ function TransformerDetailModal({
       selectedCompartmentKey,
       transformer?.oilTests,
     ]
+  );
+
+  // Interventions carry their compartment as stored text, so they filter the
+  // same way oil tests do — an OLTC filtration must not annotate main tank
+  // trending. A blank compartment falls back to the default, matching how
+  // untagged oil tests behave.
+  const filteredInterventions = useMemo(
+    () =>
+      interventions.filter((intervention) => {
+        const compartment = resolveCompartmentName(intervention?.compartment);
+        return normalizeCompartmentName(compartment) === selectedCompartmentKey;
+      }),
+    [availableCompartments, fallbackCompartment, interventions, selectedCompartmentKey]
   );
 
   const filteredDocuments = useMemo(
@@ -798,6 +842,13 @@ function TransformerDetailModal({
                     <BarChart3 className="h-4 w-4" />
                     <span className="hidden sm:inline">Trending</span>
                   </TabsTrigger>
+                  <TabsTrigger value="maintenance" className="shrink-0">
+                    <Wrench className="h-4 w-4" />
+                    <span className="hidden sm:inline">Maintenance</span>
+                    <span className="ml-1 rounded-md bg-[var(--card-muted)] px-1.5 py-0.5 text-xs">
+                      {filteredInterventions.length}
+                    </span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
             </div>
@@ -940,6 +991,18 @@ function TransformerDetailModal({
                   transformer={transformer}
                   readOnly={readOnly}
                   compartmentLabel={selectedCompartmentName}
+                  interventions={filteredInterventions}
+                />
+              </TabsContent>
+
+              <TabsContent value="maintenance" className="mt-0">
+                <InterventionSection
+                  transformerId={transformer?.id}
+                  interventions={filteredInterventions}
+                  oilTests={filteredOilTests}
+                  compartmentLabel={selectedCompartmentName}
+                  canEdit={!readOnly}
+                  onChange={setInterventions}
                 />
               </TabsContent>
             </div>

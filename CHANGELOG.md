@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+## 4.2 - Maintenance History & LIMS Capture
+
+The asset record could show what the oil looked like at each sample but not what
+had been *done* to it. Without that, a filtration and an incipient fault produce
+the same shape on a trend line — a sudden drop in moisture, a DGA baseline that
+restarts near zero — and the chart gives no way to tell them apart. This release
+adds the maintenance history, draws it onto the trending charts, and measures
+whether each job worked.
+
+### Added
+
+- **Maintenance tab** on the transformer record (`components/InterventionSection.jsx`), recording event date, type, compartment, oil volume, who performed it, and notes. The tab header shows the event count for the selected compartment, alongside Oil tests and Documents.
+- `lib/interventionTypes.js` — ten event types (filtration, reclamation, degassing, top-up, retrofill, inhibitor dosing, passivator dosing, repair, OLTC maintenance, inspection). Each carries a short code, a colour, a plain-language note on what it does to the oil, and — the field that drives everything else — the list of chart series whose history it invalidates.
+- **Maintenance markers on the Trending charts** (`lib/interventionMarkers.js`). Events anchor to the first sample taken on or after them, which is both the only date the category axis can draw and the first reading showing the effect. Events sharing an anchor are grouped into one labelled line rather than three overlapping ones, and events newer than the last sample are reported as pending instead of being dropped.
+- **Before/after impact comparison** (`lib/maintenanceImpact.js`, `components/MaintenanceImpactCharts.jsx`) — pairs the last sample before each event with the first sample after it across TDCG, BDV, Moisture, and 2-FAL. Each measure declares whether higher or lower is the improvement, so a rise in BDV and a rise in moisture are not coloured the same.
+- **Lifetime furan accumulation** (`lib/furanAccumulation.js`). Filtration and retrofill strip furan from the oil, so the measured 2-FAL curve falls even though the paper degradation that produced it has not reversed. Within one fill the latest reading already contains everything before it, so that fill contributes its peak; a recorded strip starts a new fill that stacks on top. Resets come from recorded maintenance, not from the shape of the curve — treating every dip as a strip would count ordinary sample-to-sample variation as fresh production.
+- `supabase/migrations/20260831120658_asset_interventions.sql` — `asset_interventions`, indexed on `(transformer_id, event_date desc)`, with the policy dropped before creation so the migration stays re-runnable.
+- **`ethanol` on oil tests** (`supabase/migrations/20260831175401_add_ethanol_to_oil_tests.sql`). Methanol was already stored; ethanol, its companion cellulose-degradation alcohol, had no home.
+- **ACTMS Chrome extension** (`extension/`) — captures a transformer and its results from a TNB Research Sample Result List page via right-click. ACTMS is a classic ASP app with no JSON API, so the extension reads the page already open in the signed-in tab: it fetches nothing, stores no credentials, and never sees a session token. The asset action prefills the edit form and saves nothing until reviewed; the result action files the sample directly, keyed on test date so re-sending updates the row instead of duplicating it.
+- `lib/limsBridge.js` — validates inbound extension payloads independently of the extension's own sanitiser, since a `postMessage` payload is untrusted input, and matches a record to an asset by serial number first, falling back to site *and* name together. Names like `T1` repeat across sites, so a name alone would attach a Kedah sample to whichever unrelated `T1` loaded first.
+- `lib/oilTestChartData.js` and `lib/paperLife.js`, extracted so the Trending tab, the Maintenance tab, the health dashboard, and the oil test table plot and calculate from one source.
+- Cancel / Save buttons at the **top** of the oil test form as well as the bottom. The form runs from Test Information to Estimate DP, so reaching the only Save meant scrolling past every section.
+- `ND`, `N.D.`, `Not Detected`, and `None Detected` join `NIL` as below-detection-limit notations parsed to 0, in both the extension and the PDF importer.
+- Tests: `actmsAdapter`, `limsBridge`, `limsAssetMatching`, `interventionMarkers`, `maintenanceImpact`, `furanAccumulation`, `paperLife`, `oilTestRow`, `belowDetectionLimit` — 108 passing.
+
+### Changed
+
+- `components/DataTrending.jsx` no longer owns its own oil-test-to-chart mapper; it and the Maintenance charts share `mapOilTestsToChartData`. Two mappers would eventually disagree, and a maintenance chart contradicting the trending chart is worse than no maintenance chart.
+- `TransformerHealthDashboard` delegates its DP correlations to `lib/paperLife` instead of duplicating the equations inline.
+- Interventions load when the record opens rather than when the Maintenance tab is first shown, because the Trending tab needs them too.
+- Interventions filter by compartment exactly as oil tests do, so an OLTC filtration cannot annotate main-tank trending.
+- `normalizeIdentifier` and `normalizeLookupText` are exported from `lib/transformerMnemonicAssist.js`, and the serial rule is documented as mirroring the `serial_number_normalized` generated column, so a serial matched in the app folds the same way the database's uniqueness index folds it.
+- Sidebar quick-stat cards moved the value onto the icon row and tightened their spacing, so more of the asset list is visible above the fold.
+- Package, README, and App Info version metadata are aligned at v4.2.
+
+### Fixed
+
+- **A reading of 0 was discarded when saving an oil test.** Every numeric column in `lib/oilTestService.js` was written as `testData.field || null`, and `0` is falsy — so a lab reporting `NIL` acetylene, correctly parsed to 0 by both importers, was stored as *not measured*. For C2H2 those two mean opposite things: no acetylene is a healthy transformer, no acetylene *reading* tells you nothing. `numericOrNull()` now keeps the zero, and `create()` and `update()` share one `buildOilTestRow()` so they cannot drift on coercion again.
+- **The furan-based DP estimate returned nothing for realistic readings.** The Dong correlation takes 2-FAL in ppm and was being fed the stored ppb figure, which makes the expression cross zero at about 66 ppb — so every reading in the normal hundreds-to-thousands range produced null. The conversion now lives in `lib/paperLife.js`.
+- Non-numeric text such as `Not Specified` no longer reaches a numeric column; it resolves to null instead of being passed to PostgREST as-is.
+
 ## 4.1.4 - Company & Area on the Asset Record
 
 ### Added

@@ -76,11 +76,12 @@ import { floorPlanService } from './lib/floorPlanService';
 import { resolveAssetPlacement } from './lib/assetPlacement';
 import { createDraftCompanyBoundary, normalizeCompanyBoundary } from './lib/companyBoundaryStorage';
 import { companyBoundaryService } from './lib/companyBoundaryService';
-import { getTransformerState } from './lib/malaysiaStates';
+import { getTransformerState, inferMalaysianStateFromText } from './lib/malaysiaStates';
 import { documentService } from './lib/documentService';
 import { oilTestService } from './lib/oilTestService';
 import { isSameImportedOilTestPayload } from './lib/oilTestImportUtils';
 import { createTransformerDraft } from './lib/transformerDraft';
+import { INTENT_RESULT, matchLimsRecordToAsset, subscribeToLimsBridge } from './lib/limsBridge';
 import {
   ASSET_OWNER_FILTERS,
   matchesAssetOwnerFilter,
@@ -1887,7 +1888,9 @@ function App() {
   };
 
   const syncImportedReportForTransformer = async (transformerId, importSession, existingOilTests = []) => {
-    if (!transformerId || !importSession?.file) {
+    const payloads = Array.isArray(importSession?.oilTestPayloads) ? importSession.oilTestPayloads : [];
+
+    if (!transformerId || (!importSession?.file && !payloads.length)) {
       return {
         documentStored: false,
         createdCount: 0,
@@ -1896,9 +1899,11 @@ function App() {
       };
     }
 
-    await documentService.upload(transformerId, importSession.file);
+    // LIMS imports arrive as data only, with no report file to store.
+    if (importSession.file) {
+      await documentService.upload(transformerId, importSession.file);
+    }
 
-    const payloads = Array.isArray(importSession.oilTestPayloads) ? importSession.oilTestPayloads : [];
     const existingByDate = new Map();
 
     existingOilTests.forEach((test) => {
@@ -1934,7 +1939,7 @@ function App() {
     }
 
     return {
-      documentStored: true,
+      documentStored: Boolean(importSession.file),
       createdCount,
       updatedCount,
       unchangedCount,
@@ -1988,7 +1993,7 @@ function App() {
         }
       }
 
-      if (savedTransformerId && importSession?.file) {
+      if (savedTransformerId && (importSession?.file || importSession?.oilTestPayloads?.length)) {
         try {
           importSummary = await syncImportedReportForTransformer(savedTransformerId, importSession, existingOilTests);
         } catch (importError) {
@@ -2014,7 +2019,12 @@ function App() {
       setIsLocationRegisterOpen(false);
       setEditingTransformer(null);
 
-      if (!postSaveNotice && importSummary?.documentStored) {
+      const importSyncedAnyTest = Boolean(
+        importSummary &&
+          (importSummary.createdCount || importSummary.updatedCount || importSummary.unchangedCount)
+      );
+
+      if (!postSaveNotice && (importSummary?.documentStored || importSyncedAnyTest)) {
         postSaveNotice = {
           variant: 'success',
           title: isEditingTransformer ? 'Transformer updated successfully' : 'Transformer saved successfully',
@@ -2075,6 +2085,142 @@ function App() {
     setIsModalOpen(true);
     setSelectedFloorPlanId(null);
   };
+
+  // Files a LIMS sample straight into the matched asset's oil test records.
+  // Unlike the asset action this writes immediately — there are no identity
+  // fields to review, and the upsert is keyed on test date, so re-sending the
+  // same sample updates that row instead of adding a duplicate.
+  const handleLimsResult = useCallback(
+    async (record, match, matchReason) => {
+      if (!match) {
+        showAppNotice({
+          variant: 'warning',
+          title: 'No asset matched this result',
+          description:
+            'Nothing was filed: no asset matched this sample by serial number, or by site and transformer name. Use "Add or update the asset from this record" first, then send the result.',
+          recordLabel: 'Oil test',
+          txName: record.transformer.txName || '',
+          siteName: record.transformer.siteName || '',
+          actionLabel: 'Close',
+        });
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const summary = await syncImportedReportForTransformer(
+          match.id,
+          { file: null, oilTestPayloads: record.oilTestPayloads },
+          Array.isArray(match.oilTests) ? match.oilTests : []
+        );
+
+        await loadTransformers();
+
+        const changes = [
+          summary.createdCount ? `${summary.createdCount} added` : null,
+          summary.updatedCount ? `${summary.updatedCount} updated` : null,
+          summary.unchangedCount ? `${summary.unchangedCount} already current` : null,
+        ].filter(Boolean);
+
+        showAppNotice({
+          variant: 'success',
+          title: 'Test result filed from LIMS',
+          description: `${match.siteName} / ${match.txName} — matched by ${matchReason}. ${
+            changes.join(', ') || 'No changes'
+          }.`,
+          recordLabel: 'Oil test',
+          txName: match.txName || '',
+          siteName: match.siteName || '',
+          recordStatusLabel: 'Saved',
+          actionLabel: 'Close',
+        });
+      } catch (resultError) {
+        console.error('LIMS result import failed:', resultError);
+        showAppNotice({
+          variant: 'error',
+          title: 'Could not file the LIMS result',
+          description: 'The asset was matched, but its oil test records could not be updated.',
+          detail: resultError?.message || 'Please retry, or add the result manually.',
+          recordLabel: 'Oil test',
+          txName: match.txName || '',
+          siteName: match.siteName || '',
+          actionLabel: 'Close',
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [showAppNotice]
+  );
+
+  // Receives records pushed by the LIMS Chrome extension (see extension/README.md).
+  // The asset action writes nothing here: the record opens in the normal edit
+  // form so the values can be reviewed, and saving goes through
+  // handleAddTransformer as usual. The result action is handled above.
+  const handleLimsRecord = useCallback(
+    (record) => {
+      if (!ensureCanEditAssets()) {
+        return;
+      }
+
+      const { match, reason: matchReason } = matchLimsRecordToAsset(record.transformer, transformers);
+
+      if (record.intent === INTENT_RESULT) {
+        handleLimsResult(record, match, matchReason);
+        return;
+      }
+
+      // The asset action carries identity only — results go through the result
+      // action, so nothing is filed behind the user's back here.
+      const importSession = null;
+
+      // ACTMS has no state field, but its client address carries one.
+      const incoming = { ...record.transformer };
+      if (!incoming.state && record.address) {
+        const inferredState = inferMalaysianStateFromText(record.address);
+        if (inferredState) {
+          incoming.state = inferredState;
+        }
+      }
+
+      if (match) {
+        // Only fill blanks on a known asset — the LIMS should not silently
+        // overwrite details already curated in the app.
+        const filled = { ...match };
+        Object.entries(incoming).forEach(([key, value]) => {
+          if (key === 'position') {
+            return;
+          }
+          if (filled[key] === undefined || filled[key] === null || filled[key] === '') {
+            filled[key] = value;
+          }
+        });
+
+        setEditingTransformer({ ...filled, importSession });
+      } else {
+        setEditingTransformer(createTransformerDraft({ ...incoming, importSession }));
+      }
+
+      setIsModalOpen(true);
+      setSelectedFloorPlanId(null);
+      showAppNotice({
+        variant: 'info',
+        title: match ? `LIMS asset matched by ${matchReason}` : 'New asset from LIMS',
+        description: match
+          ? `Matched ${match.siteName} / ${match.txName}${
+              match.serialNumber ? ` (SN ${match.serialNumber})` : ''
+            }. Check this is the right asset, then save. Send the test result separately with "Add this test result to the asset".`
+          : 'No asset matched this LIMS record. Complete the required fields and save to create it, then send the test result separately.',
+        recordLabel: 'Transformer',
+        txName: record.transformer.txName || '',
+        siteName: record.transformer.siteName || '',
+        actionLabel: 'Review',
+      });
+    },
+    [ensureCanEditAssets, handleLimsResult, showAppNotice, transformers]
+  );
+
+  useEffect(() => subscribeToLimsBridge(handleLimsRecord), [handleLimsRecord]);
 
   const handleDeleteTransformer = async (id) => {
     if (!ensureCanEditAssets()) {

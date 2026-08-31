@@ -2079,6 +2079,21 @@ textarea {
   margin: 0;
 }
 
+/* Title on the left, the same Cancel / Save pair that closes the form on the
+   right, so a long edit can be saved without scrolling to the bottom first. */
+.form-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-header .form-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .form-section {
   display: grid;
   gap: 16px;

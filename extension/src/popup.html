@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>LIMS to TX Asset Map</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --border: #d4d9e0;
+        --muted: #6b7280;
+        --accent: #0f766e;
+      }
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 14px;
+        font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 14px;
+      }
+      label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 10px;
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font: inherit;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        color: inherit;
+        font-weight: 500;
+      }
+      button + button {
+        margin-top: 6px;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .hint {
+        margin: 10px 0 0;
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+      #status {
+        margin-top: 10px;
+        white-space: pre-wrap;
+        font-size: 12px;
+      }
+      #status.error {
+        color: #b91c1c;
+      }
+      #status.ok {
+        color: var(--accent);
+      }
+      details {
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>LIMS to TX Asset Map</h1>
+
+    <label for="limsBaseUrl">ACTMS base URL</label>
+    <input id="limsBaseUrl" type="url" placeholder="https://actms.tnbr.com.my" />
+
+    <label for="appOrigin">Asset Map origin</label>
+    <input id="appOrigin" type="url" placeholder="http://localhost:3000" />
+
+    <button id="grant" class="secondary" type="button">Grant access to these origins</button>
+    <button id="pull-asset" type="button">Add or update the asset</button>
+    <button id="pull-result" type="button">Add this test result to the asset</button>
+
+    <p class="hint">
+      <strong>Asset</strong> opens the transformer in the edit form for review — nothing
+      is saved until you click Save there. <strong>Test result</strong> files the sample
+      straight into the matched asset's oil test records.
+    </p>
+    <p class="hint">
+      ACTMS opens results in a popup window with no toolbar. There, right-click the
+      page and pick either action from the menu.
+    </p>
+
+    <p id="status"></p>
+    <details id="diagnostics" hidden>
+      <summary>Unmapped LIMS fields</summary>
+      <div id="diagnosticsBody"></div>
+    </details>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Bar, Area, ReferenceLine } from 'recharts';
 import { Activity, Zap, FileText, Shield, FlaskConical, AlertOctagon, Table } from 'lucide-react';
+import { buildInterventionMarkers, markersForSeries } from '../lib/interventionMarkers';
+import { getInterventionType } from '../lib/interventionTypes';
+import { mapOilTestsToChartData } from '../lib/oilTestChartData';
 
 const CHART_TEXT_COLOR = 'var(--foreground)';
 const CHART_MUTED_COLOR = 'color-mix(in srgb, var(--foreground) 68%, var(--muted) 32%)';
@@ -12,46 +15,69 @@ const CHART_TOOLTIP_STYLE = {
   color: 'var(--foreground)',
 };
 
-// --- DATA MAPPER: Convert oil test records (camelCase) to chart format ---
-function mapOilTestsToChartData(oilTests) {
-  if (!oilTests || oilTests.length === 0) return [];
+/**
+ * Vertical markers showing where maintenance reset a baseline.
+ *
+ * Returned as a plain array so it can be spread into a Recharts chart's
+ * children — ReferenceLine has to be a direct child to pick up the axes.
+ */
+function renderInterventionMarkers(groups, { yAxisId } = {}) {
+  return (groups || []).map((group) => (
+    <ReferenceLine
+      key={`intervention-${group.x}-${group.label}`}
+      x={group.x}
+      {...(yAxisId ? { yAxisId } : {})}
+      stroke={group.color}
+      strokeDasharray="4 4"
+      strokeWidth={1.5}
+      label={{
+        value: group.label,
+        position: 'top',
+        fill: group.color,
+        fontSize: 10,
+        fontWeight: 700,
+      }}
+    />
+  ));
+}
 
-  // Sort by date ascending (oldest first for trending)
-  const sorted = [...oilTests].sort((a, b) => new Date(a.testDate) - new Date(b.testDate));
+/** Caption under a chart naming the events drawn on it. */
+function InterventionLegend({ groups, pending }) {
+  if (!groups?.length && !pending?.length) {
+    return null;
+  }
 
-  return sorted.map(test => {
-    const d = new Date(test.testDate);
-    const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      {(groups || []).map((group) =>
+        group.events.map((event) => {
+          const type = getInterventionType(event.eventType);
+          return (
+            <span
+              key={event.id}
+              style={{ fontSize: 10, color: CHART_MUTED_COLOR, display: 'inline-flex', gap: 4 }}
+              title={type.hint}
+            >
+              <strong style={{ color: type.color }}>{type.code}</strong>
+              {type.label} · {formatEventDate(event.eventDate)}
+            </span>
+          );
+        })
+      )}
+      {(pending || []).length ? (
+        <span style={{ fontSize: 10, color: CHART_MUTED_COLOR, fontStyle: 'italic' }}>
+          {pending.length} event(s) after the latest sample — no post-event result yet.
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
-    return {
-      date,
-      H2: parseFloat(test.h2) || 0,
-      CH4: parseFloat(test.ch4) || 0,
-      C2H2: parseFloat(test.c2h2) || 0,
-      C2H4: parseFloat(test.c2h4) || 0,
-      C2H6: parseFloat(test.c2h6) || 0,
-      CO: parseFloat(test.co) || 0,
-      CO2: parseFloat(test.co2) || 0,
-      O2: parseFloat(test.o2) || 0,
-      N2: parseFloat(test.n2) || 0,
-      TDCG: parseFloat(test.tdcg) || 0,
-      BDV: parseFloat(test.breakdown) || 0,
-      Moisture: parseFloat(test.waterContent) || 0,
-      Acidity: parseFloat(test.acidity) || 0,
-      IFT: parseFloat(test.interfacialTension) || 0,
-      TanDelta: parseFloat(test.powerFactor) || 0,
-      Inhibitor: test.inhibitor !== null && test.inhibitor !== undefined && test.inhibitor !== '' ? parseFloat(test.inhibitor) : null,
-      Color: test.color || '',
-      ColorValue: test.color ? parseFloat(String(test.color).replace(/[^\d.-]/g, '')) || 0 : 0,
-      DBDS: parseFloat(test.dbds) || 0,
-      CopperCorr: test.copperCorrosive && String(test.copperCorrosive).toLowerCase() !== 'no' && String(test.copperCorrosive) !== '0' ? 1 : 0,
-      Passivator: parseFloat(test.passivator) || 0,
-      Furan: parseFloat(test.fal2) || 0,
-      Methanol: parseFloat(test.methanol) || 0,
-      DPFuran: test.estimatedDpFuran ? parseFloat(test.estimatedDpFuran) : null,
-      DPMethanol: test.estimatedDpMethanol ? parseFloat(test.estimatedDpMethanol) : null,
-    };
-  });
+function formatEventDate(value) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? String(value)
+    : parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // --- HELPER: Trend arrow ---
@@ -80,7 +106,7 @@ const TrendValue = ({ current, previous, type = 'normal' }) => {
 };
 
 // --- DYNAMIC DGA CHART with clickable legend ---
-const DynamicDGAChart = ({ data }) => {
+const DynamicDGAChart = ({ data, markers }) => {
   const [visible, setVisible] = useState({
     H2: true, CH4: true, C2H6: true, C2H4: true, C2H2: true, CO: true, TDCG: true
   });
@@ -124,6 +150,7 @@ const DynamicDGAChart = ({ data }) => {
         <Line type="monotone" dataKey="C2H2" name="Acetylene (C₂H₂)" stroke="#f97316" strokeWidth={2} dot={false} hide={!visible.C2H2} />
         <Line type="monotone" dataKey="CO" name="CO" stroke="#f59e0b" strokeWidth={2} dot={false} hide={!visible.CO} />
         <Line type="monotone" dataKey="TDCG" name="TDCG" stroke="#94a3b8" strokeDasharray="5 5" strokeWidth={2} dot={false} hide={!visible.TDCG} />
+        {renderInterventionMarkers(markers)}
       </LineChart>
     </ResponsiveContainer>
   );
@@ -257,8 +284,12 @@ const FullHistoryTable = ({ data }) => {
 };
 
 // --- MAIN COMPONENT ---
-export default function DataTrending({ oilTests, transformer, compartmentLabel = '' }) {
+export default function DataTrending({ oilTests, transformer, compartmentLabel = '', interventions = [] }) {
   const chartData = useMemo(() => mapOilTestsToChartData(oilTests), [oilTests]);
+  const { groups: interventionGroups, pending: pendingInterventions } = useMemo(
+    () => buildInterventionMarkers(interventions, chartData),
+    [chartData, interventions]
+  );
 
   if (!oilTests || oilTests.length === 0) {
     return (
@@ -301,7 +332,11 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
       <div className="trending-grid">
         {/* DGA Chart */}
         <DashboardCard title="DGA: Fault Gases & TDCG (Click Legend to Toggle)" icon={Activity}>
-          <DynamicDGAChart data={chartData} />
+          <DynamicDGAChart data={chartData} markers={markersForSeries(interventionGroups, 'DGA')} />
+          <InterventionLegend
+            groups={markersForSeries(interventionGroups, 'DGA')}
+            pending={pendingInterventions}
+          />
         </DashboardCard>
 
         {/* Inhibitor Depletion */}
@@ -315,8 +350,10 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
               <Legend verticalAlign="top" height={36} formatter={(v) => <span style={{ color: CHART_TEXT_COLOR, fontWeight: 600 }}>{v}</span>} />
               <Line type="stepAfter" dataKey="Inhibitor" name="DBPC Content (%)" stroke="#10b981" strokeWidth={3} activeDot={{ r: 8 }} />
               <ReferenceLine y={0.30} stroke="#f59e0b" strokeDasharray="3 3" label={{ position: 'right', value: 'Re-inhibit Warning', fill: '#f59e0b', fontSize: 10 }} />
+              {renderInterventionMarkers(markersForSeries(interventionGroups, 'Inhibitor'))}
             </LineChart>
           </ResponsiveContainer>
+          <InterventionLegend groups={markersForSeries(interventionGroups, 'Inhibitor')} />
         </DashboardCard>
 
         {/* Corrosive Sulfur & Passivation */}
@@ -338,8 +375,10 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
                   ? <path d={`M${cx},${cy - 6} L${cx + 6},${cy + 6} L${cx - 6},${cy + 6} Z`} fill="#ef4444" stroke="none" />
                   : <circle cx={cx} cy={cy} r={4} fill="#10b981" />;
               }} />
+              {renderInterventionMarkers(markersForSeries(interventionGroups, 'Passivator'), { yAxisId: 'left' })}
             </ComposedChart>
           </ResponsiveContainer>
+          <InterventionLegend groups={markersForSeries(interventionGroups, 'Passivator')} />
         </DashboardCard>
 
         {/* Paper Aging: Furan, Methanol & DP */}
@@ -356,8 +395,10 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
               <Line yAxisId="left" type="monotone" dataKey="Methanol" name="Methanol (ppm)" stroke="#ec4899" strokeDasharray="3 3" />
               <Line yAxisId="right" type="monotone" dataKey="DPFuran" name="Est. DP (Furan)" stroke="#64748b" strokeWidth={2} strokeDasharray="10 5" />
               <Line yAxisId="right" type="monotone" dataKey="DPMethanol" name="Est. DP (Methanol)" stroke="#f97316" strokeWidth={2} strokeDasharray="5 3" />
+              {renderInterventionMarkers(markersForSeries(interventionGroups, 'Furan'), { yAxisId: 'left' })}
             </ComposedChart>
           </ResponsiveContainer>
+          <InterventionLegend groups={markersForSeries(interventionGroups, 'Furan')} />
         </DashboardCard>
 
         {/* Oil Aging: IFT & Tan Delta */}
@@ -372,8 +413,10 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
               <Legend verticalAlign="top" height={36} formatter={(v) => <span style={{ color: CHART_TEXT_COLOR, fontWeight: 600 }}>{v}</span>} />
               <Area yAxisId="left" type="monotone" dataKey="IFT" fill="#8b5cf6" fillOpacity={0.1} stroke="#8b5cf6" />
               <Line yAxisId="right" type="monotone" dataKey="TanDelta" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+              {renderInterventionMarkers(markersForSeries(interventionGroups, ['IFT', 'Moisture', 'BDV']), { yAxisId: 'left' })}
             </ComposedChart>
           </ResponsiveContainer>
+          <InterventionLegend groups={markersForSeries(interventionGroups, ['IFT', 'Moisture', 'BDV'])} />
         </DashboardCard>
 
         {/* Physical: Color & Acidity */}
@@ -388,8 +431,10 @@ export default function DataTrending({ oilTests, transformer, compartmentLabel =
               <Legend verticalAlign="top" height={36} formatter={(v) => <span style={{ color: CHART_TEXT_COLOR, fontWeight: 600 }}>{v}</span>} />
               <Bar yAxisId="left" dataKey="ColorValue" name="ASTM Color" fill="#fbbf24" barSize={30} radius={[4, 4, 0, 0]} />
               <Line yAxisId="right" type="monotone" dataKey="Acidity" stroke="#f43f5e" strokeWidth={2} dot={false} />
+              {renderInterventionMarkers(markersForSeries(interventionGroups, ['Color', 'Acidity']), { yAxisId: 'left' })}
             </ComposedChart>
           </ResponsiveContainer>
+          <InterventionLegend groups={markersForSeries(interventionGroups, ['Color', 'Acidity'])} />
         </DashboardCard>
       </div>
 
