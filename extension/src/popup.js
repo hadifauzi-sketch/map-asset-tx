@@ -1,3 +1,5 @@
+import { browserApi } from './shared/browserApi.js';
+
 const limsBaseUrlInput = document.getElementById('limsBaseUrl');
 const appOriginInput = document.getElementById('appOrigin');
 const grantButton = document.getElementById('grant');
@@ -27,13 +29,13 @@ function originOf(value) {
 }
 
 async function loadConfig() {
-  const config = await chrome.storage.sync.get(DEFAULT_CONFIG);
+  const config = await browserApi.storage.sync.get(DEFAULT_CONFIG);
   limsBaseUrlInput.value = config.limsBaseUrl || '';
   appOriginInput.value = config.appOrigin || DEFAULT_CONFIG.appOrigin;
 }
 
 async function saveConfig() {
-  await chrome.storage.sync.set({
+  await browserApi.storage.sync.set({
     limsBaseUrl: limsBaseUrlInput.value.trim(),
     appOrigin: appOriginInput.value.trim() || DEFAULT_CONFIG.appOrigin,
   });
@@ -58,7 +60,7 @@ grantButton.addEventListener('click', async () => {
     origins.push(`${appOrigin}/*`);
   }
 
-  const granted = await chrome.permissions.request({ origins });
+  const granted = await browserApi.permissions.request({ origins });
   setStatus(
     granted ? 'Access granted.' : 'Access denied — the extension cannot reach the LIMS without it.',
     granted ? 'ok' : 'error'
@@ -73,7 +75,7 @@ async function pull(intent) {
   setStatus(intent === 'result' ? 'Filing result…' : 'Reading asset details…');
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'PULL_ACTIVE_RECORD', intent });
+    const response = await browserApi.runtime.sendMessage({ type: 'PULL_ACTIVE_RECORD', intent });
 
     if (!response?.ok) {
       setStatus(response?.error || 'Something went wrong.', 'error');

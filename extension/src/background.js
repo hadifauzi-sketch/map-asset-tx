@@ -6,6 +6,7 @@ import {
   INTENT_RESULT,
 } from './shared/canonical.js';
 import { extractRecordRef, scrapeActmsPage, toCanonical } from './lims/adapter.js';
+import { browserApi } from './shared/browserApi.js';
 
 // The deployed app is the default target: a fresh install on a work machine
 // should work without opening the popup first. Point `appOrigin` at
@@ -31,7 +32,7 @@ const MENU_ITEMS = [
 const MENU_INTENTS = new Map(MENU_ITEMS.map((item) => [item.id, item.intent]));
 
 async function getConfig() {
-  const stored = await chrome.storage.sync.get(DEFAULT_CONFIG);
+  const stored = await browserApi.storage.sync.get(DEFAULT_CONFIG);
   return { ...DEFAULT_CONFIG, ...stored };
 }
 
@@ -52,10 +53,10 @@ async function refreshContextMenu() {
   const config = await getConfig();
   const limsOrigin = originOf(config.limsBaseUrl);
 
-  await chrome.contextMenus.removeAll();
+  await browserApi.contextMenus.removeAll();
 
   MENU_ITEMS.forEach((item) => {
-    chrome.contextMenus.create({
+    browserApi.contextMenus.create({
       id: item.id,
       title: item.title,
       // 'frame' matters: ACTMS lays pages out with framesets in places.
@@ -65,16 +66,16 @@ async function refreshContextMenu() {
   });
 }
 
-chrome.runtime.onInstalled.addListener(refreshContextMenu);
-chrome.runtime.onStartup.addListener(refreshContextMenu);
+browserApi.runtime.onInstalled.addListener(refreshContextMenu);
+browserApi.runtime.onStartup.addListener(refreshContextMenu);
 
-chrome.storage.onChanged.addListener((changes, area) => {
+browserApi.storage.onChanged.addListener((changes, area) => {
   if (area === 'sync' && changes.limsBaseUrl) {
     refreshContextMenu();
   }
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+browserApi.contextMenus.onClicked.addListener(async (info, tab) => {
   const intent = MENU_INTENTS.get(info.menuItemId);
 
   if (!intent || !tab?.id) {
@@ -101,7 +102,7 @@ function describeResult(result, intent) {
  */
 async function showToast(tabId, message, tone) {
   try {
-    await chrome.scripting.executeScript({
+    await browserApi.scripting.executeScript({
       target: { tabId },
       func: (text, kind) => {
         const id = '__limsBridgeToast';
@@ -142,7 +143,7 @@ async function showToast(tabId, message, tone) {
  * most result rows, so a frameset layout works without special-casing.
  */
 async function scrapeTab(tabId) {
-  const injections = await chrome.scripting.executeScript({
+  const injections = await browserApi.scripting.executeScript({
     target: { tabId, allFrames: true },
     func: scrapeActmsPage,
   });
@@ -154,7 +155,7 @@ async function scrapeTab(tabId) {
 }
 
 async function deliverToApp(tabId, payload) {
-  await chrome.scripting.executeScript({
+  await browserApi.scripting.executeScript({
     target: { tabId },
     func: (message, envelopeKey, version) => {
       window.postMessage({ [envelopeKey]: true, version, payload: message }, window.location.origin);
@@ -171,7 +172,7 @@ async function pullRecordFromTab(tab, intent = INTENT_ASSET) {
   }
 
   const tabOrigin = originOf(tab.url);
-  if (!tabOrigin || !(await chrome.permissions.contains({ origins: [`${tabOrigin}/*`] }))) {
+  if (!tabOrigin || !(await browserApi.permissions.contains({ origins: [`${tabOrigin}/*`] }))) {
     throw new Error(
       `This extension has no access to ${tabOrigin || 'this site'} yet. Open the extension popup and click "Grant LIMS access".`
     );
@@ -198,15 +199,15 @@ async function pullRecordFromTab(tab, intent = INTENT_ASSET) {
     sourceUrl: tab.url,
   });
 
-  const [appTab] = await chrome.tabs.query({ url: `${config.appOrigin}/*` });
+  const [appTab] = await browserApi.tabs.query({ url: `${config.appOrigin}/*` });
   if (!appTab?.id) {
     throw new Error(`No TX Asset Map tab open at ${config.appOrigin}. Open the app and retry.`);
   }
 
   await deliverToApp(appTab.id, payload);
   // Bring the app forward; its window may be behind the ACTMS popup.
-  await chrome.tabs.update(appTab.id, { active: true });
-  await chrome.windows.update(appTab.windowId, { focused: true });
+  await browserApi.tabs.update(appTab.id, { active: true });
+  await browserApi.windows.update(appTab.windowId, { focused: true });
 
   return {
     recordId: ref.recordId,
@@ -217,12 +218,12 @@ async function pullRecordFromTab(tab, intent = INTENT_ASSET) {
   };
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+browserApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'PULL_ACTIVE_RECORD') {
     return false;
   }
 
-  chrome.tabs
+  browserApi.tabs
     .query({ active: true, currentWindow: true })
     .then(([tab]) => pullRecordFromTab(tab, message.intent))
     .then((result) => sendResponse({ ok: true, result }))

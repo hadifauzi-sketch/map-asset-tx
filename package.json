@@ -43,6 +43,7 @@
     "db:diff": "supabase db diff",
     "db:push": "supabase db push",
     "db:pull": "supabase db pull",
-    "db:link": "supabase link --project-ref rgtwfmhnnmkbsdjgtxjb"
+    "db:link": "supabase link --project-ref rgtwfmhnnmkbsdjgtxjb",
+    "ext:firefox": "node scripts/build-firefox-extension.mjs"
   }
 }
