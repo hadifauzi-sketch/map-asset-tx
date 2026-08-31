@@ -19,7 +19,7 @@ before(async () => {
   });
 
   const shared = await viteServer.ssrLoadModule('/lib/dga-import/dgaImportShared.js');
-  const canonical = await viteServer.ssrLoadModule('/extension/src/shared/canonical.js');
+  const canonical = await viteServer.ssrLoadModule('/extension-chrome/src/shared/canonical.js');
 
   parseImportedFieldValue = shared.parseImportedFieldValue;
   parseNumericValue = shared.parseNumericValue;

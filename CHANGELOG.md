@@ -4,7 +4,10 @@
 
 ### Added
 
-- **Firefox build of the ACTMS extension.** `extension/src/shared/browserApi.js` resolves `browser ?? chrome`, so one source tree runs on both engines — Firefox's `browser` namespace is the promise-based one there, and Chrome's `chrome.*` is promise-based under MV3, so every awaited call works either way. `manifest.firefox.json` supplies the event-page background (Firefox has no MV3 service worker) and the required `gecko.id`; `npm run ext:firefox` assembles `extension-firefox/` and refuses to build when the two manifests' versions disagree.
+- **Firefox build of the ACTMS extension**, as its own committed folder. `extension/` is now `extension-chrome/` (Brave and Chrome) alongside `extension-firefox/`; both load directly in their browser with no build step. They cannot share one folder because Firefox has no MV3 service worker — its background is an event page — and requires the manifest to be named `manifest.json`.
+- `src/shared/browserApi.js` resolves `browser ?? chrome`, so one source tree runs on both engines: Firefox's `browser` is its promise-based namespace, and Chrome's `chrome.*` returns promises under MV3, so every awaited call works either way. All 19 call sites in `background.js` and `popup.js` go through it.
+- `npm run ext:sync` copies `src/` and `icons/` from the Chrome folder, which is the source of truth; `npm run ext:check` reports drift and runs as part of `npm test` via `tests/extensionParity.test.mjs`, so an edit that never reaches the Firefox folder fails the suite rather than shipping stale to AMO.
+- `npm run ext:xpi` packs the Firefox folder for addons.mozilla.org self-distribution signing — the only way to install permanently in normal-release Firefox. `scripts/lib/zip.mjs` is a small dependency-free zip writer: PowerShell's `Compress-Archive` stores entry names with backslash separators, which the ZIP spec forbids and the AMO linter rejects. `scripts/verify-xpi.mjs` checks a packed file's layout.
 
 ### Changed
 

@@ -44,6 +44,8 @@
     "db:push": "supabase db push",
     "db:pull": "supabase db pull",
     "db:link": "supabase link --project-ref rgtwfmhnnmkbsdjgtxjb",
-    "ext:firefox": "node scripts/build-firefox-extension.mjs"
+    "ext:sync": "node scripts/sync-firefox-extension.mjs",
+    "ext:check": "node scripts/sync-firefox-extension.mjs --check",
+    "ext:xpi": "node scripts/pack-firefox-xpi.mjs"
   }
 }

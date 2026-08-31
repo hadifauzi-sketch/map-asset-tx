@@ -52,46 +52,26 @@ stored in `storage.sync`, so it follows your browser profile.
 The popup's grant button is only needed for a host that is not in the manifest —
 a custom domain, say.
 
-## Install (Firefox)
+## Firefox
 
-Firefox needs a different manifest — it has no MV3 service worker, so the
-background runs as an event page instead — and it requires the file to be called
-`manifest.json`, so the two builds cannot share one folder. Everything else is
-identical: `src/` uses `src/shared/browserApi.js` rather than the `chrome`
-global, so the same code runs on both engines with no transform.
+The Firefox build lives in **[`../extension-firefox/`](../extension-firefox/)** —
+see its README for install and AMO signing. Firefox has no MV3 service worker
+and requires the manifest to be named `manifest.json`, so the two engines cannot
+share a folder; both are committed and load directly.
 
-Generate the Firefox folder from the repo root:
+`src/` and `icons/` are identical in the two folders and this one is the source
+of truth. After editing anything here:
 
 ```bash
-npm run ext:firefox        # writes extension-firefox/
+npm run ext:sync     # copy src/ and icons/ into extension-firefox/
 ```
 
-Then in Firefox: `about:debugging#/runtime/this-firefox` → **Load Temporary
-Add-on** → pick `extension-firefox/manifest.json`.
+`npm test` fails if you forget — see `tests/extensionParity.test.mjs`.
 
-### Temporary means temporary
-
-**A temporary add-on is removed when Firefox closes.** Firefox only installs
-add-ons permanently if they are signed by Mozilla — unlike Chrome and Brave,
-there is no unpacked-and-permanent option in the normal release build. Three
-ways round it, in order of effort:
-
-| Option | Effect |
-| --- | --- |
-| Reload after each restart | Free, but it is a manual step every session |
-| **Firefox Developer Edition / ESR / Nightly**, with `xpinstall.signatures.required` set to `false` in `about:config` | Permanent install from a `.xpi`; the setting is ignored by the normal release build |
-| Submit to addons.mozilla.org for **self-distribution** signing | Free, returns a signed `.xpi` that installs permanently in normal Firefox; no public listing required |
-
-Brave and Chrome have no such restriction — **Load unpacked** is permanent there,
-which is why the Chrome build is the primary one.
-
-### Keeping the two manifests in step
-
-`manifest.json` (Chrome/Brave) and `manifest.firefox.json` differ only in the
-`background` key and Firefox's required `browser_specific_settings.gecko.id`.
-The build script refuses to run when their `version` fields disagree, so a
-Firefox copy can never quietly ship claiming an older version than the Chrome
-one.
+The one rule that keeps a single source tree working on both engines: **never
+touch the `chrome` global directly.** Import `src/shared/browserApi.js`, which
+resolves `browser ?? chrome`, so every awaited call gets a promise on either
+engine. The parity test enforces this too.
 
 ## Use — right-click
 

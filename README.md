@@ -40,14 +40,14 @@ Furan accumulates within a single fill, so that fill contributes its **peak** re
 
 ### ACTMS Chrome extension (new)
 
-`extension/` captures a transformer and its oil test results from a TNB Research **Sample Result List** page. ACTMS is a classic ASP application with no JSON API, so the extension reads the page **already open in your signed-in tab** — it fetches nothing, stores no credentials, and never sees a password or session token.
+`extension-chrome/` captures a transformer and its oil test results from a TNB Research **Sample Result List** page. ACTMS is a classic ASP application with no JSON API, so the extension reads the page **already open in your signed-in tab** — it fetches nothing, stores no credentials, and never sees a password or session token.
 
 Right-click an ACTMS sample result with the Asset Map open in another tab:
 
 - **Add or update the asset** — sends identity fields only, into the normal edit form. Nothing is written until you click Save, and existing assets only have blanks filled.
 - **File this test result** — files the sample into the matched asset, keyed on test date, so re-sending updates that row instead of duplicating it.
 
-Matching is by serial number first, then by site **and** transformer name together — names like `T1` repeat across sites, so a name alone would file a Kedah sample against an unrelated `T1`. See [extension/README.md](extension/README.md) for install and usage.
+Matching is by serial number first, then by site **and** transformer name together — names like `T1` repeat across sites, so a name alone would file a Kedah sample against an unrelated `T1`. See [extension-chrome/README.md](extension-chrome/README.md) for install and usage.
 
 ### Oil test fixes
 
@@ -615,7 +615,7 @@ npm run build
 - **[SUPABASE_SETUP.md](SUPABASE_SETUP.md)** - Complete Supabase setup guide
 - **[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)** - How the app uses Supabase
 - **[API_REFERENCE.md](API_REFERENCE.md)** - Service functions reference
-- **[extension/README.md](extension/README.md)** - ACTMS Chrome extension: install, right-click actions, and the conventions it shares with the PDF importer
+- **[extension-chrome/README.md](extension-chrome/README.md)** - ACTMS Chrome extension: install, right-click actions, and the conventions it shares with the PDF importer
 - **[CHANGELOG.md](CHANGELOG.md)** - Release notes and version history
 
 ## 🆚 Comparison with LocalStorage Version

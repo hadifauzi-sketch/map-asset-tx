@@ -14,9 +14,9 @@ before(async () => {
     server: { hmr: false, middlewareMode: true },
   });
 
-  const adapter = await viteServer.ssrLoadModule('/extension/src/lims/adapter.js');
-  const canonical = await viteServer.ssrLoadModule('/extension/src/shared/canonical.js');
-  const fieldMap = await viteServer.ssrLoadModule('/extension/src/lims/fieldMap.js');
+  const adapter = await viteServer.ssrLoadModule('/extension-chrome/src/lims/adapter.js');
+  const canonical = await viteServer.ssrLoadModule('/extension-chrome/src/shared/canonical.js');
+  const fieldMap = await viteServer.ssrLoadModule('/extension-chrome/src/lims/fieldMap.js');
 
   toCanonical = adapter.toCanonical;
   buildBridgePayload = canonical.buildBridgePayload;
