@@ -61,14 +61,27 @@ if (!entries.some((entry) => entry.name === 'manifest.json')) {
 
 const { version } = JSON.parse(await readFile(join(firefoxDir, 'manifest.json'), 'utf8'));
 const xpi = join(outDir, `lims-tx-asset-map-${version}.xpi`);
+// The same bytes under a .zip name. AMO accepts .zip, .xpi and .crx, but its
+// upload form rejects anything else with "The filetype you uploaded isn't
+// recognized" — and on Windows, where Explorer hides known extensions and .xpi
+// has no icon of its own, picking the wrong file in the browser's file dialog
+// is easy. A .zip is unambiguous in that dialog, so it is the one to submit.
+const zip = join(outDir, `lims-tx-asset-map-${version}.zip`);
 
 await mkdir(outDir, { recursive: true });
 // AMO refuses a version it has already seen, and a stale file here is easy to
 // submit by mistake.
 await rm(xpi, { force: true });
-await writeFile(xpi, createZip(entries));
+await rm(zip, { force: true });
 
-console.log(`Packaged ${entries.length} files: ${xpi}`);
+const archive = createZip(entries);
+await writeFile(xpi, archive);
+await writeFile(zip, archive);
+
+console.log(`Packaged ${entries.length} files at version ${version}.\n`);
+console.log('Upload THIS file (copy the path into the file dialog):\n');
+console.log(`    ${zip}\n`);
+console.log(`(${xpi} is the identical archive, for installing the signed copy later.)`);
 console.log('\nSubmit at https://addons.mozilla.org/developers/addon/submit/distribution');
 console.log('Choose "On your own site" for self-distribution signing, then install the signed');
 console.log('.xpi Mozilla returns — that install survives a Firefox restart.');

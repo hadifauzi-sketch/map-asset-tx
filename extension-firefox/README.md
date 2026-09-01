@@ -34,7 +34,7 @@ Self-distribution signing is free, needs no public listing, and returns a `.xpi`
 that installs permanently in normal Firefox.
 
 ```bash
-npm run ext:xpi      # -> build/lims-tx-asset-map-<version>.xpi
+npm run ext:xpi      # -> build/lims-tx-asset-map-<version>.zip  (and .xpi)
 ```
 
 Then:
@@ -42,10 +42,17 @@ Then:
 1. Go to [addons.mozilla.org/developers/addon/submit/distribution](https://addons.mozilla.org/developers/addon/submit/distribution).
 2. Choose **On your own site** — this is the self-distribution route. It keeps
    the add-on unlisted; nobody browsing AMO will find it.
-3. Upload the `.xpi`. The automated validator runs immediately; an unlisted
+3. Upload the **`.zip`**. The automated validator runs immediately; an unlisted
    add-on is normally signed within minutes.
 4. Download the **signed** `.xpi` it returns and open it in Firefox, or drag it
    onto the browser window. That install survives a restart.
+
+AMO accepts `.zip`, `.xpi` and `.crx`, and rejects anything else with *"The
+filetype you uploaded isn't recognized"* — which is what you get if the file
+dialog lands on `manifest.json` instead of the package. The command prints the
+full path of the file to submit; paste it straight into the dialog. Both files
+it writes are byte-identical, so the `.zip` is only there to be unmistakable in
+Explorer, where `.xpi` has no icon and extensions are hidden by default.
 
 Bump `version` in **both** manifests before each submission — AMO refuses a
 version number it has already seen, and the parity test refuses a mismatch

@@ -11,6 +11,8 @@
 
 ### Changed
 
+- The Firefox manifest declares `browser_specific_settings.gecko.data_collection_permissions` as `{ "required": ["none"] }` — required for all new AMO submissions. The extension reads the ACTMS page and hands the record to the app tab in-browser; it has no endpoint of its own, so it collects nothing. Firefox only understands the key from 140, so `strict_min_version` stays at 128 (an ESR) and the linter's two "unsupported by min version" warnings are expected — older Firefox ignores the key.
+- `npm run ext:xpi` now writes a `.zip` beside the `.xpi` and prints the full path to submit. The bytes are identical; AMO accepts either, but `.xpi` has no icon in Explorer and Windows hides extensions by default, so the `.zip` is the one that is hard to confuse with `manifest.json` in a file dialog. Picking the wrong file is what produces AMO's *"The filetype you uploaded isn't recognized"*.
 - Extension `appOrigin` now defaults to the deployed app (`https://map-asset-tx.vercel.app`) rather than `http://localhost:3000`, so a fresh install on a work machine sends records to production without opening the popup first. Both Vercel hosts are declared in `host_permissions`, so there is no grant step either. Point it back at localhost in the popup when developing — that host is still in the manifest.
 - Extension version bumped to 0.2.0.
 
