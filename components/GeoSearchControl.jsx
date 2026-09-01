@@ -142,11 +142,14 @@ function GeoSearchControl({
   mapRef,
   onSelectPlace,
   onClearSelection,
+  defaultExpanded = false,
+  placeholder = 'Search places, roads, companies, POI',
+  expandedClassName = 'w-full sm:w-[340px] lg:w-[420px]',
 }) {
   const containerRef = useRef(null);
   const inputRef = useRef(null);
   const [query, setQuery] = useState('');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [remoteResults, setRemoteResults] = useState([]);
@@ -209,13 +212,13 @@ function GeoSearchControl({
     const handlePointerDown = (event) => {
       if (!containerRef.current?.contains(event.target)) {
         setIsOpen(false);
-        setIsExpanded(false);
+        setIsExpanded(defaultExpanded);
       }
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isOpen]);
+  }, [defaultExpanded, isOpen]);
 
   const selectResult = useCallback(
     (result) => {
@@ -225,10 +228,10 @@ function GeoSearchControl({
 
       setQuery(result.title);
       setIsOpen(false);
-      setIsExpanded(false);
+      setIsExpanded(defaultExpanded);
       onSelectPlace?.(result);
     },
-    [onSelectPlace]
+    [defaultExpanded, onSelectPlace]
   );
 
   const expandSearch = () => {
@@ -242,7 +245,7 @@ function GeoSearchControl({
     setRemoteResults([]);
     setRemoteStatus('idle');
     setIsOpen(false);
-    setIsExpanded(false);
+    setIsExpanded(defaultExpanded);
     onClearSelection?.();
   };
 
@@ -275,7 +278,7 @@ function GeoSearchControl({
       ref={containerRef}
       className={cn(
         'geo-search-control pointer-events-auto relative shrink-0 transition-[width] duration-200',
-        isExpanded ? 'w-full sm:w-[340px] lg:w-[420px]' : 'w-12',
+        isExpanded ? expandedClassName : 'w-12',
         className
       )}
       onPointerDown={(event) => event.stopPropagation()}
@@ -307,9 +310,9 @@ function GeoSearchControl({
             }}
             onFocus={() => setIsOpen(true)}
             onKeyDown={handleKeyDown}
-            placeholder="Search places, roads, companies, POI"
+            placeholder={placeholder}
             className="min-w-0 flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
-            aria-label="Search places, roads, companies, and POI"
+            aria-label={placeholder}
             autoComplete="off"
           />
           {remoteStatus === 'loading' ? (
@@ -323,7 +326,7 @@ function GeoSearchControl({
                   clearSearch();
                 } else {
                   setIsOpen(false);
-                  setIsExpanded(false);
+                  setIsExpanded(defaultExpanded);
                 }
               }}
               aria-label={query ? 'Clear search' : 'Close search'}

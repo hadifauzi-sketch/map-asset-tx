@@ -9,9 +9,7 @@ import {
   AlertTriangle,
   CloudSun,
   FileText,
-  Layers3,
   LogOut,
-  Map as MapIcon,
   MapPin,
   Menu,
   Move,
@@ -19,7 +17,6 @@ import {
   Minus,
   Power,
   RotateCcw,
-  Satellite,
   Settings as SettingsIcon,
   TestTubeDiagonal,
   ThermometerSun,
@@ -77,6 +74,7 @@ import { resolveAssetPlacement } from './lib/assetPlacement';
 import { createDraftCompanyBoundary, normalizeCompanyBoundary } from './lib/companyBoundaryStorage';
 import { companyBoundaryService } from './lib/companyBoundaryService';
 import { getTransformerState, inferMalaysianStateFromText } from './lib/malaysiaStates';
+import { MAP_BASE_LAYERS, SATELLITE_LABELS_LAYER } from './lib/mapBaseLayers';
 import { documentService } from './lib/documentService';
 import { oilTestService } from './lib/oilTestService';
 import { isSameImportedOilTestPayload } from './lib/oilTestImportUtils';
@@ -134,35 +132,6 @@ function formatMapCoordinate(value) {
 function buildGoogleMapsLocationUrl(lat, lng) {
   return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
 }
-
-const MAP_BASE_LAYERS = {
-  streets: {
-    label: 'Map',
-    icon: MapIcon,
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Apps by <a href="https://www.linkedin.com/in/chm-hadi-fauzi/" target="_blank" rel="noreferrer">ChM. Ts. Hadi Fauzi</a>',
-  },
-  satellite: {
-    label: 'Satellite',
-    icon: Satellite,
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution:
-      'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community | Apps by <a href="https://www.linkedin.com/in/chm-hadi-fauzi/" target="_blank" rel="noreferrer">ChM. Ts. Hadi Fauzi</a>',
-  },
-  hybrid: {
-    label: 'Hybrid',
-    icon: Layers3,
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution:
-      'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community | Apps by <a href="https://www.linkedin.com/in/chm-hadi-fauzi/" target="_blank" rel="noreferrer">ChM. Ts. Hadi Fauzi</a>',
-  },
-};
-
-const SATELLITE_LABELS_LAYER = {
-  url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-  attribution: 'Labels &copy; Esri',
-};
 
 const FAULT_LABELS = {
   PD: 'Partial Discharge',
