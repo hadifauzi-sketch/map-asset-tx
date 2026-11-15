@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -7,6 +7,7 @@ import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 import L from 'leaflet';
 import {
   AlertTriangle,
+  Box,
   CloudSun,
   FileText,
   LogOut,
@@ -26,26 +27,23 @@ import {
 } from 'lucide-react';
 import TransformerMarker from './components/TransformerMarker';
 import TransformerSidebar from './components/TransformerSidebar';
-import TransformerModal from './components/TransformerModal';
 import NoticeDialog from './components/NoticeDialog';
 import ConfirmDialog from './components/ConfirmDialog';
 import AppInfoDialog from './components/AppInfoDialog';
 import AppOnboardingTour, { readTourEnabled, writeTourEnabled } from './components/AppOnboardingTour';
-import SOPFlowchartDialog from './components/SOPFlowchartDialog';
-import TransformerDetailModal from './components/TransformerDetailModal';
 import GeoSearchControl from './components/GeoSearchControl';
 import MapLocationContextMenu from './components/MapLocationContextMenu';
 import LSTMapLayer from './components/LSTMapLayer';
-import LSTToolPanel from './components/LSTToolPanel';
-import WeatherHourlyChart from './components/WeatherHourlyChart';
+import MountWhenOpened from './components/MountWhenOpened';
 import WeatherMapLayer from './components/WeatherMapLayer';
-import WeatherToolPanel from './components/WeatherToolPanel';
-import LocationRegisterModule from './components/location-register/LocationRegisterModule';
+import PowerGridControl from './components/PowerGridControl';
+import PowerGridMapLayer from './components/PowerGridMapLayer';
+import DataCentreControl from './components/DataCentreControl';
+import DataCentreMapLayer from './components/DataCentreMapLayer';
+import { useDataCentreTracker } from './lib/useDataCentreTracker';
+import { readPowerGridState, writePowerGridState } from './lib/powerGridMap';
 import CompanyBoundaryMapLayer from './components/CompanyBoundaryMapLayer';
-import CompanyBoundaryMetadataDialog from './components/CompanyBoundaryMetadataDialog';
 import FloorPlanMapLayer from './components/FloorPlanMapLayer';
-import FloorPlanMetadataDialog from './components/FloorPlanMetadataDialog';
-import FloorPlanDetailModal from './components/FloorPlanDetailModal';
 import { AppTooltip } from './components/ui/app-tooltip';
 import { Badge } from './components/ui/badge';
 import { Switch } from './components/ui/switch';
@@ -58,8 +56,6 @@ import SignIn, {
   readSession,
   touchSessionActivity,
 } from './components/Authentic/sign-in';
-import Roles from './components/Authentic/roles';
-import AssetManagementDialog from './components/Authentic/AssetManagement';
 import { getStandardOptionsForOilType } from './lib/dga/appConfig';
 import { analyzeSample } from './lib/dga/diagnostics';
 import {
@@ -111,6 +107,29 @@ import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
 import './App.css';
+
+// The Cesium 3D globe is a large dependency, so it is only downloaded when the
+// user opens the 3D view.
+const Globe3DView = lazy(() => import('./components/globe3d/Globe3DView'));
+
+// On-demand screens are split out of the main bundle. Each loader is kept so
+// the most-used ones can be prefetched when the browser is idle (see App).
+const loadTransformerModal = () => import('./components/TransformerModal');
+const loadTransformerDetailModal = () => import('./components/TransformerDetailModal');
+const TransformerModal = lazy(loadTransformerModal);
+const TransformerDetailModal = lazy(loadTransformerDetailModal);
+const LocationRegisterModule = lazy(() => import('./components/location-register/LocationRegisterModule'));
+const FloorPlanMetadataDialog = lazy(() => import('./components/FloorPlanMetadataDialog'));
+const CompanyBoundaryMetadataDialog = lazy(() => import('./components/CompanyBoundaryMetadataDialog'));
+const FloorPlanDetailModal = lazy(() => import('./components/FloorPlanDetailModal'));
+const AssetManagementDialog = lazy(() => import('./components/Authentic/AssetManagement'));
+const Roles = lazy(() => import('./components/Authentic/roles'));
+const SOPFlowchartDialog = lazy(() => import('./components/SOPFlowchartDialog'));
+// Map tool panels: only rendered while their tool is open.
+const WeatherToolPanel = lazy(() => import('./components/WeatherToolPanel'));
+const LSTToolPanel = lazy(() => import('./components/LSTToolPanel'));
+const WeatherHourlyChart = lazy(() => import('./components/WeatherHourlyChart'));
+
 
 const DEFAULT_CENTER = [3.139, 101.6869];
 const DEFAULT_ZOOM = 11;
@@ -310,10 +329,6 @@ function getTransformerMarkerStatus(transformer) {
   }
 }
 
-function getTransformerMarkerColor(transformer) {
-  return MARKER_STATUS_COLORS[getTransformerMarkerStatus(transformer)] ?? MARKER_STATUS_COLORS.normal;
-}
-
 function formatFaultZone(zone) {
   if (!zone) {
     return 'N/A';
@@ -388,8 +403,29 @@ function FormulaWithSubscript({ formula = '' }) {
   );
 }
 
-const createTransformerIcon = (color = '#0f766e') =>
-  L.divIcon({
+const transformerIconCache = new Map();
+
+/**
+ * Returns a callback whose identity never changes but which always runs the
+ * latest `fn`. Lets memoised children (TransformerMarker) skip re-rendering
+ * without having to list every closure dependency of the handler.
+ */
+function useStableCallback(fn) {
+  const fnRef = useRef(fn);
+  useLayoutEffect(() => {
+    fnRef.current = fn;
+  });
+  return useCallback((...args) => fnRef.current(...args), []);
+}
+
+const createTransformerIcon = (color = '#0f766e') => {
+  // One shared L.divIcon per colour. A fresh icon object on every render made
+  // react-leaflet call setIcon() and rebuild every marker's DOM on each App render.
+  const cached = transformerIconCache.get(color);
+  if (cached) {
+    return cached;
+  }
+  const icon = L.divIcon({
     className: 'custom-transformer-icon',
     html: `
       <div class="map-marker-shell" style="--marker-color: ${color}">
@@ -401,6 +437,9 @@ const createTransformerIcon = (color = '#0f766e') =>
     iconAnchor: [17, 38],
     popupAnchor: [0, -30],
   });
+  transformerIconCache.set(color, icon);
+  return icon;
+};
 
 const geoSearchIcon = L.divIcon({
   className: 'geo-search-pin-icon',
@@ -424,6 +463,7 @@ function App() {
   const [isAddMode, setIsAddMode] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isGlobe3DOpen, setIsGlobe3DOpen] = useState(false);
   const [editingTransformer, setEditingTransformer] = useState(null);
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
@@ -473,6 +513,16 @@ function App() {
   });
   const [isSidebarInteracting, setIsSidebarInteracting] = useState(false);
   const [isMapToolbarExpanded, setIsMapToolbarExpanded] = useState(false);
+  // Power grid overlay (substations, lines, cables…) — saved per browser.
+  const [powerGridLayers, setPowerGridLayers] = useState(readPowerGridState);
+  const [powerGridStatus, setPowerGridStatus] = useState({});
+  const dataCentreTracker = useDataCentreTracker();
+  useEffect(() => {
+    writePowerGridState(powerGridLayers);
+  }, [powerGridLayers]);
+  const handlePowerGridStatus = useCallback((layerId, status) => {
+    setPowerGridStatus((current) => ({ ...current, [layerId]: status }));
+  }, []);
   const [companyBoundaries, setCompanyBoundaries] = useState([]);
   const [showCompanyBoundaries, setShowCompanyBoundaries] = useState(true);
   const [selectedCompanyBoundaryId, setSelectedCompanyBoundaryId] = useState(null);
@@ -919,15 +969,28 @@ function App() {
     [selectedTransformer]
   );
 
+  // DGA status per transformer (normal / warning / critical). Shared by the 2D
+  // marker colours and the 3D globe view so both always agree.
+  const transformerMarkerStatuses = useMemo(
+    () =>
+      new Map(
+        filteredTransformers.map((transformer) => [
+          transformer.id,
+          getTransformerMarkerStatus(transformer),
+        ]),
+      ),
+    [filteredTransformers],
+  );
+
   const transformerMarkerColors = useMemo(
     () =>
       new Map(
         filteredTransformers.map((transformer) => [
           transformer.id,
-          getTransformerMarkerColor(transformer),
+          MARKER_STATUS_COLORS[transformerMarkerStatuses.get(transformer.id)] ?? MARKER_STATUS_COLORS.normal,
         ]),
       ),
-    [filteredTransformers],
+    [filteredTransformers, transformerMarkerStatuses],
   );
 
   const floorPlanByTransformerId = useMemo(() => {
@@ -1216,12 +1279,18 @@ function App() {
       return;
     }
 
-    setWeatherPanelPosition(
-      getConstrainedWeatherPanelPosition(
-        dragState.startLeft + event.clientX - dragState.startX,
-        dragState.startTop + event.clientY - dragState.startY
-      )
+    // Move the panel straight in the DOM while dragging; React state is
+    // committed once on drag end, so App does not re-render per pointer move.
+    const nextPosition = getConstrainedWeatherPanelPosition(
+      dragState.startLeft + event.clientX - dragState.startX,
+      dragState.startTop + event.clientY - dragState.startY
     );
+    dragState.latest = nextPosition;
+    const panel = weatherPanelRef.current;
+    if (panel) {
+      panel.style.left = `${nextPosition.left}px`;
+      panel.style.top = `${nextPosition.top}px`;
+    }
     event.preventDefault();
   }, [getConstrainedWeatherPanelPosition]);
 
@@ -1233,6 +1302,9 @@ function App() {
     }
 
     weatherPanelDragRef.current = null;
+    if (dragState.latest) {
+      setWeatherPanelPosition(dragState.latest);
+    }
     setIsWeatherPanelDragging(false);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }, []);
@@ -1297,12 +1369,17 @@ function App() {
       return;
     }
 
-    setLSTPanelPosition(
-      getConstrainedLSTPanelPosition(
-        dragState.startLeft + event.clientX - dragState.startX,
-        dragState.startTop + event.clientY - dragState.startY
-      )
+    // Same as the weather panel: DOM-only while dragging, one state commit on end.
+    const nextPosition = getConstrainedLSTPanelPosition(
+      dragState.startLeft + event.clientX - dragState.startX,
+      dragState.startTop + event.clientY - dragState.startY
     );
+    dragState.latest = nextPosition;
+    const panel = lstPanelRef.current;
+    if (panel) {
+      panel.style.left = `${nextPosition.left}px`;
+      panel.style.top = `${nextPosition.top}px`;
+    }
     event.preventDefault();
   }, [getConstrainedLSTPanelPosition]);
 
@@ -1314,6 +1391,9 @@ function App() {
     }
 
     lstPanelDragRef.current = null;
+    if (dragState.latest) {
+      setLSTPanelPosition(dragState.latest);
+    }
     setIsLSTPanelDragging(false);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }, []);
@@ -2280,6 +2360,29 @@ function App() {
     loadTransformers();
   };
 
+  // Stable identities for the per-marker handlers so memo(TransformerMarker)
+  // only re-renders a marker when its own data or selection changes.
+  const stableMarkerDragEnd = useStableCallback(handleMarkerDragEnd);
+  const stableEditTransformer = useStableCallback(handleEditTransformer);
+  const stableDeleteTransformer = useStableCallback(handleDeleteTransformer);
+  const stableViewDetails = useStableCallback(handleViewDetails);
+  const handleMarkerSelect = useCallback((nextTransformer) => {
+    setSelectedTransformer(nextTransformer);
+    setSelectedFloorPlanId(null);
+  }, []);
+
+  // Warm the two most-used dialogs once the browser is idle, so their first
+  // open is instant even though they are no longer in the main bundle.
+  useEffect(() => {
+    const requestIdle = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 2000));
+    const cancelIdle = window.cancelIdleCallback || window.clearTimeout;
+    const handle = requestIdle(() => {
+      loadTransformerDetailModal().catch(() => {});
+      loadTransformerModal().catch(() => {});
+    });
+    return () => cancelIdle(handle);
+  }, []);
+
   /**
    * Asset Management retypes assets TNB ↔ Non-TNB in bulk. Patching the loaded
    * list keeps the map badges and the TNB / Non-TNB filters honest without a
@@ -3036,23 +3139,20 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
       isSelected={selectedTransformer?.id === transformer.id}
       isDraggable={isDraggable && canEditAssets}
       canManageAssets={canEditAssets}
-      onDragEnd={handleMarkerDragEnd}
-      onEdit={handleEditTransformer}
-      onDelete={handleDeleteTransformer}
-      onViewDetails={handleViewDetails}
-      onSelect={(nextTransformer) => {
-        setSelectedTransformer(nextTransformer);
-        setSelectedFloorPlanId(null);
-      }}
+      onDragEnd={stableMarkerDragEnd}
+      onEdit={stableEditTransformer}
+      onDelete={stableDeleteTransformer}
+      onViewDetails={stableViewDetails}
+      onSelect={handleMarkerSelect}
     />
   ));
 
   return (
     <div className="app-shell relative overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
-      <div className="app-frame flex overflow-hidden">
+      <div className={cn('app-frame flex overflow-hidden', isDesktopSidebarCollapsed && 'is-sidebar-collapsed')}>
         <aside
           className={cn(
-            'app-sidebar fixed inset-y-0 left-0 z-[1200] w-screen max-w-none shrink-0 overflow-hidden transition-all duration-300 sm:w-[430px] sm:max-w-[430px] lg:static',
+            'app-sidebar fixed inset-y-0 left-0 z-[1200] w-screen max-w-none shrink-0 overflow-hidden transition-all duration-300 sm:w-[430px] sm:max-w-[430px] lg:absolute',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
             isDesktopSidebarCollapsed
               ? 'border-r border-[color:var(--border)] lg:w-[84px] lg:max-w-[84px]'
@@ -3074,6 +3174,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             transformers={filteredTransformers}
             floorPlans={floorPlans}
             companyBoundaries={companyBoundaries}
+            statusById={transformerMarkerStatuses}
             currentUser={currentUser}
             canManageAssets={canEditAssets}
             onAddClick={() => {
@@ -3201,6 +3302,17 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                         </AppTooltip>
                       );
                     })}
+                    <AppTooltip content="3D globe view">
+                      <button
+                        type="button"
+                        onClick={() => setIsGlobe3DOpen(true)}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[color:var(--primary)]/40 bg-[var(--primary-soft)] px-2.5 text-xs font-semibold text-[var(--primary-strong)] transition-colors hover:bg-[var(--primary)] hover:text-[var(--primary-foreground)]"
+                        aria-label="Open 3D globe view"
+                      >
+                        <Box className="h-4 w-4" />
+                        3D
+                      </button>
+                    </AppTooltip>
                   </div>
                 </div>
 
@@ -3248,6 +3360,12 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                   >
                     <ThermometerSun className="h-4 w-4" />
                   </Button>
+                  <PowerGridControl
+                    layers={powerGridLayers}
+                    status={powerGridStatus}
+                    onChange={setPowerGridLayers}
+                  />
+                  <DataCentreControl settings={dataCentreTracker.settings} onChange={dataCentreTracker.setSettings} />
                 </div>
 
                 <div data-tour="map-tools" className="mobile-control-strip flex items-center gap-2 rounded-md border border-[color:var(--border)]/60 bg-[color:var(--card-elevated)]/78 px-2 py-1.5 shadow-[var(--shadow-card)] backdrop-blur-md sm:flex-wrap">
@@ -3648,6 +3766,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     : undefined
                 }
               >
+                <Suspense fallback={null}>
                 <WeatherToolPanel
                   className="weather-panel-card"
                   date={weatherDate}
@@ -3686,6 +3805,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     setIsWeatherHourlyChartCollapsed(false);
                   }}
                 />
+                </Suspense>
               </div>
             </div>
           ) : null}
@@ -3710,6 +3830,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     : undefined
                 }
               >
+                <Suspense fallback={null}>
                 <LSTToolPanel
                   className="lst-panel-card"
                   date={lstDate}
@@ -3752,6 +3873,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                     setLSTPanelPosition(null);
                   }}
                 />
+                </Suspense>
               </div>
             </div>
           ) : null}
@@ -3768,6 +3890,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           ) : null}
 
           {isWeatherHourlyChartOpen ? (
+            <Suspense fallback={null}>
             <WeatherHourlyChart
               collapsed={isWeatherHourlyChartCollapsed}
               loading={weatherHourlyLoading}
@@ -3782,6 +3905,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 setIsWeatherHourlyChartCollapsed(false);
               }}
             />
+            </Suspense>
           ) : null}
 
           <div className="app-map-region w-full">
@@ -3836,6 +3960,8 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
                 onDeleteFloorPlan={handleDeleteFloorPlan}
                 onDraftVertexMove={handleFloorDraftVertexMove}
               />
+              <PowerGridMapLayer layers={powerGridLayers} onStatus={handlePowerGridStatus} />
+              <DataCentreMapLayer tracker={dataCentreTracker} visible={!isGlobe3DOpen} />
               {isWeatherOverlayVisible ? (
                 <WeatherMapLayer
                   records={weatherRecords}
@@ -3993,14 +4119,16 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         </main>
       </div>
 
-      <TransformerModal
-        open={isModalOpen}
+      <MountWhenOpened open={isModalOpen}>
+        <TransformerModal
+          open={isModalOpen}
         transformer={editingTransformer}
         transformers={transformers}
         onSave={handleAddTransformer}
         onClose={closeTransformerModal}
-        onShowNotice={showAppNotice}
-      />
+          onShowNotice={showAppNotice}
+        />
+      </MountWhenOpened>
 
       <NoticeDialog
         open={Boolean(appNotice)}
@@ -4024,16 +4152,43 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         }}
       />
 
-      <LocationRegisterModule
-        open={isLocationRegisterOpen}
+      <MountWhenOpened open={isLocationRegisterOpen}>
+        <LocationRegisterModule
+          open={isLocationRegisterOpen}
         onClose={() => setIsLocationRegisterOpen(false)}
         onSave={handleAddTransformer}
         onFocusPosition={focusLocationPosition}
         onShowNotice={showAppNotice}
-      />
+        />
+      </MountWhenOpened>
 
-      <TransformerDetailModal
-        open={isDetailModalOpen}
+      {isGlobe3DOpen ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[3000] grid place-items-center bg-[#041416] font-mono text-xs uppercase tracking-[0.2em] text-[#99f6e4]">
+              Loading 3D view…
+            </div>
+          }
+        >
+          <Globe3DView
+            dataCentreTracker={dataCentreTracker}
+            transformers={filteredTransformers}
+            statusById={transformerMarkerStatuses}
+            companyBoundaries={showCompanyBoundaries ? companyBoundaries : []}
+            floorPlans={showFloorPlans ? floorPlans : []}
+            hierarchyCompanyBoundaries={companyBoundaries}
+            hierarchyFloorPlans={floorPlans}
+            theme={theme}
+            onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            onClose={() => setIsGlobe3DOpen(false)}
+            onViewDetails={handleViewDetails}
+          />
+        </Suspense>
+      ) : null}
+
+      <MountWhenOpened open={isDetailModalOpen}>
+        <TransformerDetailModal
+          open={isDetailModalOpen}
         transformer={selectedTransformer}
         companyName={selectedTransformerPlacement.companyName}
         areaName={selectedTransformerPlacement.areaName}
@@ -4041,11 +4196,13 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         onClose={handleCloseDetailModal}
         onUpdateOilTests={handleUpdateOilTests}
         onUpdateDocuments={handleUpdateDocuments}
-        onDgaPreferencesSaved={handleDgaPreferencesSaved}
-      />
+          onDgaPreferencesSaved={handleDgaPreferencesSaved}
+        />
+      </MountWhenOpened>
 
-      <FloorPlanMetadataDialog
-        open={isFloorPlanDialogOpen}
+      <MountWhenOpened open={isFloorPlanDialogOpen}>
+        <FloorPlanMetadataDialog
+          open={isFloorPlanDialogOpen}
         floorPlanDraft={floorPlanDialogDraft}
         companyBoundaries={companyBoundaries}
         transformers={filteredTransformers}
@@ -4055,21 +4212,25 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           setFloorPlanDialogDraft(null);
         }}
         onSave={handleSaveFloorPlan}
-        onShowNotice={showAppNotice}
-      />
+          onShowNotice={showAppNotice}
+        />
+      </MountWhenOpened>
 
-      <CompanyBoundaryMetadataDialog
-        open={isCompanyBoundaryDialogOpen}
+      <MountWhenOpened open={isCompanyBoundaryDialogOpen}>
+        <CompanyBoundaryMetadataDialog
+          open={isCompanyBoundaryDialogOpen}
         boundaryDraft={companyBoundaryDialogDraft}
         onClose={() => {
           setIsCompanyBoundaryDialogOpen(false);
           setCompanyBoundaryDialogDraft(null);
         }}
         onSave={handleSaveCompanyBoundary}
-        onShowNotice={showAppNotice}
-      />
+          onShowNotice={showAppNotice}
+        />
+      </MountWhenOpened>
 
-      <FloorPlanDetailModal
+      <MountWhenOpened open={isFloorDetailModalOpen}>
+        <FloorPlanDetailModal
         floorPlan={floorDetailFloorPlan}
         transformers={filteredTransformers}
         isOpen={isFloorDetailModalOpen}
@@ -4093,15 +4254,18 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
         }}
         onRemoveFromFloor={handleRemoveTransformerFromFloor}
         onMarkerDragEnd={handleMarkerDragEnd}
-        onShowNotice={showAppNotice}
-      />
+          onShowNotice={showAppNotice}
+        />
+      </MountWhenOpened>
 
-      <AssetManagementDialog
-        open={isAssetManagementOpen}
+      <MountWhenOpened open={isAssetManagementOpen}>
+        <AssetManagementDialog
+          open={isAssetManagementOpen}
         onOpenChange={setIsAssetManagementOpen}
         currentUser={currentUser}
         onAssetOwnerChanged={handleAssetOwnerChanged}
-      />
+        />
+      </MountWhenOpened>
 
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent className="mobile-form-dialog max-w-[960px]">
@@ -4255,27 +4419,33 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
             </div>
             {isAdmin && (
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-5 sm:pb-5">
-                <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
+                <Suspense fallback={<p className="text-sm text-[var(--muted-foreground)]">Loading user roles…</p>}>
+                  <Roles currentUser={currentUser} onClose={() => setIsSettingsOpen(false)} />
+                </Suspense>
               </div>
             )}
           </div>
         </DialogContent>
       </Dialog>
 
-      <AppInfoDialog
-        open={appInfoDialogMode !== null}
+      <MountWhenOpened open={appInfoDialogMode !== null}>
+        <AppInfoDialog
+          open={appInfoDialogMode !== null}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setAppInfoDialogMode(null);
           }
         }}
-        mode={appInfoDialogMode || 'about'}
-      />
+          mode={appInfoDialogMode || 'about'}
+        />
+      </MountWhenOpened>
 
-      <SOPFlowchartDialog
-        open={isSOPOpen}
-        onClose={() => setIsSOPOpen(false)}
-      />
+      <MountWhenOpened open={isSOPOpen}>
+        <SOPFlowchartDialog
+          open={isSOPOpen}
+          onClose={() => setIsSOPOpen(false)}
+        />
+      </MountWhenOpened>
 
       <AppOnboardingTour
         open={showTour}

@@ -1,20 +1,3 @@
 {
-  "mcpServers": {
-    "serena": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/oraios/serena",
-        "serena",
-        "start-mcp-server",
-        "--context",
-        "ide",
-        "--project",
-        "F:\\Project Lab\\Asset Tx Map V2"
-      ],
-      "env": {
-        "SSLKEYLOGFILE": ""
-      }
-    }
-  }
+  "mcpServers": {}
 }

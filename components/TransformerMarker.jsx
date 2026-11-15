@@ -138,4 +138,6 @@ function DetailRow({ label, value }) {
   );
 }
 
-export default TransformerMarker;
+// Memoised: App re-renders on every state change, but a marker only needs to
+// update when its transformer, icon, selection or permissions change.
+export default React.memo(TransformerMarker);

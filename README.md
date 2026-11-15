@@ -4,6 +4,42 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 5.0 - 3D Globe, Power Grid & Data Centre Intelligence
+
+Until now the map answered *where is this transformer*. Version 5.0 shows what surrounds it: a 3D globe with buildings and terrain, the national power grid, power plants by fuel, and the data centres that are adding new load. Everything new appears on both the 2D map and the 3D globe, and filters and settings carry across.
+
+### 3D globe view (new)
+
+- **3D button** beside Map / Satellite / Hybrid opens the fleet on a CesiumJS globe. It receives the same filtered transformers and DGA status colours as the 2D map, so owner filters, access rules and the gas limit standard all carry over. See `GLOBE_3D_GUIDE.md`.
+- **Tx list** on the left is a compact State → Company → Area → Transformer tree with status counts on every branch. **DGA & oil result** on the right shows the latest gases against their limits, trend sparklines, the Duval fault and IEC 60422 oil quality. *Open full details* opens the usual asset record.
+- **3D buildings for Malaysia.** About 1.58 million OpenStreetMap buildings stream from the app itself, so no Cesium ion token is needed. They can be coloured by height, type, industrial use, or distance from the selected transformer.
+- **Bottom dock** with place, Tx and coordinate search, camera controls, visual presets (Normal, Teal, NVG, FLIR, CRT, Noir) and map source (Esri, OSM, offline, Bing, Google Photorealistic 3D).
+- **API keys** dialog for the Cesium ion token and Google Maps key, stored only in your browser.
+
+### Power grid and power plants
+
+- **Power grid layers:** substations (4,993), mapped transformers (475), power lines coloured by voltage (500 / 275 / 132 / ≤ 66 kV), minor lines and cables, from OpenStreetMap Malaysia. On the 2D map, a new **pylon button** in the toolbar opens the Power grid panel with live counts and a voltage legend.
+- **Power plants by fuel and capacity.** Each plant is coloured by fuel and sized by MW. Clicking a plant shows its owner, capacity, year commissioned, and reported and estimated generation.
+- **Fuel filter:** each fuel in the legend can be switched on or off, and the choice applies to both 2D and 3D.
+- **Name labels** sit beside the pins and move aside when crowded. Legends now sit at the bottom right in a frosted glass panel.
+
+### Data centre tracker (new)
+
+- A **Data centres** layer and panel showing the SEAFIC Malaysia tracker (campuses with per-phase MW) and the Ringmast4r global directory.
+- **Overview:** capacity by build status (click a status to filter the map), a category by status table, map coverage, and a breakdown by state.
+- **Directory:** search and filter by state, operator, status and location, see each campus's phase mix, fly to a site, or export to CSV.
+
+### Sidebar and speed
+
+- The 2D sidebar asset list uses the same compact tree as the 3D Tx list, and both group and search assets the same way.
+- Dialogs, the weather and LST tools, galleries, the data centre panel and the 3D globe now load only when first opened, so the app starts faster. Panel dragging no longer re-renders the whole app.
+
+### ACTMS extension
+
+- A **Firefox build** sits alongside the Chrome and Brave build, and records now go to the live app by default.
+
+---
+
 ## Version 4.2 - Maintenance History & LIMS Capture
 
 The asset record could show what the oil looked like at each sample, but not what had been **done** to it. That gap matters: a filtration and an incipient fault leave the same signature on a trend line — moisture drops sharply, the DGA baseline restarts near zero — and nothing on the chart distinguished them. Version 4.2 adds the maintenance history, draws it onto the trending charts, and measures whether each job worked.
@@ -644,7 +680,7 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 4.2 (Supabase Edition)
+**Version**: 5.0 (Supabase Edition)
 **Last Updated**: September 2026
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  

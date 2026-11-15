@@ -1,0 +1,546 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Compact asset hierarchy for the 2D sidebar (State → Company → Area → Tx).
+   Same structure as the 3D Tx list, drawn with the app's own theme tokens.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.atree-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.atree-head-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.atree-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--foreground);
+}
+
+.atree-subtitle {
+  margin: 1px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.atree-fold {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.atree-fold button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--muted);
+  transition: color 0.15s, background 0.15s;
+}
+
+.atree-fold button:hover {
+  background: var(--card-muted);
+  color: var(--foreground);
+}
+
+.atree-fold svg {
+  width: 14px;
+  height: 14px;
+}
+
+.atree {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.atree-state + .atree-state {
+  margin-top: 2px;
+}
+
+/* ── Group header rows ─────────────────────────────────────────────────── */
+
+.atree-row {
+  display: grid;
+  grid-template-columns: 14px 14px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 7px;
+  row-gap: 5px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.atree-row:hover {
+  background: var(--card-muted);
+}
+
+.atree-row.is-state {
+  border-color: var(--border);
+  background: var(--card);
+  padding: 8px 8px 7px;
+}
+
+.atree-row.is-state:hover {
+  background: var(--card-muted);
+}
+
+.atree-row.is-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.atree-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.atree-row.is-open > .atree-chevron,
+.atree-toggle.is-open .atree-chevron {
+  transform: rotate(90deg);
+  color: var(--primary);
+}
+
+.atree-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+  opacity: 0.85;
+}
+
+.atree-label {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.atree-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.atree-row.is-state .atree-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.atree-row.is-area .atree-name {
+  font-weight: 500;
+}
+
+/* Hints give way before the name does. */
+.atree-hint {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.atree-name {
+  flex: 0 1 auto;
+}
+
+.atree-tag {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.atree-tag.is-active {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.atree-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.atree-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.atree-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.atree-total {
+  min-width: 26px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--card-muted);
+  font-weight: 600;
+  color: var(--foreground);
+  text-align: center;
+}
+
+.atree-meter {
+  grid-column: 2 / -1;
+  display: flex;
+  gap: 2px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.atree-meter span {
+  min-width: 3px;
+  border-radius: 3px;
+}
+
+/* ── Area / boundary rows: a name button plus inline actions ───────────── */
+
+.atree-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.atree-line:hover {
+  background: var(--card-muted);
+}
+
+.atree-line.is-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.atree-line > .atree-row {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+}
+
+.atree-line > .atree-row:hover {
+  background: transparent;
+}
+
+.atree-toggle {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 30px;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.atree-line > .atree-toggle + .atree-row {
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  padding-left: 2px;
+}
+
+.atree-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Area / boundary actions float over the row's right edge on hover, so the
+   name keeps the full width the rest of the time. */
+.atree-line > .atree-actions {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--card-muted);
+  box-shadow: -10px 0 10px -4px var(--card-muted);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 0.15s;
+}
+
+.atree-line.is-selected > .atree-actions {
+  background: color-mix(in srgb, var(--primary) 14%, var(--card));
+  box-shadow: -10px 0 10px -4px color-mix(in srgb, var(--primary) 14%, var(--card));
+}
+
+.atree-line:hover > .atree-actions,
+.atree-line:focus-within > .atree-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Touch screens have no hover: keep the actions in the row and visible. */
+@media (hover: none) {
+  .atree-line > .atree-actions {
+    position: static;
+    padding: 0 4px 0 0;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}
+
+.atree-action {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.atree-action:hover {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.atree-action.is-danger:hover {
+  color: var(--danger-strong, #dc2626);
+}
+
+.atree-action.is-active {
+  color: #3b82f6;
+}
+
+.atree-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Nesting guides ────────────────────────────────────────────────────── */
+
+.atree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 3px 0 4px 14px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.atree-subhead {
+  margin: 4px 0 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.atree-empty-note {
+  margin: 2px 0;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--card-muted);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ── Transformer rows ──────────────────────────────────────────────────── */
+
+.atree-tx {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.atree-tx:hover {
+  background: var(--card-muted);
+}
+
+.atree-tx.is-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.atree-tx.is-compare {
+  border-color: rgba(96, 165, 250, 0.8);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.atree-tx-line {
+  display: flex;
+  align-items: center;
+}
+
+.atree-tx-main {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  min-height: 40px;
+  padding: 5px 4px 5px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+}
+
+.atree-tx-status {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--status-color);
+}
+
+.atree-tx-status.is-critical {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-color) 25%, transparent);
+}
+
+.atree-tx-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.atree-tx-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.atree-tx-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.atree-tx-expand {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.atree-tx-expand:hover {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.atree-tx-expand svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.15s;
+}
+
+.atree-tx.is-expanded .atree-tx-expand svg {
+  transform: rotate(180deg);
+  color: var(--primary);
+}
+
+.atree-tx-details {
+  display: grid;
+  gap: 8px;
+  margin: 0 8px 8px 27px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.atree-tx-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin: 0;
+}
+
+.atree-tx-facts dt {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.atree-tx-facts dd {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.atree-tx-details .atree-actions {
+  padding: 0;
+  margin-left: -4px;
+}
+
+.atree-row:focus-visible,
+.atree-tx-main:focus-visible,
+.atree-toggle:focus-visible,
+.atree-action:focus-visible,
+.atree-tx-expand:focus-visible,
+.atree-fold button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}

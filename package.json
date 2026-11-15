@@ -1,6 +1,6 @@
 {
   "name": "transformer-asset-map",
-  "version": "4.2.0",
+  "version": "5.0.0",
   "description": "Transformer asset management with Supabase PostgreSQL backend and cloud storage",
   "private": true,
   "dependencies": {
@@ -11,6 +11,7 @@
     "@supabase/supabase-js": "^2.103.0",
     "@tesseract.js-data/eng": "^1.0.0",
     "@xyflow/react": "^12.10.2",
+    "cesium": "^1.147.0",
     "framer-motion": "^12.40.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.563.0",
@@ -23,6 +24,7 @@
     "react-leaflet-cluster": "^3.1.1",
     "recharts": "^3.7.0",
     "tesseract.js": "^7.0.0",
+    "vite-plugin-static-copy": "^1.0.6",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -44,6 +46,11 @@
     "db:push": "supabase db push",
     "db:pull": "supabase db pull",
     "db:link": "supabase link --project-ref rgtwfmhnnmkbsdjgtxjb",
+    "globe:plants": "node scripts/build-power-plants.mjs",
+    "data:centres": "node scripts/build-data-centres.mjs",
+    "data:centres:malaysia": "node scripts/build-malaysia-data-centres.mjs",
+    "globe:grid": "node scripts/build-power-grid.mjs",
+    "globe:buildings": "python scripts/buildings3d/extract_buildings.py data/osm/malaysia.osm.pbf data/osm/buildings-extract.npz && python scripts/buildings3d/build_tileset.py data/osm/buildings-extract.npz public/data/buildings3d",
     "ext:sync": "node scripts/sync-firefox-extension.mjs",
     "ext:check": "node scripts/sync-firefox-extension.mjs --check",
     "ext:xpi": "node scripts/pack-firefox-xpi.mjs"

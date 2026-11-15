@@ -1,0 +1,9 @@
+# Keep the knowledge graph focused on this project's own code.
+# public/ holds vendored Tesseract OCR builds and generated map data.
+public/
+.serena/
+.backups/
+Backup/
+dist/
+# Mirror of extension-chrome, kept in sync by scripts/sync-firefox-extension.mjs
+extension-firefox/

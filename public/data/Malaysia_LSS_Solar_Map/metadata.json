@@ -1,0 +1,42 @@
+{
+  "source": "OpenStreetMap contributors",
+  "source_url": "https://download.geofabrik.de/asia/malaysia-singapore-brunei-261114.osm.pbf",
+  "source_timestamp": "2026-11-14T21:20:41Z",
+  "country_iso2": "MY",
+  "license": "ODbL-1.0",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution_url": "https://www.openstreetmap.org/copyright",
+  "exported_at": "2026-11-15T11:13:27.197051+00:00",
+  "solar_tagged_features": 754,
+  "solar_plant_records": 108,
+  "solar_generator_panel_records": 646,
+  "solar_farm_candidates": 110,
+  "lss_name_matches": 12,
+  "additional_name_review_records": 9,
+  "plants_with_parsed_capacity": 34,
+  "generators_with_parsed_capacity": 23,
+  "capacity_parse_statuses": {
+    "non_numeric": 475,
+    "parsed": 57,
+    "missing": 221,
+    "unit_missing": 1
+  },
+  "invalid_geometry_ids": [],
+  "geometry_conversion_errors": [],
+  "geometry_types": {
+    "Point": 12,
+    "MultiPolygon": 741,
+    "GeometryCollection": 1
+  },
+  "boundary_source": "https://api.openstreetmap.org/api/0.6/relation/2108121/full",
+  "lss_status": "Not checked against the official awarded/operational LSS register; name matching is not verification.",
+  "layer_sha256": {
+    "malaysia_solar_name_review.geojson": "9b3b13262dbe8a31426475ca9562896317d2f8e5eae766045fbcfc5a8adb7ef0",
+    "malaysia_solar_generators_panels.geojson": "57ef236c7925ce6302b77ea11e8d903b4f365fc316f04dc4368e9bee04ecf495",
+    "malaysia_lss_name_matches.geojson": "4dee05d894c4e669b45e492e4e8ebeb5e9abd18eadcb13e994a5039d88d663c2",
+    "malaysia_solar_farm_candidates.geojson": "5b88d5f8de1d44aa3f509eb1bad15ffb18dda7a631735c0204211dede4975061",
+    "malaysia_solar_all.geojson": "3a26a7020a9060d265a690b2c52d4aa90b597a62182c7d9480d40427ad2d4528",
+    "malaysia_solar_farm_markers.geojson": "7b6392515bb797597cdd7cc7359aa8a4c9db0658f54d9147af2b307392424f66",
+    "malaysia_solar_plants.geojson": "bf5838e10f7e317ab741d10cae60a104973cb9a67e9b4cf573549f52e225d6f5"
+  }
+}

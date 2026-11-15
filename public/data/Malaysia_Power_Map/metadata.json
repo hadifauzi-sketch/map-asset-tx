@@ -1,0 +1,31 @@
+{
+  "source": "Geofabrik Malaysia Singapore Brunei OSM extract",
+  "license": "ODbL-1.0",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution_url": "https://www.openstreetmap.org/copyright",
+  "source_timestamp": "2026-11-14T21:20:41Z",
+  "exported_at": "2026-11-15T10:14:56.408086+00:00",
+  "source_url": "https://download.geofabrik.de/asia/malaysia-singapore-brunei-261114.osm.pbf",
+  "timestamp": "2026-11-14T21:20:41Z",
+  "filter": "power=substation, transformer, line, minor_line or cable intersecting Malaysia OSM administrative boundary; full geometry retained",
+  "boundary_source": "https://api.openstreetmap.org/api/0.6/relation/2108121/full",
+  "boundary_retrieved_date": "2026-11-15",
+  "errors": [],
+  "regional_features_before_filter": 9455,
+  "regional_relations_converted": 74,
+  "feature_count": 8423,
+  "counts_by_power": {
+    "substation": 4993,
+    "transformer": 475,
+    "line": 2873,
+    "minor_line": 44,
+    "cable": 38
+  },
+  "geometry_counts": {
+    "Point": 1306,
+    "MultiPolygon": 4159,
+    "LineString": 2958
+  },
+  "invalid_geometry_ids": [],
+  "unique_ids": 8423
+}

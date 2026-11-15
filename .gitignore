@@ -50,3 +50,21 @@ Backup/
 # Supabase local dev
 supabase/.branches
 supabase/.temp
+
+# Large generated / downloaded map data (rebuild with `npm run globe:buildings`)
+data/osm/
+data/3d data/
+public/data/buildings3d/
+
+# Secrets kept on disk only
+transformer_asset_map_api_key.txt
+
+# Local-only tooling, notes and backups
+.backups/
+.remember/
+graphify-out/
+
+# Raw map data not used by the app (keeps the repo and Vercel upload small)
+public/data/Southeast_Asia_Power_Map/
+public/data/Southeast_Asia_Power_Map_All_Countries.zip
+public/data/AGI_HQ.kmz

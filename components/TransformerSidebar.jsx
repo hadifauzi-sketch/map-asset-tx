@@ -1,9 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import {
   Building2,
   ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   GitCompareArrows,
+  Hexagon,
   HelpCircle,
   Layers3,
   MapPin,
@@ -26,11 +30,30 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
-import AssetCardGalleryModal from './AssetCardGalleryModal';
-import CompareTX from './compareTX';
+import MountWhenOpened from './MountWhenOpened';
 import SidebarAssetContextMenu from './SidebarAssetContextMenu';
+import {
+  STATUS_COLORS,
+  STATUS_LABELS,
+  StatusCounts,
+  StatusMeter,
+  getAssetStatus,
+  summarizeStatuses,
+} from './assetTree';
 import { getAssetOwnerLabel } from '../lib/assetOwner';
 import { compareMalaysianStates, getTransformerState } from '../lib/malaysiaStates';
+import {
+  buildHierarchy,
+  filterHierarchy,
+  matchesFloorPlan,
+  matchesTransformer,
+  normalizeText,
+  sortTransformers,
+} from '../lib/assetHierarchy';
+
+// Opened on demand from the sidebar; split out of the main bundle.
+const AssetCardGalleryModal = lazy(() => import('./AssetCardGalleryModal'));
+const CompareTX = lazy(() => import('./compareTX'));
 
 const EXPANDED_STATES_STORAGE_KEY = 'transformer-asset-map-expanded-states';
 const EXPANDED_COMPANIES_STORAGE_KEY = 'transformer-asset-map-expanded-companies';
@@ -56,48 +79,6 @@ function readStoredExpansionMap(storageKey) {
   } catch (error) {
     return {};
   }
-}
-
-function normalizeText(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function matchesTransformer(transformer, search) {
-  if (!search) {
-    return true;
-  }
-
-  return [
-    transformer.txName,
-    transformer.siteName,
-    transformer.mnemonic,
-    transformer.serialNumber,
-    transformer.voltage,
-    getAssetOwnerLabel(transformer.ownerType),
-    getTransformerState(transformer),
-  ]
-    .filter(Boolean)
-    .some((value) => normalizeText(value).includes(search));
-}
-
-function matchesFloorPlan(floorPlan, search) {
-  if (!search) {
-    return true;
-  }
-
-  return [floorPlan.name, floorPlan.companyName, floorPlan.state]
-    .filter(Boolean)
-    .some((value) => normalizeText(value).includes(search));
-}
-
-function sortTransformers(transformers) {
-  return [...transformers].sort((left, right) => {
-    const companyDifference = String(left.siteName || '').localeCompare(String(right.siteName || ''));
-    if (companyDifference !== 0) {
-      return companyDifference;
-    }
-    return String(left.txName || '').localeCompare(String(right.txName || ''));
-  });
 }
 
 function dedupeAndSortTransformers(transformers) {
@@ -158,164 +139,6 @@ function pluralize(count, singular, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function buildHierarchy(transformers, floorPlans, companyBoundaries = []) {
-  const transformerById = new Map();
-  transformers.forEach((transformer) => {
-    transformerById.set(String(transformer.id), transformer);
-  });
-
-  const floorPlanByTransformerId = new Map();
-  const stateMap = new Map();
-
-  const ensureStateGroup = (stateName) => {
-    const stateKey = stateName || 'Unassigned';
-    if (!stateMap.has(stateKey)) {
-      stateMap.set(stateKey, {
-        state: stateKey,
-        companies: new Map(),
-      });
-    }
-    return stateMap.get(stateKey);
-  };
-
-  const ensureCompanyGroup = (stateName, companyName) => {
-    const stateGroup = ensureStateGroup(stateName);
-    const companyKey = companyName || 'Unassigned company';
-    if (!stateGroup.companies.has(companyKey)) {
-      stateGroup.companies.set(companyKey, {
-        companyName: companyKey,
-        companyBoundary: null,
-        floorPlans: [],
-        ungroupedTransformers: [],
-      });
-    }
-    return stateGroup.companies.get(companyKey);
-  };
-
-  floorPlans.forEach((floorPlan) => {
-    const assignedTransformers = floorPlan.transformerIds
-      .map((transformerId) => transformerById.get(String(transformerId)))
-      .filter(Boolean);
-
-    assignedTransformers.forEach((transformer) => {
-      floorPlanByTransformerId.set(String(transformer.id), floorPlan.id);
-    });
-
-    const inferredCompanyName = assignedTransformers[0]?.siteName || '';
-    const inferredState = assignedTransformers[0] ? getTransformerState(assignedTransformers[0]) : '';
-    const companyGroup = ensureCompanyGroup(
-      floorPlan.state || inferredState || 'Unassigned',
-      floorPlan.companyName || inferredCompanyName || 'Unassigned company'
-    );
-
-    companyGroup.floorPlans.push({
-      ...floorPlan,
-      transformers: sortTransformers(assignedTransformers),
-    });
-  });
-
-  companyBoundaries.forEach((boundary) => {
-    const companyGroup = ensureCompanyGroup(
-      boundary.state || 'Unassigned',
-      boundary.companyName || 'Unassigned company'
-    );
-    companyGroup.companyBoundary = boundary;
-  });
-
-  transformers.forEach((transformer) => {
-    if (floorPlanByTransformerId.has(String(transformer.id))) {
-      return;
-    }
-
-    const companyGroup = ensureCompanyGroup(
-      getTransformerState(transformer),
-      transformer.siteName || 'Unassigned company'
-    );
-    companyGroup.ungroupedTransformers.push(transformer);
-  });
-
-  return Array.from(stateMap.values())
-    .map((stateGroup) => ({
-      state: stateGroup.state,
-      companies: Array.from(stateGroup.companies.values())
-        .map((companyGroup) => ({
-          companyName: companyGroup.companyName,
-          companyBoundary: companyGroup.companyBoundary,
-          floorPlans: [...companyGroup.floorPlans].sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''))),
-          ungroupedTransformers: sortTransformers(companyGroup.ungroupedTransformers),
-        }))
-        .sort((left, right) => left.companyName.localeCompare(right.companyName)),
-    }))
-    .sort((left, right) => compareMalaysianStates(left.state, right.state));
-}
-
-function filterHierarchy(stateGroups, searchTerm) {
-  const search = normalizeText(searchTerm);
-  if (!search) {
-    return stateGroups;
-  }
-
-  return stateGroups
-    .map((stateGroup) => {
-      const stateMatches = normalizeText(stateGroup.state).includes(search);
-
-      const companies = stateGroup.companies
-        .map((companyGroup) => {
-          const companyMatches = normalizeText(companyGroup.companyName).includes(search);
-          const boundaryMatches = [
-            companyGroup.companyBoundary?.companyName,
-            companyGroup.companyBoundary?.state,
-            companyGroup.companyBoundary?.notes,
-          ]
-            .filter(Boolean)
-            .some((value) => normalizeText(value).includes(search));
-
-          const floorPlans = companyGroup.floorPlans
-            .map((floorPlan) => {
-              const floorMatches = matchesFloorPlan(floorPlan, search);
-              const transformers = floorPlan.transformers.filter(
-                (transformer) =>
-                  stateMatches || companyMatches || boundaryMatches || floorMatches || matchesTransformer(transformer, search)
-              );
-
-              if (!stateMatches && !companyMatches && !boundaryMatches && !floorMatches && transformers.length === 0) {
-                return null;
-              }
-
-              return {
-                ...floorPlan,
-                transformers,
-              };
-            })
-            .filter(Boolean);
-
-          const ungroupedTransformers = companyGroup.ungroupedTransformers.filter(
-            (transformer) => stateMatches || companyMatches || boundaryMatches || matchesTransformer(transformer, search)
-          );
-
-          if (!stateMatches && !companyMatches && !boundaryMatches && floorPlans.length === 0 && ungroupedTransformers.length === 0) {
-            return null;
-          }
-
-          return {
-            ...companyGroup,
-            floorPlans,
-            ungroupedTransformers,
-          };
-        })
-        .filter(Boolean);
-
-      if (!stateMatches && companies.length === 0) {
-        return null;
-      }
-
-      return {
-        ...stateGroup,
-        companies,
-      };
-    })
-    .filter(Boolean);
-}
 
 function countVisibleAssets(stateGroups) {
   return stateGroups.reduce(
@@ -361,6 +184,8 @@ function TransformerSidebar({
   transformers,
   floorPlans = [],
   companyBoundaries = [],
+  // Map<transformerId, 'critical' | 'warning' | 'normal'> — same status as the map pins.
+  statusById = null,
   currentUser = null,
   canManageAssets = true,
   onAddClick,
@@ -586,6 +411,25 @@ function TransformerSidebar({
     }));
   };
 
+  // Expand / collapse every visible state, company and area in one go.
+  const setHierarchyExpanded = (open) => {
+    const states = {};
+    const companies = {};
+    const floors = {};
+    filteredHierarchy.forEach((stateGroup) => {
+      states[`state:${stateGroup.state}`] = open;
+      stateGroup.companies.forEach((companyGroup) => {
+        companies[`company:${stateGroup.state}:${companyGroup.companyName}`] = open;
+        companyGroup.floorPlans.forEach((floorPlan) => {
+          floors[`floor:${floorPlan.id}`] = open;
+        });
+      });
+    });
+    setExpandedStates((current) => ({ ...current, ...states }));
+    setExpandedCompanies((current) => ({ ...current, ...companies }));
+    setExpandedFloorPlans((current) => ({ ...current, ...floors }));
+  };
+
   const toggleTransformerExpanded = (transformerId) => {
     setExpandedTransformers((current) => ({
       ...current,
@@ -724,8 +568,9 @@ function TransformerSidebar({
         onClose={() => setAssetGroupContextMenu(null)}
         onShowCards={openAssetCardsFromMenu}
       />
-      <AssetCardGalleryModal
-        open={isAssetCardGalleryOpen}
+      <MountWhenOpened open={isAssetCardGalleryOpen}>
+        <AssetCardGalleryModal
+          open={isAssetCardGalleryOpen}
         group={assetCardGroup}
         selectedAssetId={selectedTransformerId}
         canManageAssets={canManageAssets}
@@ -734,14 +579,17 @@ function TransformerSidebar({
         onViewDetails={handleAssetCardDetails}
         onEditAsset={handleAssetCardEdit}
         onDeleteAsset={handleAssetCardDelete}
-      />
-      <CompareTX
-        open={isCompareModalOpen}
+        />
+      </MountWhenOpened>
+      <MountWhenOpened open={isCompareModalOpen}>
+        <CompareTX
+          open={isCompareModalOpen}
         assets={selectedCompareAssets}
         groupTitle="Sidebar compare"
         groupSubtitle="Latest oil test and DGA assessment from the selected transformer assets."
         onClose={() => setIsCompareModalOpen(false)}
-      />
+        />
+      </MountWhenOpened>
     </>
   );
 
@@ -773,7 +621,7 @@ function TransformerSidebar({
     return (
       <div className="h-full">
         {/* Mobile (< lg): show expand + close only */}
-        <div className="flex h-full flex-col items-center justify-between bg-[color:var(--sidebar)]/88 px-4 py-4 backdrop-blur-xl lg:hidden">
+        <div className="flex h-full flex-col items-center justify-between bg-[color:var(--sidebar)]/62 px-4 py-4 backdrop-blur-xl lg:hidden">
           <Button
             variant="outline"
             size="icon"
@@ -797,7 +645,7 @@ function TransformerSidebar({
         </div>
 
         {/* Desktop (lg+): icon-only collapsed sidebar */}
-        <div className="hidden h-full flex-col items-center justify-between bg-[color:var(--sidebar)]/88 px-3 py-4 backdrop-blur-xl lg:flex">
+        <div className="hidden h-full flex-col items-center justify-between bg-[color:var(--sidebar)]/62 px-3 py-4 backdrop-blur-xl lg:flex">
           <div className="flex w-full flex-col items-center gap-3">
             <Button
               variant="outline"
@@ -1015,7 +863,7 @@ function TransformerSidebar({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[color:var(--sidebar)]/88 backdrop-blur-xl">
+    <div className="flex h-full min-h-0 flex-col bg-[color:var(--sidebar)]/62 backdrop-blur-xl">
       <div className={`sidebar-mobile-chrome${isMobileTopHidden ? ' is-hidden' : ''}`}>
         <header className="border-b border-[color:var(--border)] px-4 py-3 lg:px-5 lg:py-5">
           <div className="flex items-start justify-between gap-3">
@@ -1283,14 +1131,28 @@ function TransformerSidebar({
           }
         }}
       >
-        <div className="mb-2 flex items-center justify-between gap-3 lg:mb-3">
-          <div>
-            <p className="text-sm font-medium">Floor hierarchy</p>
-            <p className="text-xs leading-4 text-[var(--muted)] lg:text-sm">
-              {visibleAssetCount} assets and {visibleFloorCount} floors visible in {filteredHierarchy.length} state groups
+        <div className="atree-head">
+          <div className="atree-head-text">
+            <p className="atree-title">Asset hierarchy</p>
+            <p className="atree-subtitle">
+              {visibleAssetCount} assets · {visibleFloorCount} areas · {filteredHierarchy.length} states
             </p>
           </div>
           {loading ? <Badge variant="secondary">Syncing</Badge> : null}
+          {filteredHierarchy.length ? (
+            <div className="atree-fold">
+              <AppTooltip content="Expand all">
+                <button type="button" onClick={() => setHierarchyExpanded(true)} aria-label="Expand all groups">
+                  <ChevronsUpDown aria-hidden="true" />
+                </button>
+              </AppTooltip>
+              <AppTooltip content="Collapse all">
+                <button type="button" onClick={() => setHierarchyExpanded(false)} aria-label="Collapse all groups">
+                  <ChevronsDownUp aria-hidden="true" />
+                </button>
+              </AppTooltip>
+            </div>
+          ) : null}
         </div>
 
         {filteredHierarchy.length === 0 ? (
@@ -1312,41 +1174,39 @@ function TransformerSidebar({
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-2 lg:space-y-3">
+          <div className="atree" role="tree" aria-label="Asset hierarchy">
             {filteredHierarchy.map((stateGroup) => {
               const stateKey = `state:${stateGroup.state}`;
               const isStateExpanded = Boolean(expandedStates[stateKey]);
+              const sourceStateGroup = hierarchy.find((group) => group.state === stateGroup.state);
+              const stateAssets = (sourceStateGroup?.companies || stateGroup.companies).flatMap((group) =>
+                getCompanyGroupAssets(group)
+              );
+              const stateSummary = summarizeStatuses(stateAssets, statusById);
 
               return (
-                <section key={stateGroup.state} className="space-y-2 lg:space-y-3">
+                <section key={stateGroup.state} className="atree-state">
                   <button
                     type="button"
                     onClick={() => toggleExpandedValue(setExpandedStates, stateKey)}
                     aria-expanded={isStateExpanded}
-                    className="flex w-full items-center justify-between rounded-md border-2 border-amber-400/80 bg-amber-50/80 px-3 py-2 text-left transition-colors hover:bg-amber-100/90 dark:border-amber-600/70 dark:bg-amber-950/50 dark:hover:bg-amber-900/65"
+                    className={`atree-row is-state ${isStateExpanded ? 'is-open' : ''}`}
                   >
-                    <div>
-                      <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">{stateGroup.state}</p>
-                      <p className="text-xs uppercase tracking-[0.12em] text-amber-600 dark:text-amber-500">
-                        {stateGroup.companies.length} companies
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{stateGroup.companies.length}</Badge>
-                      <ChevronDown
-                        className={`h-4 w-4 text-[var(--muted)] transition-transform duration-200 ${
-                          isStateExpanded ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </div>
+                    <ChevronRight className="atree-chevron" aria-hidden="true" />
+                    <MapPin className="atree-icon" aria-hidden="true" />
+                    <span className="atree-label">
+                      <span className="atree-name" title={stateGroup.state}>{stateGroup.state}</span>
+                      <span className="atree-hint">{pluralize(stateGroup.companies.length, 'company', 'companies')}</span>
+                    </span>
+                    <StatusCounts summary={stateSummary} />
+                    <StatusMeter summary={stateSummary} />
                   </button>
 
                   {isStateExpanded ? (
-                    <div className="space-y-2 pl-1 lg:space-y-3">
+                    <div className="atree-children" role="group">
                       {stateGroup.companies.map((companyGroup) => {
                         const companyKey = `company:${stateGroup.state}:${companyGroup.companyName}`;
                         const isCompanyExpanded = Boolean(expandedCompanies[companyKey]);
-                        const sourceStateGroup = hierarchy.find((group) => group.state === stateGroup.state);
                         const sourceCompanyGroup =
                           sourceStateGroup?.companies.find(
                             (group) => group.companyName === companyGroup.companyName
@@ -1364,9 +1224,11 @@ function TransformerSidebar({
                             : companyAssetCount;
                         const companyBoundary = sourceCompanyGroup.companyBoundary || companyGroup.companyBoundary;
                         const isCompanyBoundarySelected = selectedCompanyBoundaryId === companyBoundary?.id;
+                        const companySummary = summarizeStatuses(companyAssets, statusById);
+                        const areaCount = sourceCompanyGroup.floorPlans.length;
 
                         return (
-                          <section key={companyKey} className="space-y-2 lg:space-y-3">
+                          <div key={companyKey} className="atree-company">
                             <button
                               type="button"
                               onClick={() => toggleExpandedValue(setExpandedCompanies, companyKey)}
@@ -1379,65 +1241,57 @@ function TransformerSidebar({
                                 });
                               }}
                               aria-expanded={isCompanyExpanded}
-                              className="flex w-full items-center justify-between rounded-md border border-sky-400/75 bg-sky-50/80 px-3 py-2 text-left transition-colors hover:bg-sky-100/90 dark:border-sky-700/65 dark:bg-sky-950/45 dark:hover:bg-sky-900/60"
+                              className={`atree-row is-company ${isCompanyExpanded ? 'is-open' : ''} ${
+                                isCompanyBoundarySelected ? 'is-selected' : ''
+                              }`}
                             >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                              <ChevronRight className="atree-chevron" aria-hidden="true" />
+                              <Building2 className="atree-icon" aria-hidden="true" />
+                              <span className="atree-label">
+                                <span className="atree-name" title={companyGroup.companyName}>
                                   {companyGroup.companyName}
-                                </p>
-                                <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">
-                                  {sourceCompanyGroup.floorPlans.length} floors - {companyAssetLabel}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {companyBoundary ? <Badge variant={isCompanyBoundarySelected ? 'default' : 'outline'}>Main</Badge> : null}
-                                <Badge variant="secondary">{companyBadgeLabel}</Badge>
-                                <ChevronDown
-                                  className={`h-4 w-4 text-[var(--muted)] transition-transform duration-200 ${
-                                    isCompanyExpanded ? 'rotate-180' : ''
-                                  }`}
-                                />
-                              </div>
+                                </span>
+                                {areaCount ? <span className="atree-hint">{pluralize(areaCount, 'area')}</span> : null}
+                                {companyBoundary ? (
+                                  <span className={`atree-tag ${isCompanyBoundarySelected ? 'is-active' : ''}`}>Main</span>
+                                ) : null}
+                              </span>
+                              <StatusCounts summary={companySummary} totalLabel={companyBadgeLabel} />
                             </button>
 
-                            {companyBoundary ? (
-                              <div
-                                className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 ${
-                                  isCompanyBoundarySelected
-                                    ? 'border-sky-400/80 bg-sky-500/10'
-                                    : 'border-sky-300/45 bg-sky-50/45 dark:border-sky-900/50 dark:bg-sky-950/20'
-                                }`}
-                              >
-                                <button
-                                  type="button"
-                                  className="min-w-0 flex-1 text-left"
-                                  onClick={() => onCompanyBoundaryClick?.(companyBoundary)}
-                                >
-                                  <p className="truncate text-xs font-semibold text-[var(--foreground)]">
-                                    Main company boundary
-                                  </p>
-                                  <p className="truncate text-[11px] text-[var(--muted)]">
-                                    {companyBoundary.points.length} points - {companyGroup.floorPlans.length} areas under this parent
-                                  </p>
-                                </button>
-                                {canManageAssets ? (
-                                  <div className="flex items-center gap-1">
-                                    <IconAction label="Edit company boundary info" onClick={() => onEditCompanyBoundaryInfo?.(companyBoundary)}>
-                                      <Pencil className="h-4 w-4" />
-                                    </IconAction>
-                                    <IconAction label="Reshape company boundary" onClick={() => onEditCompanyBoundary?.(companyBoundary)}>
-                                      <Layers3 className="h-4 w-4" />
-                                    </IconAction>
-                                    <IconAction label="Delete company boundary" destructive onClick={() => onDeleteCompanyBoundary?.(companyBoundary.id)}>
-                                      <Trash2 className="h-4 w-4" />
-                                    </IconAction>
+                            {isCompanyExpanded ? (
+                              <div className="atree-children" role="group">
+                                {companyBoundary ? (
+                                  <div className={`atree-line ${isCompanyBoundarySelected ? 'is-selected' : ''}`}>
+                                    <button
+                                      type="button"
+                                      className="atree-row is-area"
+                                      onClick={() => onCompanyBoundaryClick?.(companyBoundary)}
+                                      title="Show the main company boundary on the map"
+                                    >
+                                      <span aria-hidden="true" />
+                                      <Hexagon className="atree-icon" aria-hidden="true" />
+                                      <span className="atree-label">
+                                        <span className="atree-name">Main company boundary</span>
+                                        <span className="atree-hint">{companyBoundary.points.length} pts</span>
+                                      </span>
+                                    </button>
+                                    {canManageAssets ? (
+                                      <span className="atree-actions">
+                                        <TreeAction label="Edit company boundary info" onClick={() => onEditCompanyBoundaryInfo?.(companyBoundary)}>
+                                          <Pencil aria-hidden="true" />
+                                        </TreeAction>
+                                        <TreeAction label="Reshape company boundary" onClick={() => onEditCompanyBoundary?.(companyBoundary)}>
+                                          <Layers3 aria-hidden="true" />
+                                        </TreeAction>
+                                        <TreeAction label="Delete company boundary" destructive onClick={() => onDeleteCompanyBoundary?.(companyBoundary.id)}>
+                                          <Trash2 aria-hidden="true" />
+                                        </TreeAction>
+                                      </span>
+                                    ) : null}
                                   </div>
                                 ) : null}
-                              </div>
-                            ) : null}
 
-                            {isCompanyExpanded ? (
-                              <div className="space-y-2 pl-1 lg:space-y-3 lg:pl-2">
                                 {companyGroup.floorPlans.map((floorPlan) => {
                                   const floorKey = `floor:${floorPlan.id}`;
                                   const isFloorExpanded = Boolean(expandedFloorPlans[floorKey]);
@@ -1447,13 +1301,12 @@ function TransformerSidebar({
                                   const floorAssets = getFloorPlanAssets(sourceFloorPlan, transformers);
                                   const floorAssignedAssetCount = countAssignedTransformerIds(sourceFloorPlan);
                                   const floorHasHiddenAssets = floorAssignedAssetCount > floorAssets.length;
-                                  const floorAssetLabel = floorHasHiddenAssets
-                                    ? `${floorPlan.transformers.length}/${floorAssignedAssetCount} transformers visible`
-                                    : `${pluralize(floorPlan.transformers.length, 'transformer')} inside`;
+                                  const floorSummary = summarizeStatuses(floorAssets, statusById);
 
                                   return (
-                                    <article
+                                    <div
                                       key={floorPlan.id}
+                                      className="atree-area"
                                       onContextMenu={(event) =>
                                         openAssetGroupContextMenu(event, {
                                           typeLabel: 'Area/Substation',
@@ -1462,86 +1315,61 @@ function TransformerSidebar({
                                           assets: floorAssets,
                                         })
                                       }
-                                      className={`rounded-md border p-2.5 shadow-[var(--shadow-card)] lg:p-3 ${
-                                        isFloorSelected
-                                          ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
-                                          : 'border-violet-400/70 bg-violet-50/60 dark:border-violet-700/55 dark:bg-violet-950/35'
-                                      }`}
                                     >
-                                      <div className="flex items-start gap-2">
+                                      <div className={`atree-line ${isFloorSelected ? 'is-selected' : ''}`}>
                                         <button
                                           type="button"
-                                          className="min-w-0 flex-1 text-left"
-                                          onClick={() => onFloorPlanClick(floorPlan)}
+                                          onClick={() => toggleExpandedValue(setExpandedFloorPlans, floorKey)}
+                                          aria-label={isFloorExpanded ? 'Collapse area' : 'Expand area'}
+                                          aria-expanded={isFloorExpanded}
+                                          className={`atree-toggle ${isFloorExpanded ? 'is-open' : ''}`}
                                         >
-                                          <div className="flex items-center gap-2">
-                                            <div
-                                              className={`inline-flex h-7 w-7 items-center justify-center rounded-md lg:h-8 lg:w-8 ${
-                                                isFloorSelected
-                                                  ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                                                  : 'bg-[var(--primary-soft)] text-[var(--primary-strong)]'
-                                              }`}
-                                            >
-                                              <Layers3 className="h-4 w-4" />
-                                            </div>
-                                            <div className="min-w-0">
-                                              <p className="truncate text-sm font-semibold text-[var(--foreground)]">
-                                                {floorPlan.name || 'Unnamed floor'}
-                                              </p>
-                                              <p className="text-xs text-[var(--muted)]">
-                                                {floorAssetLabel}
-                                              </p>
-                                            </div>
-                                          </div>
+                                          <ChevronRight className="atree-chevron" aria-hidden="true" />
                                         </button>
-
-                                        <div className="flex items-center gap-1">
-                                          {canManageAssets ? (
-                                            <>
-                                              <IconAction
-                                                label="Edit floor info"
-                                                onClick={() => onEditFloorPlanInfo(floorPlan)}
-                                              >
-                                                <Pencil className="h-4 w-4" />
-                                              </IconAction>
-                                              <IconAction
-                                                label="Reshape floor boundary"
-                                                onClick={() => onEditFloorPlan(floorPlan)}
-                                              >
-                                                <Layers3 className="h-4 w-4" />
-                                              </IconAction>
-                                              <IconAction
-                                                label="Delete floor plan"
-                                                destructive
-                                                onClick={() => onDeleteFloorPlan(floorPlan.id)}
-                                              >
-                                                <Trash2 className="h-4 w-4" />
-                                              </IconAction>
-                                            </>
-                                          ) : null}
-                                          <button
-                                            type="button"
-                                            onClick={() => toggleExpandedValue(setExpandedFloorPlans, floorKey)}
-                                            aria-label={isFloorExpanded ? 'Collapse floor contents' : 'Expand floor contents'}
-                                            aria-expanded={isFloorExpanded}
-                                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border)] text-[var(--muted)] transition-colors hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] lg:h-9 lg:w-9"
-                                          >
-                                            <ChevronDown
-                                              className={`h-4 w-4 transition-transform duration-200 ${
-                                                isFloorExpanded ? 'rotate-180' : ''
-                                              }`}
-                                            />
-                                          </button>
-                                        </div>
+                                        <button
+                                          type="button"
+                                          className="atree-row is-area"
+                                          onClick={() => onFloorPlanClick(floorPlan)}
+                                          title="Show this area on the map"
+                                        >
+                                          <Layers3 className="atree-icon" aria-hidden="true" />
+                                          <span className="atree-label">
+                                            <span className="atree-name" title={floorPlan.name || 'Unnamed floor'}>
+                                              {floorPlan.name || 'Unnamed floor'}
+                                            </span>
+                                          </span>
+                                          <StatusCounts
+                                            summary={floorSummary}
+                                            totalLabel={
+                                              floorHasHiddenAssets
+                                                ? `${floorPlan.transformers.length}/${floorAssignedAssetCount}`
+                                                : floorPlan.transformers.length
+                                            }
+                                          />
+                                        </button>
+                                        {canManageAssets ? (
+                                          <span className="atree-actions">
+                                            <TreeAction label="Edit floor info" onClick={() => onEditFloorPlanInfo(floorPlan)}>
+                                              <Pencil aria-hidden="true" />
+                                            </TreeAction>
+                                            <TreeAction label="Reshape floor boundary" onClick={() => onEditFloorPlan(floorPlan)}>
+                                              <Layers3 aria-hidden="true" />
+                                            </TreeAction>
+                                            <TreeAction label="Delete floor plan" destructive onClick={() => onDeleteFloorPlan(floorPlan.id)}>
+                                              <Trash2 aria-hidden="true" />
+                                            </TreeAction>
+                                          </span>
+                                        ) : null}
                                       </div>
 
                                       {isFloorExpanded ? (
-                                        <div className="mt-2.5 space-y-2 border-t border-[color:var(--border)] pt-2.5 lg:mt-3 lg:space-y-3 lg:pt-3">
+                                        <div className="atree-children" role="group">
                                           {floorPlan.transformers.length ? (
                                             floorPlan.transformers.map((transformer) => (
                                               <TransformerListCard
                                                 key={transformer.id}
                                                 transformer={transformer}
+                                                status={getAssetStatus(statusById, transformer)}
                                                 isSelected={selectedTransformerId === transformer.id}
                                                 isExpanded={!!expandedTransformers[transformer.id]}
                                                 onToggleExpanded={() => toggleTransformerExpanded(transformer.id)}
@@ -1555,7 +1383,7 @@ function TransformerSidebar({
                                               />
                                             ))
                                           ) : (
-                                            <p className="rounded-md bg-[var(--card-muted)] px-3 py-3 text-sm text-[var(--muted)]">
+                                            <p className="atree-empty-note">
                                               {floorHasHiddenAssets
                                                 ? `${floorAssignedAssetCount} transformers are assigned in Supabase, but none are visible for this account.`
                                                 : 'No transformer is assigned to this floor yet.'}
@@ -1563,47 +1391,39 @@ function TransformerSidebar({
                                           )}
                                         </div>
                                       ) : null}
-                                    </article>
+                                    </div>
                                   );
                                 })}
 
                                 {companyGroup.ungroupedTransformers.length ? (
-                                  <section className="space-y-2 rounded-md border border-dashed border-[color:var(--border)] bg-[var(--card)]/65 p-2.5 lg:p-3">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-[var(--foreground)]">
-                                          Ungrouped assets
-                                        </p>
-                                        <p className="text-xs text-[var(--muted)]">
-                                          Transformers without a saved floor boundary
-                                        </p>
-                                      </div>
-                                      <Badge variant="outline">{companyGroup.ungroupedTransformers.length}</Badge>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      {companyGroup.ungroupedTransformers.map((transformer) => (
-                                        <TransformerListCard
-                                          key={transformer.id}
-                                          transformer={transformer}
-                                          isSelected={selectedTransformerId === transformer.id}
-                                          isExpanded={!!expandedTransformers[transformer.id]}
-                                          onToggleExpanded={() => toggleTransformerExpanded(transformer.id)}
-                                          onClick={() => onTransformerClick(transformer)}
-                                          onViewDetails={() => onViewDetails(transformer)}
-                                          canManageAssets={canManageAssets}
-                                          compareSelected={compareAssetIds.includes(String(transformer.id))}
-                                          onToggleCompare={() => toggleCompareAsset(transformer)}
-                                          onEdit={() => onEditClick(transformer)}
-                                          onDelete={() => onDeleteClick(transformer.id)}
-                                        />
-                                      ))}
-                                    </div>
-                                  </section>
+                                  <>
+                                    {companyGroup.floorPlans.length ? (
+                                      <p className="atree-subhead">
+                                        Not in an area · {companyGroup.ungroupedTransformers.length}
+                                      </p>
+                                    ) : null}
+                                    {companyGroup.ungroupedTransformers.map((transformer) => (
+                                      <TransformerListCard
+                                        key={transformer.id}
+                                        transformer={transformer}
+                                        status={getAssetStatus(statusById, transformer)}
+                                        isSelected={selectedTransformerId === transformer.id}
+                                        isExpanded={!!expandedTransformers[transformer.id]}
+                                        onToggleExpanded={() => toggleTransformerExpanded(transformer.id)}
+                                        onClick={() => onTransformerClick(transformer)}
+                                        onViewDetails={() => onViewDetails(transformer)}
+                                        canManageAssets={canManageAssets}
+                                        compareSelected={compareAssetIds.includes(String(transformer.id))}
+                                        onToggleCompare={() => toggleCompareAsset(transformer)}
+                                        onEdit={() => onEditClick(transformer)}
+                                        onDelete={() => onDeleteClick(transformer.id)}
+                                      />
+                                    ))}
+                                  </>
                                 ) : null}
                               </div>
                             ) : null}
-                          </section>
+                          </div>
                         );
                       })}
                     </div>
@@ -2023,6 +1843,7 @@ function StatesListDialog({ open, states, onClose, onSelectState }) {
 
 function TransformerListCard({
   transformer,
+  status = 'normal',
   isSelected,
   isExpanded,
   onToggleExpanded,
@@ -2034,114 +1855,104 @@ function TransformerListCard({
   onEdit,
   onDelete,
 }) {
-  const transformerState = getTransformerState(transformer);
   const assetOwnerLabel = getAssetOwnerLabel(transformer.ownerType);
+  const ratingLine = [transformer.voltage, transformer.loadMVA ? `${transformer.loadMVA} MVA` : null]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <article
-      className={`group rounded-md border p-2.5 transition-all duration-200 hover:-translate-y-0.5 lg:p-3 ${
-        compareSelected
-          ? 'border-blue-400/80 bg-blue-500/10 compare-breathing-card'
-          : isSelected
-          ? 'border-[color:var(--primary)] bg-[var(--primary-soft)] ring-1 ring-[color:var(--ring)]'
-          : 'border-[color:var(--border)] bg-[var(--card)]'
+      role="treeitem"
+      aria-selected={isSelected}
+      className={`atree-tx ${isSelected ? 'is-selected' : ''} ${compareSelected ? 'is-compare compare-breathing-card' : ''} ${
+        isExpanded ? 'is-expanded' : ''
       }`}
     >
-      <div className="flex items-start gap-3">
-        <button type="button" className="min-w-0 flex-1 text-left" onClick={onClick}>
-          <div className="flex items-center gap-2">
-            <div
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-md lg:h-8 lg:w-8 ${
-                isSelected
-                  ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                  : 'bg-[var(--primary-soft)] text-[var(--primary-strong)]'
-              }`}
-            >
-              <Zap className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">
-                {transformer.txName || 'Unnamed transformer'}
-              </h2>
-              <p className="truncate text-sm text-[var(--muted)]">
-                {transformer.siteName || 'Unknown site'}
-              </p>
-            </div>
-          </div>
+      <div className="atree-tx-line">
+        <button type="button" className="atree-tx-main" onClick={onClick}>
+          <span
+            className={`atree-tx-status is-${status}`}
+            style={{ '--status-color': STATUS_COLORS[status] || STATUS_COLORS.normal }}
+            title={STATUS_LABELS[status] || STATUS_LABELS.normal}
+          />
+          <span className="atree-tx-text">
+            <span className="atree-tx-title">
+              {transformer.txName || 'Unnamed transformer'}
+              {transformer.mnemonic ? <span className="atree-tag">{transformer.mnemonic}</span> : null}
+              {compareSelected ? <span className="atree-tag is-active compare-breathing-badge">Compare</span> : null}
+            </span>
+            <span className="atree-tx-sub">{ratingLine || transformer.siteName || 'No rating details'}</span>
+          </span>
         </button>
-
         <button
           type="button"
           onClick={onToggleExpanded}
           aria-label={isExpanded ? 'Collapse transformer details' : 'Expand transformer details'}
           aria-expanded={isExpanded}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors lg:h-9 lg:w-9 ${
-            isSelected
-              ? 'border-[color:var(--primary)] text-[var(--primary-strong)] hover:bg-[var(--card)]'
-              : 'border-[color:var(--border)] text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
-          }`}
+          className="atree-tx-expand"
         >
-          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+          <ChevronDown aria-hidden="true" />
         </button>
       </div>
 
       {isExpanded ? (
-        <>
-          <div className="mt-2.5 flex flex-wrap items-center gap-2 lg:mt-3 lg:gap-3">
-            <Badge variant="outline">{transformer.voltage || 'Voltage N/A'}</Badge>
-            <Badge variant="secondary">{transformerState}</Badge>
-            <Badge variant="outline">{assetOwnerLabel}</Badge>
-            {compareSelected ? <Badge variant="outline" className="compare-breathing-badge">Compare</Badge> : null}
-          </div>
-
-          <dl className="mt-2.5 grid grid-cols-2 gap-2 text-sm lg:mt-3 lg:gap-3">
-            <InfoPair label="Mnemonic" value={transformer.mnemonic || '-'} />
-            <InfoPair label="Serial" value={transformer.serialNumber || '-'} />
-            <InfoPair label="Load" value={transformer.loadMVA ? `${transformer.loadMVA} MVA` : '-'} />
-            <InfoPair label="Owner" value={assetOwnerLabel} />
-            <InfoPair label="Year" value={transformer.yearBuilt || '-'} />
-          </dl>
-
-          <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-[color:var(--border)] pt-2.5 lg:mt-3 lg:gap-3 lg:pt-3">
-            <div className="flex items-center gap-1">
-              <IconAction label="View details" onClick={onViewDetails}>
-                <MapPin className="h-4 w-4" />
-              </IconAction>
-              {canManageAssets ? (
-                <IconAction label="Edit transformer" onClick={onEdit}>
-                  <Pencil className="h-4 w-4" />
-                </IconAction>
-              ) : null}
-              <IconAction
-                label={compareSelected ? 'Remove transformer from compare' : 'Add transformer to compare'}
-                active={compareSelected}
-                onClick={onToggleCompare}
-              >
-                <GitCompareArrows className="h-4 w-4" />
-              </IconAction>
-              {canManageAssets ? (
-                <IconAction label="Delete transformer" destructive onClick={onDelete}>
-                  <Trash2 className="h-4 w-4" />
-                </IconAction>
-              ) : null}
+        <div className="atree-tx-details">
+          <dl className="atree-tx-facts">
+            <div>
+              <dt>Serial</dt>
+              <dd title={transformer.serialNumber || '-'}>{transformer.serialNumber || '-'}</dd>
             </div>
-          </div>
-        </>
+            <div>
+              <dt>Owner</dt>
+              <dd title={assetOwnerLabel}>{assetOwnerLabel}</dd>
+            </div>
+            <div>
+              <dt>Year</dt>
+              <dd>{transformer.yearBuilt || '-'}</dd>
+            </div>
+            <div>
+              <dt>Site</dt>
+              <dd title={transformer.siteName || '-'}>{transformer.siteName || '-'}</dd>
+            </div>
+            <div>
+              <dt>State</dt>
+              <dd>{getTransformerState(transformer)}</dd>
+            </div>
+            <div>
+              <dt>Mnemonic</dt>
+              <dd>{transformer.mnemonic || '-'}</dd>
+            </div>
+          </dl>
+          <span className="atree-actions">
+            <TreeAction label="View details" onClick={onViewDetails}>
+              <MapPin aria-hidden="true" />
+            </TreeAction>
+            {canManageAssets ? (
+              <TreeAction label="Edit transformer" onClick={onEdit}>
+                <Pencil aria-hidden="true" />
+              </TreeAction>
+            ) : null}
+            <TreeAction
+              label={compareSelected ? 'Remove transformer from compare' : 'Add transformer to compare'}
+              active={compareSelected}
+              onClick={onToggleCompare}
+            >
+              <GitCompareArrows aria-hidden="true" />
+            </TreeAction>
+            {canManageAssets ? (
+              <TreeAction label="Delete transformer" destructive onClick={onDelete}>
+                <Trash2 aria-hidden="true" />
+              </TreeAction>
+            ) : null}
+          </span>
+        </div>
       ) : null}
     </article>
   );
 }
 
-function InfoPair({ label, value }) {
-  return (
-    <div className="space-y-1 rounded-md bg-[var(--card-muted)] px-2.5 py-2 lg:px-3">
-      <dt className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--muted)]">{label}</dt>
-      <dd className="truncate text-sm font-medium text-[var(--foreground)]">{value}</dd>
-    </div>
-  );
-}
-
-function IconAction({ label, onClick, destructive = false, active = false, children }) {
+/** Small borderless icon button used inside the compact hierarchy rows. */
+function TreeAction({ label, onClick, destructive = false, active = false, children }) {
   return (
     <AppTooltip content={label}>
       <button
@@ -2149,13 +1960,7 @@ function IconAction({ label, onClick, destructive = false, active = false, child
         onClick={onClick}
         aria-label={label}
         aria-pressed={active}
-        className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors lg:h-9 lg:w-9 ${
-          destructive
-            ? 'border-[color:var(--danger-soft)] text-[var(--danger-strong)] hover:bg-[var(--danger-soft)]'
-            : active
-              ? 'compare-breathing-action border-blue-400/80 bg-blue-500/10 text-blue-400'
-            : 'border-[color:var(--border)] text-[var(--muted)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]'
-        }`}
+        className={`atree-action ${destructive ? 'is-danger' : ''} ${active ? 'is-active' : ''}`}
       >
         {children}
       </button>
