@@ -1,6 +1,6 @@
 {
   "name": "transformer-asset-map",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Transformer asset management with Supabase PostgreSQL backend and cloud storage",
   "private": true,
   "dependencies": {
@@ -50,6 +50,7 @@
     "data:centres": "node scripts/build-data-centres.mjs",
     "data:centres:malaysia": "node scripts/build-malaysia-data-centres.mjs",
     "globe:grid": "node scripts/build-power-grid.mjs",
+    "grid:download": "node scripts/download-power-equipment.mjs && node scripts/build-power-grid.mjs",
     "globe:buildings": "python scripts/buildings3d/extract_buildings.py data/osm/malaysia.osm.pbf data/osm/buildings-extract.npz && python scripts/buildings3d/build_tileset.py data/osm/buildings-extract.npz public/data/buildings3d",
     "ext:sync": "node scripts/sync-firefox-extension.mjs",
     "ext:check": "node scripts/sync-firefox-extension.mjs --check",

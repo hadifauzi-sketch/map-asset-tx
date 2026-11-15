@@ -8,25 +8,217 @@ import { useHiddenFuels } from '../lib/hiddenFuelsStore';
 import {
   GRID_ATTRIBUTION,
   GRID_LINE_LAYERS,
+  GRID_SYMBOL_LAYERS,
   describeGridRecord,
+  gridHoverText,
   gridRecordColor,
   lineWidthForVoltage,
   loadGridLayer,
 } from '../lib/globe3d/powerGrid';
 import { fetchPowerPlants } from '../lib/globe3d/liveFeeds';
-import { POWER_GRID_LAYER_IDS, gridPopupHtml } from '../lib/powerGridMap';
+import { ACCENT, GRID_SYMBOLS, gridSymbolFor, symbolAccent } from '../lib/gridSymbols';
+import { POWER_GRID_LAYER_BY_ID, POWER_GRID_LAYER_IDS, gridPopupHtml, gridSymbolRadius } from '../lib/powerGridMap';
 import { createPowerPlantLabelOverlay } from '../lib/powerPlantLabelOverlay';
 
 // Power grid overlay for the 2D Leaflet map.
 //
-// Everything is drawn on two canvas renderers (lines below, points above) in
+// Everything is drawn on canvas renderers (lines, points, equipment symbols) in
 // their own panes, under the transformer markers, so thousands of features pan
 // and zoom smoothly. Each layer is loaded once and kept, so switching it off and
-// on again is instant.
+// on again is instant. Equipment layers (towers, transformers, switchgear …)
+// only create markers for what is in view, and only from their minimum zoom.
 
 const LINE_PANE = 'powerGridLines';
 const POINT_PANE = 'powerGridPoints';
+const SYMBOL_PANE = 'powerGridSymbols';
 const LABEL_PANE = 'powerPlantLabels';
+
+// ── Equipment symbols ─────────────────────────────────────────────────────
+
+const compiledSymbols = new Map();
+
+/** GRID_SYMBOLS parts as Path2D objects, built once per symbol. */
+function compiledSymbol(symbolId) {
+  if (!compiledSymbols.has(symbolId)) {
+    const parts = GRID_SYMBOLS[symbolId];
+    compiledSymbols.set(symbolId, parts ? parts.map((part) => ({ ...part, path: new Path2D(part.d) })) : null);
+  }
+  return compiledSymbols.get(symbolId);
+}
+
+/** Draws one symbol centred on `point`, `radius` px from centre to edge. */
+function drawSymbol(ctx, point, radius, symbolId, accent) {
+  const parts = compiledSymbol(symbolId);
+  if (!parts) return;
+  const scale = (radius * 2) / 16;
+  ctx.save();
+  ctx.translate(point.x - radius, point.y - radius);
+  ctx.scale(scale, scale);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const part of parts) {
+    if (part.fill) {
+      ctx.fillStyle = part.fill === ACCENT ? accent : part.fill;
+      ctx.fill(part.path);
+    }
+    if (part.stroke) {
+      ctx.strokeStyle = part.stroke === ACCENT ? accent : part.stroke;
+      ctx.lineWidth = (part.width ?? 1.1) / scale;
+      ctx.stroke(part.path);
+    }
+  }
+  ctx.restore();
+}
+
+/**
+ * A canvas circle marker that paints a GRID_SYMBOLS glyph instead of a circle
+ * when `options.symbol` is set. Hit-testing still uses the circle radius.
+ */
+const SymbolMarker = L.CircleMarker.extend({
+  _updatePath() {
+    const renderer = this._renderer;
+    if (!this.options.symbol) {
+      renderer._updateCircle(this);
+      return;
+    }
+    if (!renderer._drawing || this._empty()) return;
+    drawSymbol(renderer._ctx, this._point, this._radius, this.options.symbol, this.options.accent);
+  },
+});
+
+const DOT_RADIUS = (zoom) => (zoom < 8 ? 2 : zoom < 11 ? 2.5 : 3);
+
+/**
+ * One equipment layer. Keeps every record in memory but only the markers
+ * inside the (padded) view on the map; below `minZoom` it draws nothing and
+ * below `symbolZoom` it draws plain dots.
+ */
+const CulledSymbolLayer = L.Layer.extend({
+  initialize(layerId, records, canvas, onHiddenChange) {
+    this._layerId = layerId;
+    this._records = records;
+    this._canvas = canvas;
+    this._spec = POWER_GRID_LAYER_BY_ID[layerId] || {};
+    this._group = L.featureGroup();
+    this._markers = new Map();
+    this._styleKey = '';
+    this._hidden = null;
+    this._onHiddenChange = onHiddenChange;
+    bindGridInteractions(this._group);
+  },
+
+  onAdd(map) {
+    this._group.addTo(map);
+    map.on('moveend', this._update, this);
+    this._update();
+  },
+
+  onRemove(map) {
+    map.off('moveend', this._update, this);
+    map.removeLayer(this._group);
+    this._group.clearLayers();
+    this._markers.clear();
+    this._styleKey = '';
+    this._hidden = null;
+  },
+
+  _update() {
+    const map = this._map;
+    if (!map) return;
+    const zoom = map.getZoom();
+    const { minZoom = 0, symbolZoom = 0 } = this._spec;
+    const hidden = zoom < minZoom;
+    if (hidden !== this._hidden) {
+      this._hidden = hidden;
+      this._onHiddenChange?.(hidden);
+    }
+    if (hidden) {
+      this._group.clearLayers();
+      this._markers.clear();
+      this._styleKey = '';
+      return;
+    }
+
+    const asSymbol = zoom >= symbolZoom;
+    const radius = asSymbol ? gridSymbolRadius(this._layerId, zoom) : DOT_RADIUS(zoom);
+    const styleKey = `${asSymbol}:${radius}`;
+    if (styleKey !== this._styleKey) {
+      this._group.clearLayers();
+      this._markers.clear();
+      this._styleKey = styleKey;
+    }
+
+    const bounds = map.getBounds().pad(0.2);
+    const south = bounds.getSouth();
+    const north = bounds.getNorth();
+    const west = bounds.getWest();
+    const east = bounds.getEast();
+    const layerId = this._layerId;
+    const visible = new Set();
+
+    this._records.forEach((record, index) => {
+      const { lat, lon } = record;
+      if (!(lat >= south && lat <= north && lon >= west && lon <= east)) return;
+      visible.add(index);
+      if (this._markers.has(index)) return;
+      const accent = symbolAccent(layerId, record);
+      const marker = new SymbolMarker([lat, lon], {
+        renderer: this._canvas,
+        pane: SYMBOL_PANE,
+        radius,
+        symbol: asSymbol ? gridSymbolFor(layerId, record) : null,
+        accent,
+        // Dot mode style; in symbol mode `weight` only pads the redraw bounds.
+        color: '#ffffff',
+        weight: asSymbol ? 2 : 1,
+        fillColor: gridRecordColor(layerId, record),
+        fillOpacity: 0.95,
+        gridLayerId: layerId,
+        gridRecord: record,
+      });
+      this._markers.set(index, marker);
+      this._group.addLayer(marker);
+    });
+
+    for (const [index, marker] of this._markers) {
+      if (!visible.has(index)) {
+        this._group.removeLayer(marker);
+        this._markers.delete(index);
+      }
+    }
+  },
+});
+
+/** Click -> info popup, hover -> name/summary tooltip, for any grid group. */
+function bindGridInteractions(group) {
+  group.on('click', (event) => {
+    const { gridLayerId, gridRecord } = event.layer.options;
+    L.popup({ className: 'grid-popup-shell', maxWidth: 300, autoPanPadding: [24, 24] })
+      .setLatLng(event.latlng)
+      .setContent(gridPopupHtml(describeGridRecord(gridLayerId, gridRecord), gridRecordColor(gridLayerId, gridRecord)))
+      .openOn(group._map);
+  });
+
+  // Tooltip bound lazily so thousands of unnamed features cost nothing.
+  group.on('mouseover', (event) => {
+    const target = event.layer;
+    const { gridLayerId, gridRecord } = target.options;
+    if (!target.getTooltip()) {
+      const name = gridHoverText(gridLayerId, gridRecord);
+      if (!name) return;
+      const summary = gridLayerId === 'powerPlants' ? plantSummary(gridRecord) : '';
+      const label = summary ? `${escapeTooltip(name)}<br><span class="grid-hover-sub">${escapeTooltip(summary)}</span>` : escapeTooltip(name);
+      const offsetY = -(target.options.radius || 4) - 2;
+      target.bindTooltip(label, {
+        direction: 'top',
+        offset: [0, offsetY],
+        className: 'grid-hover-label',
+        sticky: GRID_LINE_LAYERS.has(gridLayerId),
+      });
+    }
+    target.openTooltip(event.latlng);
+  });
+}
 
 const TOOLTIP_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 // Leaflet tooltips render strings as HTML, so names from the data are escaped.
@@ -35,7 +227,6 @@ const escapeTooltip = (value) => String(value).replace(/[&<>"']/g, (char) => TOO
 const POINT_RADIUS = {
   powerPlants: [4, 5.5, 7],
   substations: [2, 3.5, 5],
-  mappedTransformers: [1.5, 3, 4.5],
 };
 
 function radiusFor(layerId, zoom, record) {
@@ -128,13 +319,7 @@ function buildGroup(layerId, records, renderers, zoom) {
     }
   }
 
-  group.on('click', (event) => {
-    const { gridLayerId, gridRecord } = event.layer.options;
-    L.popup({ className: 'grid-popup-shell', maxWidth: gridLayerId === 'powerPlants' ? 300 : 280, autoPanPadding: [24, 24] })
-      .setLatLng(event.latlng)
-      .setContent(gridPopupHtml(describeGridRecord(gridLayerId, gridRecord), gridRecordColor(gridLayerId, gridRecord)))
-      .openOn(group._map);
-  });
+  bindGridInteractions(group);
 
   if (layerId === 'powerPlants') {
     let cleanupLabels = null;
@@ -193,19 +378,6 @@ function buildGroup(layerId, records, renderers, zoom) {
     group.on('remove', () => { cleanupLabels?.(); cleanupLabels = null; });
   }
 
-  // Name on hover, bound lazily so thousands of unnamed features cost nothing.
-  group.on('mouseover', (event) => {
-    const target = event.layer;
-    const { gridLayerId, gridRecord } = target.options;
-    const name = gridRecord?.name;
-    if (!name) return;
-    if (!target.getTooltip()) {
-      const summary = gridLayerId === 'powerPlants' ? plantSummary(gridRecord) : '';
-      const label = summary ? `${escapeTooltip(name)}<br><span class="grid-hover-sub">${escapeTooltip(summary)}</span>` : escapeTooltip(name);
-      target.bindTooltip(label, { direction: 'top', offset: [0, -6], className: 'grid-hover-label', sticky: GRID_LINE_LAYERS.has(target.options.gridLayerId) });
-    }
-    target.openTooltip(event.latlng);
-  });
   return group;
 }
 
@@ -251,15 +423,18 @@ export default function PowerGridMapLayer({ layers, onStatus }) {
     const state = stateRef.current;
     ensurePane(map, LINE_PANE, 380);
     ensurePane(map, POINT_PANE, 390);
+    ensurePane(map, SYMBOL_PANE, 395);
     state.renderers = {
       lines: L.canvas({ pane: LINE_PANE, padding: 0.4, tolerance: 5 }),
       points: L.canvas({ pane: POINT_PANE, padding: 0.4, tolerance: 3 }),
+      symbols: L.canvas({ pane: SYMBOL_PANE, padding: 0.4, tolerance: 2 }),
     };
 
     const onZoomEnd = () => {
       const zoom = map.getZoom();
       state.groups.forEach((group, layerId) => {
-        if (GRID_LINE_LAYERS.has(layerId)) return;
+        // Line widths are fixed; equipment layers resize themselves on moveend.
+        if (GRID_LINE_LAYERS.has(layerId) || GRID_SYMBOL_LAYERS.has(layerId)) return;
         group.eachLayer((marker) => {
           const radius = radiusFor(layerId, zoom, marker.options.gridRecord);
           if (marker.getRadius() !== radius) marker.setRadius(radius);
@@ -315,14 +490,23 @@ export default function PowerGridMapLayer({ layers, onStatus }) {
         .then((records) => {
           state.loading.delete(layerId);
           if (!state.renderers) return; // unmounted meanwhile
-          const built = buildGroup(layerId, records, state.renderers, map.getZoom());
+          const ready = { state: 'ok', count: records.length };
+          const built = GRID_SYMBOL_LAYERS.has(layerId)
+            ? new CulledSymbolLayer(layerId, records, state.renderers.symbols, (hidden) =>
+                onStatusRef.current?.(layerId, {
+                  ...ready,
+                  belowZoom: hidden ? POWER_GRID_LAYER_BY_ID[layerId]?.minZoom ?? null : null,
+                })
+              )
+            : buildGroup(layerId, records, state.renderers, map.getZoom());
           state.groups.set(layerId, built);
           if (layerId === 'powerPlants') {
             setFuelCounts(countPlantsByFuel(records));
             built.setHiddenFuels(hiddenFuelsRef.current);
           }
+          onStatusRef.current?.(layerId, ready);
+          // Added after the "ok" status so a symbol layer's zoom hint wins.
           if (layersRef.current?.[layerId]) built.addTo(map);
-          onStatusRef.current?.(layerId, { state: 'ok', count: records.length });
         })
         .catch((error) => {
           state.loading.delete(layerId);

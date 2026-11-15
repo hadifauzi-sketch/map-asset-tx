@@ -1,5 +1,20 @@
 # Changelog
 
+## 5.1 - Detailed Power Equipment (OpenInfraMap-style)
+
+Version 5.1 brings the grid down to equipment level: what stands inside each
+substation and along each line, drawn with the same symbols OpenInfraMap uses.
+
+### Added
+
+- **Switchgear, generation and line-support layers** on the 2D map's Power grid menu, drawn with OpenInfraMap-style symbols and each switchable on its own: power plant sites (223, OSM), generators (807, coloured by source with output MW), transformers (two- and three-winding, CT / VT), switches and circuit breakers, reactors / capacitors / converters, portals and line terminals (2,023), towers (46,400), transition towers, power poles and transition poles. Dense layers appear from street zoom and only draw what is in view.
+- The menu is grouped into *Generation & sites*, *Switchgear*, *Power line supports* and *Lines & cables*, each with a Show all / Hide all switch.
+- `npm run grid:download` (`scripts/download-power-equipment.mjs`) fetches the equipment from the Overpass API into `data/osm/` (git-ignored) and rebuilds `public/data/grid/`.
+
+### Fixed
+
+- Transformer cards now show the full winding ratio from `voltage:primary` / `voltage:secondary` / `voltage:tertiary` (e.g. **500/275 kV** instead of 500 kV), plus rating, phases, frequency, cooling and a link to the feature on OpenStreetMap. Substation, line and cable cards also gained ref, frequency, wires and location where mapped.
+
 ## 5.0 - 3D Globe, Power Grid & Data Centre Intelligence
 
 Version 5.0 turns the map from an asset locator into a view of the grid around

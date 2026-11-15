@@ -4,6 +4,17 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 5.1 - Detailed Power Equipment
+
+The Power grid panel on the 2D map now goes down to equipment level, with OpenInfraMap-style symbols and one switch per layer (plus Show all / Hide all per section):
+
+- **Generation & sites:** power stations (WRI), **power plant sites** (223, OSM), substations.
+- **Switchgear:** **generators** (807, coloured by source, with MW), **transformers** with their full voltage ratio (e.g. 500/275 kV, two- and three-winding, CT / VT), **switches and circuit breakers**, **reactors, capacitors and converters**, **portals and line terminals**.
+- **Power line supports:** **towers / pylons** (46,400), **transition towers**, **power poles**, **transition poles**. Dense layers appear from street zoom and only draw what is on screen.
+- Every card links to the feature on OpenStreetMap. `npm run grid:download` refreshes the equipment from the Overpass API and rebuilds `public/data/grid/`.
+
+---
+
 ## Version 5.0 - 3D Globe, Power Grid & Data Centre Intelligence
 
 Until now the map answered *where is this transformer*. Version 5.0 shows what surrounds it: a 3D globe with buildings and terrain, the national power grid, power plants by fuel, and the data centres that are adding new load. Everything new appears on both the 2D map and the 3D globe, and filters and settings carry across.
@@ -680,7 +691,7 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 5.0 (Supabase Edition)
+**Version**: 5.1 (Supabase Edition)
 **Last Updated**: September 2026
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  
