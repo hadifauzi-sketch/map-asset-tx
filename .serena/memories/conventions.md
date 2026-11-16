@@ -1,42 +1,34 @@
 # Conventions
 
 ## Component Rules
-- Functional components + hooks only; no class components.
-- All app-wide state lives in `App.jsx`; children receive props.
-- No global state library (Redux, Zustand, Context) for app state — props drill down.
-- `data-tour="<key>"` attributes on elements to register spotlight tour stops (see `AppOnboardingTour.jsx`).
+- Function components + hooks only.
+- App-wide state lives in `App.jsx`; children get props. No Redux/Zustand/Context. Narrow cross-view state may use a tiny external store in `lib/` with a `use…` hook (pattern: `lib/hiddenFuelsStore.js`).
+- `data-tour="<key>"` registers spotlight tour stops (`AppOnboardingTour.jsx`).
+- Asset grouping/search: always use `lib/assetHierarchy.js` (`buildHierarchy`, `filterHierarchy`) so 2D and 3D lists stay identical.
 
 ## UI Primitives — Always Use These
 | Need | Component |
 |------|-----------|
-| Dropdown select | `components/ui/combobox.jsx` — replaces all `<select>` |
-| Date input | `components/ui/date-picker.jsx` — replaces all `<input type="date">` |
-| Action button tooltips | `<AppTooltip>` from `components/ui/app-tooltip.jsx` |
-| Dialogs/modals | `<Dialog>` from `components/ui/dialog.jsx` (Radix) |
-| Tabs | `components/ui/tabs.jsx` (Radix) |
-| Badges | `components/ui/badge.jsx` |
+| Dropdown select | `components/ui/combobox.jsx` (`{value,label}` options) — never native `<select>` |
+| Date input | `components/ui/date-picker.jsx` |
+| Action tooltips | `<AppTooltip>` (`components/ui/app-tooltip.jsx`) |
+| Dialogs | `<Dialog>` (`components/ui/dialog.jsx`) |
+| Tabs / Badges | `components/ui/tabs.jsx`, `components/ui/badge.jsx` |
+| Lazy dialog mount | `components/MountWhenOpened.jsx` |
+| Status counts / meter in trees | `components/assetTree.jsx` (2D); 3D uses `g3d-tree-*` in globe3d.css |
 
-## Animation Pattern (framer-motion)
-- Modal enter: scale + fade in
-- Modal exit: slide out + fade
-- Collapsible panels: height animation + chevron rotation
+## Styling
+- 2D: Tailwind + `App.css` tokens. 3D: classes prefixed `g3d-` in `components/globe3d/globe3d.css`; check for name collisions there (e.g. `.g3d-asset-title` belongs to ResultPanel).
+- Status colours: critical `#dc2626`, warning `#eab308`, normal `#16a34a`.
 
 ## Service Layer
-- Supabase calls MUST go through `lib/*Service.js`; never import supabaseClient directly into components.
-- Each domain has one service file: `transformerService`, `oilTestService`, `documentService`, `floorPlanService`, `companyBoundaryService`, `locationService`, `weatherService`, `lstService`.
+- Supabase calls only via `lib/*Service.js` (transformer, oilTest, document, floorPlan, companyBoundary, location, weather, lst, …).
 
 ## File Naming
-- Components: PascalCase `.jsx`
-- Lib utilities: camelCase `.js`
-- One `.tsx` exception: `components/DGAToolsV2.tsx`
+- Components PascalCase `.jsx`; lib camelCase `.js`; tests `tests/<name>.test.mjs`.
 
 ## DB Migrations
-- File format: `supabase/migrations/YYYYMMDDNNNNNN_description.sql`
-- Always write a new migration file; never edit existing ones.
+- `supabase/migrations/YYYYMMDDNNNNNN_description.sql`; never edit existing ones.
 
 ## DGA Analysis
-- Standards data lives in `lib/standards/`
-- Diagnostic logic in `lib/dga/diagnostics.js`
-- Heptagon geometry: `lib/dga/heptagonGeometry.js` + `heptagonAnalysis.js`
-- Duval geometry: `lib/dga/duvalGeometry.js`
-- Per-oil-type config: `lib/dga/appConfig.js` — `getStandardOptionsForOilType()`
+- Standards data `lib/standards/`; diagnostics `lib/dga/diagnostics.js`; heptagon `lib/dga/heptagonGeometry.js` + `heptagonAnalysis.js`; Duval `lib/dga/duvalGeometry.js`; per-oil-type config `lib/dga/appConfig.js` (`getStandardOptionsForOilType()`).

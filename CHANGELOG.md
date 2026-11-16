@@ -1,5 +1,31 @@
 # Changelog
 
+## 5.2 - Faster Map & Floating Glass Sidebar
+
+Version 5.2 makes the 2D map faster to work with and gives the sidebar a
+lighter look: the cards float over the map on frosted glass, and the header
+takes half the space it did.
+
+### Changed
+
+- **The 2D map no longer re-renders on unrelated changes.** The whole Leaflet map — base layers, ~330 transformer markers, company boundaries, floor plans, power grid, data centres, weather, LST and the search pin — moved out of `App.jsx` into a memoised `components/MapView.jsx`. Opening a dialog, a notice, a tool panel or the sidebar used to redraw every marker; now the map only re-renders when something it draws changes.
+  - Map callbacks reach `MapView` through `lib/useStableHandlers.js`, which gives each handler a stable identity while always calling the latest version.
+  - `lib/useDataCentreTracker.js` now returns a memoised object, so the data centre layer no longer breaks the map's memo.
+- **`App()` split into feature hooks**, one feature at a time, each verified with build, tests and a smoke test. `App.jsx` went from 4,576 to 3,610 lines. Behaviour is unchanged.
+  - `lib/useLstTool.js` — LST overlay state and panel.
+  - `lib/useWeatherTool.js` — weather state, Open-Meteo loading with saved-reading fallback, and the hourly chart.
+  - `lib/useDraggablePanel.js` — the drag and resize-fit logic the Weather and LST panels used to duplicate.
+  - `lib/useCompanyBoundaries.js` — company / parent boundaries: list, drawing, reshape, metadata dialog and delete.
+  - `lib/useFloorPlans.js` — floor plans / areas: list, drawing, dialogs, floor-detail modal and the derived per-company lookups.
+- **Compact sidebar header** (`components/TransformerSidebar.jsx`). The title, user name and the collapse / settings / help / theme buttons share one slim row, with the four icon buttons grouped in a single toolbar. The four large stat tiles are now one 4-column strip (Assets · Areas · Companies · States; each still opens its list). Transformer, GPS and Asset sit on one row, and the search box drops its label. The hierarchy now starts about 235 px from the top instead of about 520 px.
+- **Floating frosted-glass sidebar** on desktop (`App.css`). The panel behind the sidebar is now fully transparent, and only its contents float over the map as separate frosted-glass cards: the header, the *Asset hierarchy* heading and each state group, which also holds everything expanded under it. Empty space in the sidebar area passes clicks and scroll-zoom through to the map. The scrollbar is hidden; wheel and touch scrolling still work. Glass strength is set by `--glass-bg` (62 %) and `--glass-blur` (20 px). The mobile drawer and the collapsed icon rail are unchanged.
+- The 3D Tx list's sort control uses the shared `Combobox` instead of a native `<select>`.
+
+### Fixed
+
+- **The *Selected company* / *Selected area* card could not be closed.** Clicking empty map now clears it. Clicks on polygons, markers and other map features still select them, and drawing or placing still works. Clicking a transformer, or opening its Details, now replaces the company card with that transformer.
+- The search box placeholder no longer scrolls and shows clipped text. It now reads *Search floor, company or TX*, and hovering shows the full wording.
+
 ## 5.1 - Detailed Power Equipment (OpenInfraMap-style)
 
 Version 5.1 brings the grid down to equipment level: what stands inside each

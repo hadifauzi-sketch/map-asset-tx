@@ -4,6 +4,15 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 5.2 - Faster Map & Floating Glass Sidebar
+
+- **Faster 2D map:** the Leaflet map lives in a memoised `components/MapView.jsx`, so opening dialogs, notices, tool panels or the sidebar no longer redraws every marker. `App()` is split into feature hooks: `useLstTool`, `useWeatherTool`, `useDraggablePanel`, `useCompanyBoundaries` and `useFloorPlans` (all in `lib/`). `App.jsx` went from 4,576 to 3,610 lines.
+- **Floating frosted-glass sidebar (desktop):** the panel is transparent and its cards float over the map. These are the header, the *Asset hierarchy* heading and each state group. Empty space passes clicks and zoom through to the map.
+- **Compact sidebar header:** one slim title row with a grouped icon toolbar, a single 4-column stats strip, and Transformer / GPS / Asset on one row.
+- **Fixed:** the *Selected company* card now closes when you click empty map, and selecting a transformer replaces it.
+
+---
+
 ## Version 5.1 - Detailed Power Equipment
 
 The Power grid panel on the 2D map now goes down to equipment level, with OpenInfraMap-style symbols and one switch per layer (plus Show all / Hide all per section):
@@ -151,7 +160,7 @@ Version 4.1.3 rebuilds per-user asset access and moves it out of Settings. Permi
 ### Asset Management (new window)
 
 - **Out of Settings** - Access assignment lived two levels deep in Settings, sharing the modal with the account panels. It is now `components/Authentic/AssetManagement.jsx`, a standalone dialog that gives the tree the full dialog height.
-- **Sidebar `Asset` button** - Opens the window. It appears full-width under Transformer / GPS register in the expanded sidebar, and as an icon tile in the collapsed rail. The button renders only when `onOpenAssetManagement` is supplied, and `App.jsx` supplies it for administrators only.
+- **Sidebar `Asset` button** - Opens the window. It sits on the same row as Transformer / GPS in the expanded sidebar, and as an icon tile in the collapsed rail. The button renders only when `onOpenAssetManagement` is supplied, and `App.jsx` supplies it for administrators only.
 - **Tabbed and extensible** - The window opens on a **User Access** tab. Tabs come from the `ASSET_MANAGEMENT_TABS` array, so adding a future asset-wide function is one array entry plus one `<Tabs.Content>` block.
 - **Header summary** - Total assets, managed (non-admin) user count, and a reload button.
 - **Per-user coverage** - The user picker shows each account's granted-asset count, and the selected account, username, and role are confirmed in a strip above the tree.
@@ -691,7 +700,7 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 5.1 (Supabase Edition)
+**Version**: 5.2 (Supabase Edition)
 **Last Updated**: September 2026
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  

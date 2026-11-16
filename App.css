@@ -317,6 +317,132 @@ body {
       0 12px 36px rgb(0 0 0 / 0.32);
   }
 
+  /* ── Expanded sidebar: no panel, just floating cards ──────────────────────
+     The panel itself is fully transparent (no frosted glass) and lets clicks
+     and scroll-zoom through to the map. Only the cards inside it — header,
+     hierarchy heading and each state group — are solid and catch the pointer.
+     The collapsed 84px rail keeps the panel look above. */
+  .app-frame:not(.is-sidebar-collapsed) .app-sidebar {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .app-frame .sidebar-shell {
+    --float-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent),
+      0 10px 24px -10px rgb(0 0 0 / 0.5),
+      0 2px 6px -2px rgb(0 0 0 / 0.2);
+    /* Frosted glass for every floating card. */
+    --glass-bg: color-mix(in srgb, var(--sidebar) 62%, transparent);
+    --glass-border: color-mix(in srgb, var(--foreground) 14%, transparent);
+    --glass-blur: blur(20px) saturate(160%);
+    --glass-fill: color-mix(in srgb, var(--card) 45%, transparent);
+    --glass-fill-hover: color-mix(in srgb, var(--card-muted) 75%, transparent);
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    gap: 10px;
+  }
+
+  .app-frame .sidebar-shell > .sidebar-mobile-chrome {
+    margin: 0 8px;
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--float-shadow);
+    pointer-events: auto;
+  }
+
+  .app-frame .sidebar-shell > .sidebar-mobile-chrome > header {
+    border-color: var(--glass-border);
+  }
+
+  /* Inner controls on the glass (stats strip, toolbar, search, outline
+     buttons) get a light translucent fill instead of a solid card colour. */
+  .app-frame .sidebar-shell .sidebar-glass-fill {
+    border-color: var(--glass-border);
+    background: var(--glass-fill);
+  }
+
+  .app-frame .sidebar-shell button.sidebar-glass-fill:hover {
+    background: var(--glass-fill-hover);
+  }
+
+  .app-frame .sidebar-shell .sidebar-scroll {
+    padding: 0 8px 16px;
+    scrollbar-width: none;
+    scrollbar-gutter: auto;
+  }
+
+  .app-frame .sidebar-shell .sidebar-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .app-frame .sidebar-shell .sidebar-scroll > * {
+    pointer-events: auto;
+    box-shadow: var(--float-shadow);
+  }
+
+  .app-frame .sidebar-shell .sidebar-scroll > .atree {
+    gap: 8px;
+    box-shadow: none;
+  }
+
+  .app-frame .sidebar-shell .atree-head {
+    margin-bottom: 8px;
+    padding: 8px 8px 8px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+
+  .app-frame .sidebar-shell .atree-fold button {
+    border-color: var(--glass-border);
+    background: var(--glass-fill);
+  }
+
+  .app-frame .sidebar-shell .atree-fold button:hover {
+    background: var(--glass-fill-hover);
+  }
+
+  /* Each state group (state row + everything expanded under it) is one glass
+     card, so expanded companies / areas / transformers never sit on the bare
+     map. */
+  .app-frame .sidebar-shell .atree-state {
+    margin-top: 0;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--float-shadow);
+  }
+
+  .app-frame .sidebar-shell .atree-children {
+    border-left-color: var(--glass-border);
+  }
+
+  .app-frame .sidebar-shell .atree-state > .atree-children {
+    margin: 2px 6px 7px 14px;
+  }
+
+  .app-frame .sidebar-shell .atree-row.is-state:not(.is-selected) {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .app-frame .sidebar-shell .atree-row.is-state:not(.is-selected):hover {
+    background: var(--glass-fill-hover);
+  }
+
   .app-top-overlay,
   .weather-panel-layer {
     padding-left: calc(var(--sidebar-inset) + var(--safe-left, 0px));

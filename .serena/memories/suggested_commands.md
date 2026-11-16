@@ -1,34 +1,34 @@
 # Suggested Commands
 
-## Dev Workflow
+## Dev
 ```
-npm run dev          # start Vite dev server → http://localhost:3000
+npm run dev          # Vite dev server → http://localhost:3000
 npm run build        # production build → dist/
-npm run preview      # serve dist/ locally
+npm run preview      # serve dist/
+npm test             # node --test --test-concurrency=1 tests/*.test.mjs
 ```
 
-## Supabase / DB
+## Data builders
 ```
-npm run db:start     # start local Supabase stack (Docker required)
-npm run db:stop      # stop local stack
-npm run db:status    # check local stack status
-npm run db:reset     # reset local DB and re-run all migrations
-npm run db:diff      # diff local schema against remote
-npm run db:push      # apply pending migrations to remote
-npm run db:pull      # pull remote schema changes
-npm run db:link      # link to remote project ref rgtwfmhnnmkbsdjgtxjb
+npm run globe:plants            # power plants
+npm run globe:grid              # power grid
+npm run data:centres            # global data centres
+npm run data:centres:malaysia
+npm run globe:buildings         # 3D buildings (python, needs data/osm/*.pbf)
 ```
 
-## Git (Windows PowerShell)
-```powershell
-git status
-git log --oneline -10
-git add <files>
-git commit -m "message"
+## Browser extension
+```
+npm run ext:sync     # regenerate extension-firefox/ from extension-chrome/
+npm run ext:check    # verify the mirror is in sync
+npm run ext:xpi      # pack Firefox .xpi
 ```
 
-## Windows-Specific Notes
-- Shell is PowerShell; use `$env:VAR` not `export VAR=`
-- Path separator is `\`; double-quote paths with spaces
-- `ls` aliases to `Get-ChildItem` in PS (different flags than Unix)
-- No test runner configured — no `npm test` script
+## Supabase
+```
+npm run db:start | db:stop | db:status | db:reset | db:diff | db:push | db:pull | db:link
+```
+
+## Windows notes
+- Shell is PowerShell 5.1: no `&&`; use `;` or `if ($?) { … }`. `$env:VAR` for env vars.
+- Quote paths with spaces (project lives under `F:\Project Lab\`).

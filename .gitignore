@@ -47,6 +47,9 @@ Backup/
 # Dev server logs
 .devserver*.log
 
+# Vite temp config bundles left behind when a dev server is killed
+*.timestamp-*.mjs
+
 # Supabase local dev
 supabase/.branches
 supabase/.temp

@@ -1,28 +1,19 @@
 # Task Completion
 
-## No Test Suite
-No jest/vitest config; no `npm test` script. No automated tests to run.
-
-## No Linter
-No `.eslintrc` or ESLint config; no `npm run lint` script.
-
 ## Definition of Done — Frontend Changes
-1. `npm run build` — must complete with no errors (Vite build validates JSX/imports)
-2. `npm run dev` + manual browser test of the changed flow
+1. `npm run build` — no errors.
+2. `npm test` — node --test over `tests/*.test.mjs`; all must pass. Pure logic in `lib/` gets a test there (plain `.mjs`, no React rendering, no test framework).
+3. Manual browser check of the changed flow (`npm run dev`, port 3000). Sign-in required for app screens.
 
 ## Definition of Done — DB / Schema Changes
-1. Write new migration file: `supabase/migrations/YYYYMMDDNNNNNN_description.sql`
-2. `npm run db:reset` (local) to verify migration applies cleanly
-3. `npm run db:push` to apply to remote Supabase project
-4. Update TypeScript types if needed: `supabase gen types typescript --project-id rgtwfmhnnmkbsdjgtxjb`
+1. New migration `supabase/migrations/YYYYMMDDNNNNNN_description.sql` (never edit existing ones).
+2. `npm run db:reset` locally, then `npm run db:push`.
 
-## Commit Convention
-Observed format from git log:
-```
-<type>: <description> — <subtitle or version>
-```
-Examples:
-- `release: v4.0.1 — Weather Intelligence & LST Update`
-- `docs: add v3.9 release notes`
-- `fix: <short description>`
-No enforced tooling (no commitlint/husky).
+## No Linter
+No ESLint config. React hook-order mistakes are not caught automatically: hooks in `App()` must be declared before its early returns (auth/loading screens around the `if (!currentUser …)` block).
+
+## Repo State
+Not a git repository at the moment; back up files (e.g. `.backups/<date>-<topic>/`) before large edits.
+
+## Commit Convention (when git is used)
+`<type>: <description>`, e.g. `fix: …`, `release: v4.0.1 — …`.

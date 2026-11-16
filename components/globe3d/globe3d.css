@@ -688,11 +688,6 @@
   gap: 6px;
   min-width: 0;
   flex: 1;
-  height: 32px;
-  padding: 0 4px 0 10px;
-  border: 1px solid var(--g3d-border);
-  border-radius: 8px;
-  background: var(--g3d-inset);
   font-family: var(--g3d-mono);
   font-size: 10px;
   letter-spacing: 0.12em;
@@ -700,23 +695,20 @@
   color: var(--g3d-muted);
 }
 
-.g3d-txlist-sort select {
+.g3d-txlist-sort-control {
   min-width: 0;
   flex: 1;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--g3d-text);
-  font-size: 12px;
   font-family: system-ui, sans-serif;
   letter-spacing: 0;
   text-transform: none;
-  cursor: pointer;
 }
 
-.g3d-txlist-sort select option {
-  background: var(--g3d-surface-strong);
-  color: var(--g3d-text);
+/* Shared Combobox trigger, sized to match the rest of this toolbar. */
+.g3d-txlist-sort-control [role='combobox'] {
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 
 .g3d-segmented {

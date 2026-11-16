@@ -1,7 +1,5 @@
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import 'leaflet/dist/leaflet.css';
-import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 import L from 'leaflet';
@@ -25,7 +23,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import TransformerMarker from './components/TransformerMarker';
+import MapView from './components/MapView';
 import TransformerSidebar from './components/TransformerSidebar';
 import NoticeDialog from './components/NoticeDialog';
 import ConfirmDialog from './components/ConfirmDialog';
@@ -33,17 +31,11 @@ import AppInfoDialog from './components/AppInfoDialog';
 import AppOnboardingTour, { readTourEnabled, writeTourEnabled } from './components/AppOnboardingTour';
 import GeoSearchControl from './components/GeoSearchControl';
 import MapLocationContextMenu from './components/MapLocationContextMenu';
-import LSTMapLayer from './components/LSTMapLayer';
 import MountWhenOpened from './components/MountWhenOpened';
-import WeatherMapLayer from './components/WeatherMapLayer';
 import PowerGridControl from './components/PowerGridControl';
-import PowerGridMapLayer from './components/PowerGridMapLayer';
 import DataCentreControl from './components/DataCentreControl';
-import DataCentreMapLayer from './components/DataCentreMapLayer';
 import { useDataCentreTracker } from './lib/useDataCentreTracker';
 import { readPowerGridState, writePowerGridState } from './lib/powerGridMap';
-import CompanyBoundaryMapLayer from './components/CompanyBoundaryMapLayer';
-import FloorPlanMapLayer from './components/FloorPlanMapLayer';
 import { AppTooltip } from './components/ui/app-tooltip';
 import { Badge } from './components/ui/badge';
 import { Switch } from './components/ui/switch';
@@ -58,19 +50,12 @@ import SignIn, {
 } from './components/Authentic/sign-in';
 import { getStandardOptionsForOilType } from './lib/dga/appConfig';
 import { analyzeSample } from './lib/dga/diagnostics';
-import {
-  createDraftFloorPlan,
-  findTransformersInsidePolygon,
-  getPolygonCentroid,
-  isPointInsidePolygon,
-  normalizeFloorPlan,
-} from './lib/floorPlanStorage';
+import { getPolygonCentroid } from './lib/floorPlanStorage';
 import { floorPlanService } from './lib/floorPlanService';
 import { resolveAssetPlacement } from './lib/assetPlacement';
-import { createDraftCompanyBoundary, normalizeCompanyBoundary } from './lib/companyBoundaryStorage';
 import { companyBoundaryService } from './lib/companyBoundaryService';
-import { getTransformerState, inferMalaysianStateFromText } from './lib/malaysiaStates';
-import { MAP_BASE_LAYERS, SATELLITE_LABELS_LAYER } from './lib/mapBaseLayers';
+import { inferMalaysianStateFromText } from './lib/malaysiaStates';
+import { MAP_BASE_LAYERS } from './lib/mapBaseLayers';
 import { documentService } from './lib/documentService';
 import { oilTestService } from './lib/oilTestService';
 import { isSameImportedOilTestPayload } from './lib/oilTestImportUtils';
@@ -82,27 +67,13 @@ import {
   normalizeAssetOwnerFilter,
   normalizeAssetOwnerType,
 } from './lib/assetOwner';
-import {
-  DEFAULT_WEATHER_OPTIONS,
-  buildObservationsFromRecords,
-  buildRecordsFromObservations,
-  buildWeatherRequestUrl,
-  fetchTransformerHourlyWeather,
-  fetchTransformerWeather,
-  getLocalDateInput,
-} from './lib/weatherService';
+import { useWeatherTool } from './lib/useWeatherTool';
+import { useCompanyBoundaries } from './lib/useCompanyBoundaries';
+import { useFloorPlans } from './lib/useFloorPlans';
+import { useStableHandlers } from './lib/useStableHandlers';
 import { weatherObservationService } from './lib/weatherObservationService';
-import {
-  DEFAULT_ARCGIS_MOSAIC_WINDOW_DAYS,
-  DEFAULT_ESRI_LANDSAT_RENDERING_RULE,
-  DEFAULT_LST_SOURCE_ID,
-  ESRI_LANDSAT_LEVEL2_IMAGE_SERVICE_URL,
-  LST_LAYER_SOURCE_OPTIONS,
-  getComparisonLSTDate,
-  getDefaultLSTDate,
-  getLSTSource,
-  normalizeLSTDate,
-} from './lib/lstService';
+import { LST_LAYER_SOURCE_OPTIONS } from './lib/lstService';
+import { useLstTool } from './lib/useLstTool';
 import { cn } from './lib/utils';
 import { transformerService } from './lib/transformerService';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
@@ -135,7 +106,6 @@ const DEFAULT_CENTER = [3.139, 101.6869];
 const DEFAULT_ZOOM = 11;
 const MALAYSIA_CENTER = [4.2105, 108.9758];
 const MALAYSIA_ZOOM = 6;
-const MARKER_CLUSTER_DISABLE_AT_ZOOM = 15;
 const THEME_STORAGE_KEY = 'transformer-asset-map-theme';
 const MAP_BASE_LAYER_STORAGE_KEY = 'transformer-asset-map-base-layer';
 const DESKTOP_SIDEBAR_COLLAPSED_STORAGE_KEY = 'transformer-asset-map-desktop-sidebar-collapsed';
@@ -403,52 +373,6 @@ function FormulaWithSubscript({ formula = '' }) {
   );
 }
 
-const transformerIconCache = new Map();
-
-/**
- * Returns a callback whose identity never changes but which always runs the
- * latest `fn`. Lets memoised children (TransformerMarker) skip re-rendering
- * without having to list every closure dependency of the handler.
- */
-function useStableCallback(fn) {
-  const fnRef = useRef(fn);
-  useLayoutEffect(() => {
-    fnRef.current = fn;
-  });
-  return useCallback((...args) => fnRef.current(...args), []);
-}
-
-const createTransformerIcon = (color = '#0f766e') => {
-  // One shared L.divIcon per colour. A fresh icon object on every render made
-  // react-leaflet call setIcon() and rebuild every marker's DOM on each App render.
-  const cached = transformerIconCache.get(color);
-  if (cached) {
-    return cached;
-  }
-  const icon = L.divIcon({
-    className: 'custom-transformer-icon',
-    html: `
-      <div class="map-marker-shell" style="--marker-color: ${color}">
-        <div class="map-marker-core"></div>
-        <div class="map-marker-stem"></div>
-      </div>
-    `,
-    iconSize: [34, 42],
-    iconAnchor: [17, 38],
-    popupAnchor: [0, -30],
-  });
-  transformerIconCache.set(color, icon);
-  return icon;
-};
-
-const geoSearchIcon = L.divIcon({
-  className: 'geo-search-pin-icon',
-  html: '<div class="geo-search-pin"><div class="geo-search-pin-dot"></div></div>',
-  iconSize: [34, 42],
-  iconAnchor: [17, 38],
-  popupAnchor: [0, -32],
-});
-
 function App() {
   const [currentUser, setCurrentUser] = useState(() => readSession());
   const [authNotice, setAuthNotice] = useState(null);
@@ -523,69 +447,56 @@ function App() {
   const handlePowerGridStatus = useCallback((layerId, status) => {
     setPowerGridStatus((current) => ({ ...current, [layerId]: status }));
   }, []);
-  const [companyBoundaries, setCompanyBoundaries] = useState([]);
-  const [showCompanyBoundaries, setShowCompanyBoundaries] = useState(true);
   const [selectedCompanyBoundaryId, setSelectedCompanyBoundaryId] = useState(null);
-  const [companyBoundaryDraft, setCompanyBoundaryDraft] = useState(null);
-  const [isCompanyBoundaryDialogOpen, setIsCompanyBoundaryDialogOpen] = useState(false);
-  const [companyBoundaryDialogDraft, setCompanyBoundaryDialogDraft] = useState(null);
-  const [floorPlans, setFloorPlans] = useState([]);
-  const [showFloorPlans, setShowFloorPlans] = useState(true);
   const [selectedFloorPlanId, setSelectedFloorPlanId] = useState(null);
-  const [floorPlanDraft, setFloorPlanDraft] = useState(null);
-  const [isFloorPlanDialogOpen, setIsFloorPlanDialogOpen] = useState(false);
-  const [floorPlanDialogDraft, setFloorPlanDialogDraft] = useState(null);
-  const [floorDetailFloorPlanId, setFloorDetailFloorPlanId] = useState(null);
-  const [isFloorDetailModalOpen, setIsFloorDetailModalOpen] = useState(false);
   const [isDraggable, setIsDraggable] = useState(false);
   const [isLocationRegisterOpen, setIsLocationRegisterOpen] = useState(false);
   const [geoSearchSelection, setGeoSearchSelection] = useState(null);
   const [mapContextMenu, setMapContextMenu] = useState(null);
   const [sidebarSearchFocusRequest, setSidebarSearchFocusRequest] = useState(0);
-  const [isWeatherToolOpen, setIsWeatherToolOpen] = useState(false);
-  const [weatherLayerEnabled, setWeatherLayerEnabled] = useState(true);
-  const [weatherDate, setWeatherDate] = useState(() => getLocalDateInput());
-  const [weatherTime, setWeatherTime] = useState('12:00');
-  const [weatherOptions, setWeatherOptions] = useState(DEFAULT_WEATHER_OPTIONS);
-  const [weatherRecords, setWeatherRecords] = useState([]);
-  const [weatherLoading, setWeatherLoading] = useState(false);
-  const [weatherError, setWeatherError] = useState('');
-  const [weatherUpdatedAt, setWeatherUpdatedAt] = useState(null);
-  const [weatherRefreshKey, setWeatherRefreshKey] = useState(0);
-  const [weatherStoredNotice, setWeatherStoredNotice] = useState('');
-  const [weatherObservations, setWeatherObservations] = useState([]);
-  const [weatherPanelPosition, setWeatherPanelPosition] = useState(null);
-  const [isWeatherPanelDragging, setIsWeatherPanelDragging] = useState(false);
-  const [isWeatherHourlyChartOpen, setIsWeatherHourlyChartOpen] = useState(false);
-  const [isWeatherHourlyChartCollapsed, setIsWeatherHourlyChartCollapsed] = useState(false);
-  const [weatherHourlySeries, setWeatherHourlySeries] = useState([]);
-  const [weatherHourlyLoading, setWeatherHourlyLoading] = useState(false);
-  const [weatherHourlyError, setWeatherHourlyError] = useState('');
-  const [isLSTToolOpen, setIsLSTToolOpen] = useState(false);
-  const [lstLayerEnabled, setLSTLayerEnabled] = useState(true);
-  const [lstDate, setLSTDate] = useState(() => getDefaultLSTDate());
-  const [lstCompareDate, setLSTCompareDate] = useState(() => getComparisonLSTDate(getDefaultLSTDate()));
-  const [lstSourceId, setLSTSourceId] = useState(DEFAULT_LST_SOURCE_ID);
-  const [lstArcgisServiceUrl, setLSTArcgisServiceUrl] = useState(ESRI_LANDSAT_LEVEL2_IMAGE_SERVICE_URL);
-  const [lstArcgisToken, setLSTArcgisToken] = useState('');
-  const [lstArcgisRasterFunction, setLSTArcgisRasterFunction] = useState(DEFAULT_ESRI_LANDSAT_RENDERING_RULE);
-  const [lstArcgisWindowDays, setLSTArcgisWindowDays] = useState(DEFAULT_ARCGIS_MOSAIC_WINDOW_DAYS);
-  const [lstOpacity, setLSTOpacity] = useState(0.74);
-  const [lstCompareEnabled, setLSTCompareEnabled] = useState(false);
-  const [lstCompareSplit, setLSTCompareSplit] = useState(50);
-  const [lstRefreshKey, setLSTRefreshKey] = useState(0);
-  const [lstPanelPosition, setLSTPanelPosition] = useState(null);
-  const [isLSTPanelDragging, setIsLSTPanelDragging] = useState(false);
+  // LST / UHI map tool (state, handlers and draggable panel): lib/useLstTool.js
+  const {
+    isLSTToolOpen,
+    setIsLSTToolOpen,
+    lstLayerEnabled,
+    setLSTLayerEnabled,
+    lstDate,
+    lstCompareDate,
+    lstSourceId,
+    lstArcgisServiceUrl,
+    setLSTArcgisServiceUrl,
+    lstArcgisToken,
+    setLSTArcgisToken,
+    lstArcgisRasterFunction,
+    setLSTArcgisRasterFunction,
+    lstArcgisWindowDays,
+    lstOpacity,
+    lstCompareEnabled,
+    setLSTCompareEnabled,
+    lstCompareSplit,
+    lstRefreshKey,
+    setLSTRefreshKey,
+    lstPanelPosition,
+    setLSTPanelPosition,
+    isLSTPanelDragging,
+    lstPanelLayerRef,
+    lstPanelRef,
+    handleLSTDateChange,
+    handleLSTCompareDateChange,
+    handleLSTSampleDateChange,
+    handleUsePreviousLSTYear,
+    handleLSTOpacityChange,
+    handleLSTCompareSplitChange,
+    handleLSTSourceChange,
+    handleLSTArcgisWindowDaysChange,
+    handleLSTPanelDragStart,
+    handleLSTPanelDragMove,
+    handleLSTPanelDragEnd,
+  } = useLstTool();
   const pendingFloorAssignment = useRef(null);
   const leafletMapRef = useRef(null);
   const idleSignOutTimerRef = useRef(null);
   const mapToolbarExpandedRef = useRef(null);
-  const weatherPanelLayerRef = useRef(null);
-  const weatherPanelRef = useRef(null);
-  const weatherPanelDragRef = useRef(null);
-  const lstPanelLayerRef = useRef(null);
-  const lstPanelRef = useRef(null);
-  const lstPanelDragRef = useRef(null);
   const isAdmin = currentUser?.role === 'admin';
   const isViewer = currentUser?.role === 'viewer';
   const canEditAssets = !currentUser || currentUser.role !== 'viewer';
@@ -812,6 +723,148 @@ function App() {
     [assetOwnerFilter, transformers]
   );
 
+  // Weather map tool (Open-Meteo readings, hourly chart, draggable panel): lib/useWeatherTool.js
+  const {
+    isWeatherToolOpen,
+    setIsWeatherToolOpen,
+    weatherLayerEnabled,
+    setWeatherLayerEnabled,
+    weatherDate,
+    setWeatherDate,
+    weatherTime,
+    setWeatherTime,
+    weatherOptions,
+    setWeatherOptions,
+    weatherRecords,
+    setWeatherRecords,
+    weatherLoading,
+    weatherError,
+    weatherUpdatedAt,
+    weatherRefreshKey,
+    setWeatherRefreshKey,
+    weatherStoredNotice,
+    weatherObservations,
+    weatherPanelPosition,
+    setWeatherPanelPosition,
+    isWeatherPanelDragging,
+    weatherPanelLayerRef,
+    weatherPanelRef,
+    isWeatherHourlyChartOpen,
+    setIsWeatherHourlyChartOpen,
+    isWeatherHourlyChartCollapsed,
+    setIsWeatherHourlyChartCollapsed,
+    weatherHourlySeries,
+    weatherHourlyLoading,
+    weatherHourlyError,
+    selectedWeatherRecords,
+    weatherPanelEmptyMessage,
+    weatherApiUrl,
+    handleWeatherOptionChange,
+    handleWeatherSampleDateChange,
+    handleToggleWeatherHourlyChart,
+    handleWeatherPanelDragStart,
+    handleWeatherPanelDragMove,
+    handleWeatherPanelDragEnd,
+  } = useWeatherTool({ transformers: filteredTransformers, selectedTransformer });
+
+  // Company / parent boundaries (list, drawing draft, dialog, CRUD): lib/useCompanyBoundaries.js
+  // The arrow wrappers reach functions declared further down in App; they only
+  // run on user actions, after the whole component body has executed.
+  const {
+    companyBoundaries,
+    setCompanyBoundaries,
+    showCompanyBoundaries,
+    setShowCompanyBoundaries,
+    companyBoundaryDraft,
+    setCompanyBoundaryDraft,
+    isCompanyBoundaryDialogOpen,
+    setIsCompanyBoundaryDialogOpen,
+    companyBoundaryDialogDraft,
+    setCompanyBoundaryDialogDraft,
+    selectedCompanyBoundary,
+    loadCompanyBoundaries,
+    startCompanyBoundaryDrawing,
+    handleEditCompanyBoundary,
+    handleSaveCompanyBoundaryShape,
+    cancelCompanyBoundaryDrawing,
+    handleCompanyBoundaryDraftVertexMove,
+    handleUndoCompanyBoundaryDraftPoint,
+    openCompanyBoundaryMetadataDialog,
+    handleEditCompanyBoundaryInfo,
+    openCompanyBoundaryDialogFromDraft,
+    handleSaveCompanyBoundary,
+    handleDeleteCompanyBoundary,
+  } = useCompanyBoundaries({
+    transformers: filteredTransformers,
+    selectedTransformer,
+    canEditAssets,
+    ensureCanEditAssets,
+    showAppNotice,
+    setConfirmState,
+    setConfirmBusy,
+    setIsAddMode,
+    selectedCompanyBoundaryId,
+    setSelectedCompanyBoundaryId,
+    focusCompanyBoundary: (boundary, zoom) => focusCompanyBoundary(boundary, zoom),
+    cancelFloorPlanDrawing: () => cancelFloorPlanDrawing(),
+    clearFloorPlanDraft: () => setFloorPlanDraft(null),
+    setSelectedFloorPlanId,
+  });
+
+  // Floor plans / areas (list, drawing draft, dialogs, floor-detail modal, CRUD): lib/useFloorPlans.js
+  const {
+    floorPlans,
+    setFloorPlans,
+    showFloorPlans,
+    setShowFloorPlans,
+    floorPlanDraft,
+    setFloorPlanDraft,
+    isFloorPlanDialogOpen,
+    setIsFloorPlanDialogOpen,
+    floorPlanDialogDraft,
+    setFloorPlanDialogDraft,
+    floorDetailFloorPlanId,
+    setFloorDetailFloorPlanId,
+    isFloorDetailModalOpen,
+    setIsFloorDetailModalOpen,
+    floorPlanByTransformerId,
+    floorDetailFloorPlan,
+    selectedFloorPlan,
+    selectedCompanyFloors,
+    selectedCompanyAssetCount,
+    selectedFloorTransformers,
+    loadFloorPlans,
+    handleOpenFloorDetail,
+    handleRemoveTransformerFromFloor,
+    startFloorPlanDrawing,
+    handleEditFloorPlan,
+    handleSaveFloorPlanShape,
+    cancelFloorPlanDrawing,
+    handleFloorDraftVertexMove,
+    handleUndoFloorDraftPoint,
+    openFloorPlanMetadataDialog,
+    handleEditFloorPlanInfo,
+    openFloorPlanDialogFromDraft,
+    handleSaveFloorPlan,
+    handleDeleteFloorPlan,
+  } = useFloorPlans({
+    transformers: filteredTransformers,
+    selectedTransformer,
+    canEditAssets,
+    ensureCanEditAssets,
+    showAppNotice,
+    setConfirmState,
+    setConfirmBusy,
+    setIsAddMode,
+    selectedFloorPlanId,
+    setSelectedFloorPlanId,
+    setSelectedCompanyBoundaryId,
+    focusFloorPlan: (floorPlan, zoom) => focusFloorPlan(floorPlan, zoom),
+    companyBoundaries,
+    selectedCompanyBoundary,
+    cancelCompanyBoundaryDrawing,
+  });
+
   const assetOwnerCounts = useMemo(
     () =>
       transformers.reduce(
@@ -993,66 +1046,11 @@ function App() {
     [filteredTransformers, transformerMarkerStatuses],
   );
 
-  const floorPlanByTransformerId = useMemo(() => {
-    const assignments = new Map();
-    floorPlans.forEach((floorPlan) => {
-      floorPlan.transformerIds.forEach((transformerId) => {
-        assignments.set(String(transformerId), floorPlan);
-      });
-    });
-    return assignments;
-  }, [floorPlans]);
-
-  const floorDetailFloorPlan = useMemo(
-    () => floorDetailFloorPlanId ? floorPlans.find((fp) => fp.id === floorDetailFloorPlanId) || null : null,
-    [floorPlans, floorDetailFloorPlanId]
-  );
-
-  const selectedCompanyBoundary = useMemo(
-    () => companyBoundaries.find((boundary) => boundary.id === selectedCompanyBoundaryId) || null,
-    [companyBoundaries, selectedCompanyBoundaryId]
-  );
-
-  const selectedFloorPlan = useMemo(
-    () => floorPlans.find((floorPlan) => floorPlan.id === selectedFloorPlanId) || null,
-    [floorPlans, selectedFloorPlanId]
-  );
-
   // Company / parent and area come from the drawn overlays: the saved floor-plan assignment
   // first, then whichever polygon geometrically contains the asset.
   const selectedTransformerPlacement = useMemo(
     () => resolveAssetPlacement(selectedTransformer, floorPlans, companyBoundaries),
     [companyBoundaries, floorPlans, selectedTransformer]
-  );
-
-  const selectedCompanyFloors = useMemo(() => {
-    if (!selectedCompanyBoundary) {
-      return [];
-    }
-
-    const companyName = String(selectedCompanyBoundary.companyName || '').trim().toLowerCase();
-    return floorPlans.filter(
-      (floorPlan) => String(floorPlan.companyName || '').trim().toLowerCase() === companyName
-    );
-  }, [floorPlans, selectedCompanyBoundary]);
-
-  const selectedCompanyAssetCount = useMemo(
-    () =>
-      selectedCompanyFloors.reduce(
-        (total, floorPlan) => total + (Array.isArray(floorPlan.transformerIds) ? floorPlan.transformerIds.length : 0),
-        0
-      ),
-    [selectedCompanyFloors]
-  );
-
-  const selectedFloorTransformers = useMemo(
-    () =>
-      selectedFloorPlan
-        ? selectedFloorPlan.transformerIds
-            .map((transformerId) => filteredTransformers.find((transformer) => String(transformer.id) === String(transformerId)))
-            .filter(Boolean)
-        : [],
-    [filteredTransformers, selectedFloorPlan]
   );
 
   const focusTransformer = (transformer, zoom = 15) => {
@@ -1149,518 +1147,6 @@ function App() {
     focusLocationPosition([latitude, longitude], 17);
   };
 
-  const handleWeatherOptionChange = useCallback((optionKey, checked) => {
-    setWeatherOptions((current) => ({
-      ...current,
-      [optionKey]: checked,
-    }));
-  }, []);
-
-  const handleLSTDateChange = useCallback((dateValue) => {
-    const nextDate = normalizeLSTDate(dateValue, lstDate);
-    setLSTDate(nextDate);
-    setLSTLayerEnabled(true);
-    setLSTCompareDate((current) => current || getComparisonLSTDate(nextDate));
-  }, [lstDate]);
-
-  const handleLSTCompareDateChange = useCallback((dateValue) => {
-    setLSTCompareDate((current) =>
-      normalizeLSTDate(dateValue, current || getComparisonLSTDate(lstDate))
-    );
-  }, [lstDate]);
-
-  const handleLSTSampleDateChange = useCallback((sampleDate) => {
-    if (!sampleDate) {
-      return;
-    }
-
-    const nextDate = normalizeLSTDate(sampleDate, lstDate);
-    setLSTDate(nextDate);
-    setLSTLayerEnabled(true);
-    setLSTCompareDate((current) => current || getComparisonLSTDate(nextDate));
-    if (!isLSTToolOpen) {
-      setLSTPanelPosition(null);
-    }
-    setIsLSTToolOpen(true);
-    setLSTRefreshKey((current) => current + 1);
-  }, [isLSTToolOpen, lstDate]);
-
-  const handleUsePreviousLSTYear = useCallback(() => {
-    setLSTCompareDate(getComparisonLSTDate(lstDate));
-    setLSTCompareEnabled(true);
-  }, [lstDate]);
-
-  const handleLSTOpacityChange = useCallback((value) => {
-    const nextOpacity = Number(value);
-    setLSTOpacity(Number.isFinite(nextOpacity) ? Math.min(1, Math.max(0.3, nextOpacity)) : 0.74);
-  }, []);
-
-  const handleLSTCompareSplitChange = useCallback((value) => {
-    const nextSplit = Number(value);
-    setLSTCompareSplit(Number.isFinite(nextSplit) ? Math.min(80, Math.max(20, nextSplit)) : 50);
-  }, []);
-
-  const handleLSTSourceChange = useCallback((sourceId) => {
-    const nextSource = getLSTSource(sourceId);
-    setLSTSourceId(sourceId);
-    setLSTLayerEnabled(true);
-    if (nextSource.dateMode === 'static') {
-      setLSTCompareEnabled(false);
-    }
-    setLSTRefreshKey((current) => current + 1);
-  }, []);
-
-  const handleLSTArcgisWindowDaysChange = useCallback((value) => {
-    const nextWindowDays = Number(value);
-    setLSTArcgisWindowDays(
-      Number.isFinite(nextWindowDays)
-        ? Math.min(180, Math.max(1, Math.round(nextWindowDays)))
-        : DEFAULT_ARCGIS_MOSAIC_WINDOW_DAYS
-    );
-  }, []);
-
-  const getConstrainedWeatherPanelPosition = useCallback((left, top) => {
-    const layer = weatherPanelLayerRef.current;
-    const panel = weatherPanelRef.current;
-
-    if (!layer || !panel) {
-      return { left, top };
-    }
-
-    const layerRect = layer.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const margin = 12;
-    const maxLeft = Math.max(margin, layerRect.width - panelRect.width - margin);
-    const maxTop = Math.max(margin, layerRect.height - panelRect.height - margin);
-
-    return {
-      left: Math.min(Math.max(left, margin), maxLeft),
-      top: Math.min(Math.max(top, margin), maxTop),
-    };
-  }, []);
-
-  const handleWeatherPanelDragStart = useCallback((event) => {
-    if (event.button !== undefined && event.button !== 0) {
-      return;
-    }
-
-    const layer = weatherPanelLayerRef.current;
-    const panel = weatherPanelRef.current;
-
-    if (!layer || !panel) {
-      return;
-    }
-
-    const layerRect = layer.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const startPosition = getConstrainedWeatherPanelPosition(
-      panelRect.left - layerRect.left,
-      panelRect.top - layerRect.top
-    );
-
-    weatherPanelDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startLeft: startPosition.left,
-      startTop: startPosition.top,
-    };
-
-    setWeatherPanelPosition(startPosition);
-    setIsWeatherPanelDragging(true);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  }, [getConstrainedWeatherPanelPosition]);
-
-  const handleWeatherPanelDragMove = useCallback((event) => {
-    const dragState = weatherPanelDragRef.current;
-
-    if (!dragState || dragState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    // Move the panel straight in the DOM while dragging; React state is
-    // committed once on drag end, so App does not re-render per pointer move.
-    const nextPosition = getConstrainedWeatherPanelPosition(
-      dragState.startLeft + event.clientX - dragState.startX,
-      dragState.startTop + event.clientY - dragState.startY
-    );
-    dragState.latest = nextPosition;
-    const panel = weatherPanelRef.current;
-    if (panel) {
-      panel.style.left = `${nextPosition.left}px`;
-      panel.style.top = `${nextPosition.top}px`;
-    }
-    event.preventDefault();
-  }, [getConstrainedWeatherPanelPosition]);
-
-  const handleWeatherPanelDragEnd = useCallback((event) => {
-    const dragState = weatherPanelDragRef.current;
-
-    if (!dragState || dragState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    weatherPanelDragRef.current = null;
-    if (dragState.latest) {
-      setWeatherPanelPosition(dragState.latest);
-    }
-    setIsWeatherPanelDragging(false);
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }, []);
-
-  const getConstrainedLSTPanelPosition = useCallback((left, top) => {
-    const layer = lstPanelLayerRef.current;
-    const panel = lstPanelRef.current;
-
-    if (!layer || !panel) {
-      return { left, top };
-    }
-
-    const layerRect = layer.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const margin = 12;
-    const maxLeft = Math.max(margin, layerRect.width - panelRect.width - margin);
-    const maxTop = Math.max(margin, layerRect.height - panelRect.height - margin);
-
-    return {
-      left: Math.min(Math.max(left, margin), maxLeft),
-      top: Math.min(Math.max(top, margin), maxTop),
-    };
-  }, []);
-
-  const handleLSTPanelDragStart = useCallback((event) => {
-    if (event.button !== undefined && event.button !== 0) {
-      return;
-    }
-
-    const layer = lstPanelLayerRef.current;
-    const panel = lstPanelRef.current;
-
-    if (!layer || !panel) {
-      return;
-    }
-
-    const layerRect = layer.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const startPosition = getConstrainedLSTPanelPosition(
-      panelRect.left - layerRect.left,
-      panelRect.top - layerRect.top
-    );
-
-    lstPanelDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startLeft: startPosition.left,
-      startTop: startPosition.top,
-    };
-
-    setLSTPanelPosition(startPosition);
-    setIsLSTPanelDragging(true);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  }, [getConstrainedLSTPanelPosition]);
-
-  const handleLSTPanelDragMove = useCallback((event) => {
-    const dragState = lstPanelDragRef.current;
-
-    if (!dragState || dragState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    // Same as the weather panel: DOM-only while dragging, one state commit on end.
-    const nextPosition = getConstrainedLSTPanelPosition(
-      dragState.startLeft + event.clientX - dragState.startX,
-      dragState.startTop + event.clientY - dragState.startY
-    );
-    dragState.latest = nextPosition;
-    const panel = lstPanelRef.current;
-    if (panel) {
-      panel.style.left = `${nextPosition.left}px`;
-      panel.style.top = `${nextPosition.top}px`;
-    }
-    event.preventDefault();
-  }, [getConstrainedLSTPanelPosition]);
-
-  const handleLSTPanelDragEnd = useCallback((event) => {
-    const dragState = lstPanelDragRef.current;
-
-    if (!dragState || dragState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    lstPanelDragRef.current = null;
-    if (dragState.latest) {
-      setLSTPanelPosition(dragState.latest);
-    }
-    setIsLSTPanelDragging(false);
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }, []);
-
-  const handleWeatherSampleDateChange = useCallback((sampleDate) => {
-    if (!sampleDate) {
-      return;
-    }
-
-    setWeatherDate(sampleDate);
-    setWeatherTime('12:00');
-    setWeatherLayerEnabled(true);
-    if (!isWeatherToolOpen) {
-      setWeatherPanelPosition(null);
-    }
-    setIsWeatherToolOpen(true);
-    setWeatherRefreshKey((current) => current + 1);
-  }, [isWeatherToolOpen]);
-
-  const handleToggleWeatherHourlyChart = useCallback(() => {
-    if (!selectedTransformer) {
-      return;
-    }
-
-    if (!isWeatherHourlyChartOpen) {
-      setIsWeatherHourlyChartCollapsed(false);
-      setIsWeatherHourlyChartOpen(true);
-      return;
-    }
-
-    setIsWeatherHourlyChartCollapsed((current) => !current);
-  }, [isWeatherHourlyChartOpen, selectedTransformer]);
-
-  useEffect(() => {
-    if (selectedTransformer) {
-      return;
-    }
-
-    setIsWeatherHourlyChartOpen(false);
-    setIsWeatherHourlyChartCollapsed(false);
-    setWeatherHourlySeries([]);
-  }, [selectedTransformer]);
-
-  useEffect(() => {
-    if (!isWeatherToolOpen || !weatherPanelPosition) {
-      return undefined;
-    }
-
-    const handleResize = () => {
-      setWeatherPanelPosition((current) => {
-        if (!current) {
-          return current;
-        }
-
-        const nextPosition = getConstrainedWeatherPanelPosition(current.left, current.top);
-        return nextPosition.left === current.left && nextPosition.top === current.top
-          ? current
-          : nextPosition;
-      });
-    };
-
-    window.addEventListener('resize', handleResize);
-    handleResize();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [getConstrainedWeatherPanelPosition, isWeatherToolOpen, weatherPanelPosition]);
-
-  useEffect(() => {
-    if (!isLSTToolOpen || !lstPanelPosition) {
-      return undefined;
-    }
-
-    const handleResize = () => {
-      setLSTPanelPosition((current) => {
-        if (!current) {
-          return current;
-        }
-
-        const nextPosition = getConstrainedLSTPanelPosition(current.left, current.top);
-        return nextPosition.left === current.left && nextPosition.top === current.top
-          ? current
-          : nextPosition;
-      });
-    };
-
-    window.addEventListener('resize', handleResize);
-    handleResize();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [getConstrainedLSTPanelPosition, isLSTToolOpen, lstPanelPosition]);
-
-  useEffect(() => {
-    if (!isWeatherToolOpen) {
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    let ignore = false;
-
-    async function loadWeather() {
-      setWeatherLoading(true);
-      setWeatherError('');
-      setWeatherStoredNotice('');
-
-      // Loaded up front so there is something to fall back on if the API call fails.
-      let observations = [];
-      try {
-        observations = await weatherObservationService.getByDate(weatherDate);
-        if (!ignore) {
-          setWeatherObservations(observations);
-        }
-      } catch (err) {
-        console.error('Failed to load saved weather observations:', err);
-      }
-
-      try {
-        const records = await fetchTransformerWeather(
-          filteredTransformers,
-          {
-            date: weatherDate,
-            time: weatherTime,
-          },
-          {
-            signal: controller.signal,
-          }
-        );
-
-        if (ignore) {
-          return;
-        }
-
-        setWeatherRecords(records);
-        setWeatherUpdatedAt(new Date().toISOString());
-
-        if (records.length === 0) {
-          setWeatherError('No mapped assets have coordinates for weather lookup.');
-        }
-
-        // Cache one reading per site so the panel still works if Open-Meteo goes down.
-        try {
-          await weatherObservationService.upsertMany(buildObservationsFromRecords(records, weatherDate));
-        } catch (err) {
-          console.error('Failed to cache weather observations:', err);
-        }
-      } catch (err) {
-        if (ignore || err?.name === 'AbortError') {
-          return;
-        }
-
-        console.error('Failed to load Open-Meteo weather:', err);
-
-        const storedRecords = buildRecordsFromObservations(
-          filteredTransformers,
-          observations,
-          weatherDate
-        );
-
-        setWeatherRecords(storedRecords);
-
-        if (storedRecords.length > 0) {
-          setWeatherStoredNotice(
-            `Open-Meteo unreachable - showing saved readings for ${weatherDate}.`
-          );
-          setWeatherError('');
-        } else {
-          setWeatherError(
-            err?.message || 'Unable to load Open-Meteo weather for the selected date and time.'
-          );
-        }
-      } finally {
-        if (!ignore) {
-          setWeatherLoading(false);
-        }
-      }
-    }
-
-    loadWeather();
-
-    return () => {
-      ignore = true;
-      controller.abort();
-    };
-  }, [filteredTransformers, isWeatherToolOpen, weatherDate, weatherRefreshKey, weatherTime]);
-
-  useEffect(() => {
-    if (!isWeatherHourlyChartOpen || !selectedTransformer) {
-      if (!isWeatherHourlyChartOpen) {
-        setWeatherHourlyLoading(false);
-        setWeatherHourlyError('');
-      }
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    let ignore = false;
-
-    async function loadHourlyWeather() {
-      setWeatherHourlyLoading(true);
-      setWeatherHourlyError('');
-
-      try {
-        const series = await fetchTransformerHourlyWeather(
-          selectedTransformer,
-          {
-            date: weatherDate,
-          },
-          {
-            signal: controller.signal,
-          }
-        );
-
-        if (ignore) {
-          return;
-        }
-
-        setWeatherHourlySeries(series);
-
-        if (series.length === 0) {
-          setWeatherHourlyError('No hourly weather is available for the selected site and date.');
-        }
-      } catch (err) {
-        if (ignore || err?.name === 'AbortError') {
-          return;
-        }
-
-        console.error('Failed to load hourly Open-Meteo weather:', err);
-        setWeatherHourlySeries([]);
-        setWeatherHourlyError(err?.message || 'Unable to load hourly weather for the selected site.');
-      } finally {
-        if (!ignore) {
-          setWeatherHourlyLoading(false);
-        }
-      }
-    }
-
-    loadHourlyWeather();
-
-    return () => {
-      ignore = true;
-      controller.abort();
-    };
-  }, [isWeatherHourlyChartOpen, selectedTransformer, weatherDate, weatherRefreshKey]);
-
-  const selectedWeatherRecords = useMemo(() => {
-    if (!selectedTransformer) {
-      return [];
-    }
-
-    const selectedTransformerId = String(selectedTransformer.id);
-    return weatherRecords.filter((record) => String(record.id) === selectedTransformerId);
-  }, [selectedTransformer, weatherRecords]);
-
-  const weatherPanelEmptyMessage = selectedTransformer
-    ? 'No weather record is available for the selected site yet.'
-    : 'Select a site on the map to show its weather history here.';
-
-  // The exact Open-Meteo request behind the numbers on screen, as a browser-readable
-  // JSON URL for the selected site so it can be opened or copied straight from the panel.
-  const weatherApiUrl = useMemo(
-    () => buildWeatherRequestUrl(selectedTransformer, { date: weatherDate }),
-    [selectedTransformer, weatherDate]
-  );
-
   const handleWeatherRecordSelect = useCallback((record) => {
     const nextTransformer = filteredTransformers.find(
       (transformer) => String(transformer.id) === String(record?.id)
@@ -1675,62 +1161,6 @@ function App() {
     setSelectedCompanyBoundaryId(null);
     setGeoSearchSelection(null);
   }, [filteredTransformers]);
-
-  const loadFloorPlans = async () => {
-    try {
-      await floorPlanService.migrateFromLocalStorage();
-      const data = await floorPlanService.getAll();
-      setFloorPlans(data);
-    } catch (err) {
-      console.error('Failed to load floor plans:', err);
-    }
-  };
-
-  const loadCompanyBoundaries = async () => {
-    try {
-      const data = await companyBoundaryService.getAll();
-      setCompanyBoundaries(data);
-    } catch (err) {
-      console.error('Failed to load company boundaries:', err);
-      showAppNotice({
-        variant: 'warning',
-        title: 'Company boundary table not ready',
-        description: 'The parent boundary layer needs the company_boundaries database table.',
-        detail: err?.message || 'Run the latest Supabase migration, then refresh the app.',
-        contextLabel: 'Company boundaries',
-      });
-    }
-  };
-
-  const handleOpenFloorDetail = useCallback((floorPlan) => {
-    if (!floorPlan) return;
-    setFloorDetailFloorPlanId(floorPlan.id);
-    setIsFloorDetailModalOpen(true);
-  }, []);
-
-  const handleRemoveTransformerFromFloor = useCallback(async (floorPlanId, transformerId) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    const floorPlan = floorPlans.find((fp) => fp.id === floorPlanId);
-    if (!floorPlan) return;
-    const updatedIds = floorPlan.transformerIds.filter((id) => String(id) !== String(transformerId));
-    try {
-      await floorPlanService.updateTransformerIds(floorPlanId, updatedIds);
-      setFloorPlans((prev) =>
-        prev.map((fp) => fp.id === floorPlanId ? { ...fp, transformerIds: updatedIds } : fp)
-      );
-    } catch (err) {
-      console.error('Failed to remove transformer from floor:', err);
-      showAppNotice({
-        variant: 'error',
-        title: 'Unable to update floor plan',
-        description: 'The transformer assignment could not be updated yet.',
-        detail: err?.message || 'Failed to update floor plan. Please try again.',
-        contextLabel: 'Floor plan',
-      });
-    }
-  }, [ensureCanEditAssets, floorPlans, showAppNotice]);
 
   const handleFloorDetailAddTransformer = useCallback((position, floorPlanId) => {
     if (!ensureCanEditAssets()) {
@@ -1771,6 +1201,16 @@ function App() {
 
   const handleMapClick = (event) => {
     setMapContextMenu(null);
+
+    // A click on empty map (not on a polygon, marker or other interactive
+    // layer, and not while drawing or placing) dismisses the selected company
+    // / area card. Polygon clicks bubble up to the map too, so check the DOM
+    // target, otherwise selecting a polygon would immediately deselect it.
+    const clickedMapFeature = event?.originalEvent?.target?.closest?.('.leaflet-interactive');
+    if (!clickedMapFeature && !companyBoundaryDraft && !floorPlanDraft && !isAddMode) {
+      setSelectedCompanyBoundaryId(null);
+      setSelectedFloorPlanId(null);
+    }
 
     if (!canEditAssets) {
       return;
@@ -2352,6 +1792,7 @@ function App() {
     setSelectedTransformer(transformer);
     setIsDetailModalOpen(true);
     setSelectedFloorPlanId(null);
+    setSelectedCompanyBoundaryId(null);
   };
 
   const handleCloseDetailModal = () => {
@@ -2360,16 +1801,36 @@ function App() {
     loadTransformers();
   };
 
-  // Stable identities for the per-marker handlers so memo(TransformerMarker)
-  // only re-renders a marker when its own data or selection changes.
-  const stableMarkerDragEnd = useStableCallback(handleMarkerDragEnd);
-  const stableEditTransformer = useStableCallback(handleEditTransformer);
-  const stableDeleteTransformer = useStableCallback(handleDeleteTransformer);
-  const stableViewDetails = useStableCallback(handleViewDetails);
   const handleMarkerSelect = useCallback((nextTransformer) => {
     setSelectedTransformer(nextTransformer);
     setSelectedFloorPlanId(null);
+    setSelectedCompanyBoundaryId(null);
   }, []);
+
+  // Every callback the memoised <MapView> needs, with stable identities that
+  // always call the latest App handler. This is what lets MapView (and each
+  // memoised TransformerMarker) skip re-rendering when unrelated App state changes.
+  const mapHandlers = useStableHandlers({
+    onMapClick: handleMapClick,
+    onMapContextMenu: handleMapContextMenu,
+    onSelectCompanyBoundary: focusCompanyBoundary,
+    onEditCompanyBoundaryInfo: handleEditCompanyBoundaryInfo,
+    onEditCompanyBoundary: handleEditCompanyBoundary,
+    onDeleteCompanyBoundary: handleDeleteCompanyBoundary,
+    onCompanyBoundaryDraftVertexMove: handleCompanyBoundaryDraftVertexMove,
+    onSelectFloorPlan: focusFloorPlan,
+    onOpenFloor: handleOpenFloorDetail,
+    onEditFloorPlanInfo: handleEditFloorPlanInfo,
+    onEditFloorPlan: handleEditFloorPlan,
+    onDeleteFloorPlan: handleDeleteFloorPlan,
+    onFloorDraftVertexMove: handleFloorDraftVertexMove,
+    onSelectWeatherRecord: handleWeatherRecordSelect,
+    onMarkerDragEnd: handleMarkerDragEnd,
+    onEditTransformer: handleEditTransformer,
+    onDeleteTransformer: handleDeleteTransformer,
+    onViewTransformerDetails: handleViewDetails,
+    onSelectTransformer: handleMarkerSelect,
+  });
 
   // Warm the two most-used dialogs once the browser is idle, so their first
   // open is instant even though they are no longer in the main bundle.
@@ -2451,325 +1912,6 @@ function App() {
     pendingFloorAssignment.current = null;
   };
 
-  const startFloorPlanDrawing = () => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    setIsAddMode(false);
-    setCompanyBoundaryDraft(null);
-    setIsCompanyBoundaryDialogOpen(false);
-    setCompanyBoundaryDialogDraft(null);
-    setSelectedCompanyBoundaryId(null);
-    setSelectedFloorPlanId(null);
-    setFloorPlanDraft(createDraftFloorPlan());
-    setIsFloorPlanDialogOpen(false);
-    setFloorPlanDialogDraft(null);
-  };
-
-  const startCompanyBoundaryDrawing = () => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    setIsAddMode(false);
-    setFloorPlanDraft(null);
-    setIsFloorPlanDialogOpen(false);
-    setFloorPlanDialogDraft(null);
-    setSelectedFloorPlanId(null);
-    setSelectedCompanyBoundaryId(null);
-    setCompanyBoundaryDraft(createDraftCompanyBoundary());
-    setIsCompanyBoundaryDialogOpen(false);
-    setCompanyBoundaryDialogDraft(null);
-  };
-
-  const handleEditCompanyBoundary = (boundary) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    if (!boundary) {
-      return;
-    }
-
-    focusCompanyBoundary(boundary);
-    setIsAddMode(false);
-    setFloorPlanDraft(null);
-    setCompanyBoundaryDraft(createDraftCompanyBoundary(boundary));
-    setIsCompanyBoundaryDialogOpen(false);
-    setCompanyBoundaryDialogDraft(null);
-  };
-
-  const handleEditFloorPlan = (floorPlan) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    if (!floorPlan) {
-      return;
-    }
-
-    focusFloorPlan(floorPlan);
-    setIsAddMode(false);
-    setCompanyBoundaryDraft(null);
-    setIsCompanyBoundaryDialogOpen(false);
-    setCompanyBoundaryDialogDraft(null);
-    setFloorPlanDraft(createDraftFloorPlan(floorPlan));
-    setIsFloorPlanDialogOpen(false);
-    setFloorPlanDialogDraft(null);
-  };
-
-  const handleSaveCompanyBoundaryShape = async (boundary, nextPoints) => {
-    if (!ensureCanEditAssets()) {
-      return false;
-    }
-    if (!boundary || !Array.isArray(nextPoints) || nextPoints.length < 3) {
-      showAppNotice({
-        variant: 'warning',
-        title: 'More boundary points needed',
-        description: 'A company boundary needs at least three points before it can be saved.',
-        detail: 'Add more points or continue reshaping the parent boundary, then try saving again.',
-        contextLabel: 'Company boundary',
-        actionLabel: 'Back to map',
-      });
-      return false;
-    }
-
-    try {
-      const normalizedBoundary = normalizeCompanyBoundary({
-        ...boundary,
-        points: nextPoints,
-        createdAt: boundary.createdAt || new Date().toISOString(),
-      });
-
-      await companyBoundaryService.upsert(normalizedBoundary);
-      const storedBoundaries = await companyBoundaryService.getAll();
-      setCompanyBoundaries(storedBoundaries);
-      focusCompanyBoundary(normalizedBoundary);
-      return true;
-    } catch (err) {
-      console.error('Failed to reshape company boundary:', err);
-      showAppNotice({
-        variant: 'error',
-        title: 'Unable to save company boundary',
-        description: 'The reshaped company boundary could not be saved yet.',
-        detail: err?.message || 'Failed to save company boundary. Please try again.',
-        contextLabel: 'Company boundary',
-      });
-      return false;
-    }
-  };
-
-  const handleSaveFloorPlanShape = async (floorPlan, nextPoints) => {
-    if (!ensureCanEditAssets()) {
-      return false;
-    }
-    if (!floorPlan || !Array.isArray(nextPoints) || nextPoints.length < 3) {
-      showAppNotice({
-        variant: 'warning',
-        title: 'More boundary points needed',
-        description: 'A floor boundary needs at least three points before it can be saved.',
-        detail: 'Add more points or continue reshaping the boundary, then try saving again.',
-        contextLabel: 'Floor boundary',
-        actionLabel: 'Back to map',
-      });
-      return false;
-    }
-
-    try {
-      const normalizedFloorPlan = normalizeFloorPlan({
-        ...floorPlan,
-        points: nextPoints,
-        createdAt: floorPlan.createdAt || new Date().toISOString(),
-      });
-
-      await floorPlanService.upsert(normalizedFloorPlan);
-      const storedFloorPlans = await floorPlanService.getAll();
-      setFloorPlans(storedFloorPlans);
-      focusFloorPlan(normalizedFloorPlan);
-      return true;
-    } catch (err) {
-      console.error('Failed to reshape floor plan:', err);
-      showAppNotice({
-        variant: 'error',
-        title: 'Unable to save floor boundary',
-        description: 'The reshaped floor boundary could not be saved yet.',
-        detail: err?.message || 'Failed to save floor boundary. Please try again.',
-        contextLabel: 'Floor boundary',
-      });
-      return false;
-    }
-  };
-
-  const cancelFloorPlanDrawing = () => {
-    setFloorPlanDraft(null);
-    setIsFloorPlanDialogOpen(false);
-    setFloorPlanDialogDraft(null);
-  };
-
-  const cancelCompanyBoundaryDrawing = () => {
-    setCompanyBoundaryDraft(null);
-    setIsCompanyBoundaryDialogOpen(false);
-    setCompanyBoundaryDialogDraft(null);
-  };
-
-  const handleCompanyBoundaryDraftVertexMove = (pointIndex, nextPoint) => {
-    if (!canEditAssets) {
-      return;
-    }
-    setCompanyBoundaryDraft((current) =>
-      current
-        ? {
-            ...current,
-            points: current.points.map((point, index) => (index === pointIndex ? nextPoint : point)),
-          }
-        : current
-    );
-  };
-
-  const handleUndoCompanyBoundaryDraftPoint = () => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    setCompanyBoundaryDraft((current) =>
-      current
-        ? {
-            ...current,
-            points: current.points.slice(0, -1),
-          }
-        : current
-    );
-  };
-
-  const openCompanyBoundaryMetadataDialog = (draft) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    setCompanyBoundaryDialogDraft(draft);
-    setIsCompanyBoundaryDialogOpen(true);
-  };
-
-  const handleEditCompanyBoundaryInfo = (boundary) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    if (!boundary) {
-      return;
-    }
-
-    focusCompanyBoundary(boundary);
-    setCompanyBoundaryDraft(null);
-    openCompanyBoundaryMetadataDialog({
-      ...createDraftCompanyBoundary(boundary),
-      points: boundary.points,
-    });
-  };
-
-  const openCompanyBoundaryDialogFromDraft = () => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    if (!companyBoundaryDraft || companyBoundaryDraft.points.length < 3) {
-      showAppNotice({
-        variant: 'warning',
-        title: 'More boundary points needed',
-        description: 'Draw at least three points on the map to create a company boundary.',
-        detail: 'Keep clicking on the map until the parent area has enough points to form a closed boundary.',
-        contextLabel: 'Company boundary',
-        actionLabel: 'Back to map',
-      });
-      return;
-    }
-
-    const existingBoundary = companyBoundaryDraft.id
-      ? companyBoundaries.find((boundary) => boundary.id === companyBoundaryDraft.id) || null
-      : null;
-    const detectedTransformers = findTransformersInsidePolygon(filteredTransformers, companyBoundaryDraft.points);
-    const primaryTransformer = detectedTransformers[0] || selectedTransformer || null;
-
-    openCompanyBoundaryMetadataDialog({
-      ...createDraftCompanyBoundary({
-        ...existingBoundary,
-        ...companyBoundaryDraft,
-        companyName: existingBoundary?.companyName || primaryTransformer?.siteName || '',
-        state: existingBoundary?.state || (primaryTransformer ? getTransformerState(primaryTransformer) : '') || '',
-      }),
-    });
-  };
-
-  const handleSaveCompanyBoundary = async (nextBoundaryDraft) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    try {
-      const currentBoundary = nextBoundaryDraft?.id
-        ? companyBoundaries.find((boundary) => boundary.id === nextBoundaryDraft.id) || null
-        : null;
-      const normalizedBoundary = normalizeCompanyBoundary({
-        ...currentBoundary,
-        ...nextBoundaryDraft,
-        createdAt: currentBoundary?.createdAt || nextBoundaryDraft?.createdAt || new Date().toISOString(),
-      });
-
-      await companyBoundaryService.upsert(normalizedBoundary);
-      const storedBoundaries = await companyBoundaryService.getAll();
-      setCompanyBoundaries(storedBoundaries);
-      setIsCompanyBoundaryDialogOpen(false);
-      setCompanyBoundaryDialogDraft(null);
-      setCompanyBoundaryDraft(null);
-      focusCompanyBoundary(normalizedBoundary);
-    } catch (err) {
-      console.error('Failed to save company boundary:', err);
-      showAppNotice({
-        variant: 'error',
-        title: 'Unable to save company boundary',
-        description: 'The company or parent boundary could not be saved yet.',
-        detail: err?.message || 'Failed to save company boundary. Please try again.',
-        contextLabel: 'Company boundary',
-      });
-    }
-  };
-
-  const handleDeleteCompanyBoundary = (boundaryId) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    const targetBoundary = companyBoundaries.find((boundary) => boundary.id === boundaryId);
-    const boundaryLabel = targetBoundary?.companyName || 'this company boundary';
-
-    const runDelete = async () => {
-      try {
-        setConfirmBusy(true);
-        await companyBoundaryService.delete(boundaryId);
-        setCompanyBoundaries((current) => current.filter((boundary) => boundary.id !== boundaryId));
-        if (selectedCompanyBoundaryId === boundaryId) {
-          setSelectedCompanyBoundaryId(null);
-        }
-        if (companyBoundaryDraft?.id === boundaryId) {
-          setCompanyBoundaryDraft(null);
-        }
-        setIsCompanyBoundaryDialogOpen(false);
-        setCompanyBoundaryDialogDraft(null);
-        setConfirmState(null);
-      } catch (err) {
-        console.error('Failed to delete company boundary:', err);
-        showAppNotice({
-          variant: 'error',
-          title: 'Unable to delete company boundary',
-          description: 'The company or parent boundary could not be deleted yet.',
-          detail: err?.message || 'Failed to delete company boundary. Please try again.',
-          contextLabel: 'Company boundary',
-        });
-      } finally {
-        setConfirmBusy(false);
-      }
-    };
-
-    setConfirmState({
-      title: `Delete ${boundaryLabel}?`,
-      description: 'Delete this parent boundary only. Area/floor polygons and transformer records remain unchanged.',
-      confirmLabel: 'Delete boundary',
-      tone: 'danger',
-      onConfirm: runDelete,
-    });
-  };
-
   const openLocationRegisterModule = useCallback(() => {
     if (!ensureCanEditAssets()) {
       return;
@@ -2789,209 +1931,6 @@ function App() {
     }
   }, [cancelFloorPlanDrawing, cancelCompanyBoundaryDrawing, ensureCanEditAssets]);
 
-  const handleFloorDraftVertexMove = (pointIndex, nextPoint) => {
-    if (!canEditAssets) {
-      return;
-    }
-    setFloorPlanDraft((current) =>
-      current
-        ? {
-            ...current,
-            points: current.points.map((point, index) => (index === pointIndex ? nextPoint : point)),
-          }
-        : current
-    );
-  };
-
-  const handleUndoFloorDraftPoint = () => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    setFloorPlanDraft((current) =>
-      current
-        ? {
-            ...current,
-            points: current.points.slice(0, -1),
-          }
-        : current
-    );
-  };
-
-  const openFloorPlanMetadataDialog = (draft) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    setFloorPlanDialogDraft(draft);
-    setIsFloorPlanDialogOpen(true);
-  };
-
-  const handleEditFloorPlanInfo = (floorPlan) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    if (!floorPlan) {
-      return;
-    }
-
-    focusFloorPlan(floorPlan);
-    setFloorPlanDraft(null);
-    setCompanyBoundaryDraft(null);
-    setIsCompanyBoundaryDialogOpen(false);
-    setCompanyBoundaryDialogDraft(null);
-    openFloorPlanMetadataDialog({
-      ...createDraftFloorPlan(floorPlan),
-      points: floorPlan.points,
-      detectedTransformerIds: floorPlan.transformerIds.map((transformerId) => String(transformerId)),
-    });
-  };
-
-  const openFloorPlanDialogFromDraft = () => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    if (!floorPlanDraft || floorPlanDraft.points.length < 3) {
-      showAppNotice({
-        variant: 'warning',
-        title: 'More boundary points needed',
-        description: 'Draw at least three points on the map to create a floor boundary.',
-        detail: 'Keep clicking on the map until the area has enough points to form a closed boundary.',
-        contextLabel: 'Floor boundary',
-        actionLabel: 'Back to map',
-      });
-      return;
-    }
-
-    const detectedTransformers = findTransformersInsidePolygon(filteredTransformers, floorPlanDraft.points);
-    const existingFloorPlan = floorPlanDraft.id
-      ? floorPlans.find((floorPlan) => floorPlan.id === floorPlanDraft.id) || null
-      : null;
-    const draftCentroid = getPolygonCentroid(floorPlanDraft.points);
-    const containingCompanyBoundary = draftCentroid
-      ? companyBoundaries.find((boundary) => isPointInsidePolygon(draftCentroid, boundary.points))
-      : null;
-    const primaryTransformer =
-      detectedTransformers[0] ||
-      (existingFloorPlan?.transformerIds || [])
-        .map((transformerId) =>
-          filteredTransformers.find((transformer) => String(transformer.id) === String(transformerId))
-        )
-        .filter(Boolean)[0] ||
-      selectedTransformer ||
-      null;
-
-    openFloorPlanMetadataDialog({
-      ...createDraftFloorPlan({
-        ...existingFloorPlan,
-        ...floorPlanDraft,
-        name: existingFloorPlan?.name || '',
-        companyName: existingFloorPlan?.companyName || containingCompanyBoundary?.companyName || primaryTransformer?.siteName || '',
-        state: existingFloorPlan?.state || containingCompanyBoundary?.state || (primaryTransformer ? getTransformerState(primaryTransformer) : '') || '',
-        transformerIds:
-          existingFloorPlan?.transformerIds?.length
-            ? existingFloorPlan.transformerIds
-            : detectedTransformers.map((transformer) => String(transformer.id)),
-        }),
-      detectedTransformerIds: detectedTransformers.map((transformer) => String(transformer.id)),
-    });
-  };
-
-  const handleSaveFloorPlan = async (nextFloorPlanDraft) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-    try {
-      const currentFloorPlan = nextFloorPlanDraft?.id
-        ? floorPlans.find((floorPlan) => floorPlan.id === nextFloorPlanDraft.id) || null
-        : null;
-      const normalizedFloorPlan = normalizeFloorPlan({
-        ...currentFloorPlan,
-        ...nextFloorPlanDraft,
-        createdAt: currentFloorPlan?.createdAt || nextFloorPlanDraft?.createdAt || new Date().toISOString(),
-      });
-
-      const assignedTransformerIds = new Set(
-        normalizedFloorPlan.transformerIds.map((transformerId) => String(transformerId))
-      );
-
-      const stripUpdates = floorPlans
-        .filter((plan) => plan.id !== normalizedFloorPlan.id)
-        .filter((plan) => plan.transformerIds.some((tid) => assignedTransformerIds.has(String(tid))))
-        .map((plan) =>
-          floorPlanService.updateTransformerIds(
-            plan.id,
-            plan.transformerIds.filter((tid) => !assignedTransformerIds.has(String(tid)))
-          )
-        );
-
-      await Promise.all([floorPlanService.upsert(normalizedFloorPlan), ...stripUpdates]);
-
-      const storedFloorPlans = await floorPlanService.getAll();
-      setFloorPlans(storedFloorPlans);
-      setIsFloorPlanDialogOpen(false);
-      setFloorPlanDialogDraft(null);
-      setFloorPlanDraft(null);
-      focusFloorPlan(normalizedFloorPlan);
-    } catch (err) {
-      console.error('Failed to save floor plan:', err);
-      showAppNotice({
-        variant: 'error',
-        title: 'Unable to save floor plan',
-        description: 'The floor plan record could not be saved yet.',
-        detail: err?.message || 'Failed to save floor plan. Please try again.',
-        contextLabel: 'Floor plan',
-      });
-    }
-  };
-
-  const handleDeleteFloorPlan = (floorPlanId) => {
-    if (!ensureCanEditAssets()) {
-      return;
-    }
-
-    const targetPlan = floorPlans.find((plan) => plan.id === floorPlanId);
-    const planLabel = targetPlan?.name || targetPlan?.floorLabel || 'this floor';
-
-    const runDelete = async () => {
-      setConfirmBusy(true);
-      try {
-        await floorPlanService.delete(floorPlanId);
-        setFloorPlans((current) => current.filter((plan) => plan.id !== floorPlanId));
-        if (selectedFloorPlanId === floorPlanId) {
-          setSelectedFloorPlanId(null);
-        }
-        if (floorPlanDraft?.id === floorPlanId) {
-          setFloorPlanDraft(null);
-        }
-        setIsFloorPlanDialogOpen(false);
-        setFloorPlanDialogDraft(null);
-        setConfirmState(null);
-      } catch (err) {
-        console.error('Failed to delete floor plan:', err);
-        setConfirmState(null);
-        showAppNotice({
-          variant: 'error',
-          title: 'Unable to delete floor plan',
-          description: 'The floor plan overlay could not be deleted yet.',
-          detail: err?.message || 'Failed to delete floor plan. Please try again.',
-          contextLabel: 'Floor plan',
-        });
-      } finally {
-        setConfirmBusy(false);
-      }
-    };
-
-    setConfirmState({
-      title: `Delete ${planLabel}?`,
-      description:
-        'The transformer records stay, but they will be ungrouped from this floor.',
-      confirmLabel: 'Delete floor',
-      cancelLabel: 'Cancel',
-      tone: 'danger',
-      onConfirm: runDelete,
-    });
-  };
-
-  const activeBaseLayer = MAP_BASE_LAYERS[mapBaseLayer];
 
   const handleSignOut = useCallback((reason = 'manual') => {
     const signOutReason = reason === 'idle' ? 'idle' : 'manual';
@@ -3117,7 +2056,6 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
     );
   }
 
-  const markerClusterEnabled = !(isDraggable && canEditAssets);
   const isWeatherOverlayVisible =
     isWeatherToolOpen &&
     weatherLayerEnabled &&
@@ -3131,21 +2069,6 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
     isLSTOverlayVisible &&
     lstCompareEnabled &&
     Boolean(lstCompareDate);
-  const transformerMarkerNodes = filteredTransformers.map((transformer) => (
-    <TransformerMarker
-      key={transformer.id}
-      transformer={transformer}
-      icon={createTransformerIcon(transformerMarkerColors.get(transformer.id) ?? MARKER_STATUS_COLORS.normal)}
-      isSelected={selectedTransformer?.id === transformer.id}
-      isDraggable={isDraggable && canEditAssets}
-      canManageAssets={canEditAssets}
-      onDragEnd={stableMarkerDragEnd}
-      onEdit={stableEditTransformer}
-      onDelete={stableDeleteTransformer}
-      onViewDetails={stableViewDetails}
-      onSelect={handleMarkerSelect}
-    />
-  ));
 
   return (
     <div className="app-shell relative overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
@@ -3909,97 +2832,47 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
           ) : null}
 
           <div className="app-map-region w-full">
-            <MapContainer center={mapCenter} zoom={mapZoom} className="h-full w-full" zoomControl={false}>
-              <TileLayer attribution={activeBaseLayer.attribution} url={activeBaseLayer.url} />
-              {mapBaseLayer === 'hybrid' ? (
-                <TileLayer attribution={SATELLITE_LABELS_LAYER.attribution} url={SATELLITE_LABELS_LAYER.url} />
-              ) : null}
-              {isLSTOverlayVisible ? (
-                <LSTMapLayer
-                  date={lstDate}
-                  compareDate={lstCompareDate}
-                  sourceId={lstSourceId}
-                  compareEnabled={lstCompareEnabled}
-                  opacity={lstOpacity}
-                  splitPosition={lstCompareSplit}
-                  refreshKey={lstRefreshKey}
-                  arcgisServiceUrl={lstArcgisServiceUrl}
-                  arcgisToken={lstArcgisToken}
-                  arcgisRasterFunction={lstArcgisRasterFunction}
-                  arcgisWindowDays={lstArcgisWindowDays}
-                />
-              ) : null}
-              <MapUpdater center={mapCenter} zoom={mapZoom} />
-              <MapRefCapture mapRef={leafletMapRef} />
-              <MapInteractionController sidebarActive={isSidebarInteracting} />
-              <MapClickHandler onMapClick={handleMapClick} onMapContextMenu={handleMapContextMenu} />
-              <CompanyBoundaryMapLayer
-                companyBoundaries={companyBoundaries}
-                floorPlans={floorPlans}
-                canManageAssets={canEditAssets}
-                showCompanyBoundaries={showCompanyBoundaries}
-                selectedCompanyBoundaryId={selectedCompanyBoundaryId}
-                draft={companyBoundaryDraft}
-                onSelectCompanyBoundary={focusCompanyBoundary}
-                onEditCompanyBoundaryInfo={handleEditCompanyBoundaryInfo}
-                onEditCompanyBoundary={handleEditCompanyBoundary}
-                onDeleteCompanyBoundary={handleDeleteCompanyBoundary}
-                onDraftVertexMove={handleCompanyBoundaryDraftVertexMove}
-              />
-              <FloorPlanMapLayer
-                floorPlans={floorPlans}
-                transformers={filteredTransformers}
-                canManageAssets={canEditAssets}
-                showFloorPlans={showFloorPlans}
-                selectedFloorPlanId={selectedFloorPlanId}
-                draft={floorPlanDraft}
-                onSelectFloorPlan={focusFloorPlan}
-                onOpenFloor={handleOpenFloorDetail}
-                onEditFloorPlanInfo={handleEditFloorPlanInfo}
-                onEditFloorPlan={handleEditFloorPlan}
-                onDeleteFloorPlan={handleDeleteFloorPlan}
-                onDraftVertexMove={handleFloorDraftVertexMove}
-              />
-              <PowerGridMapLayer layers={powerGridLayers} onStatus={handlePowerGridStatus} />
-              <DataCentreMapLayer tracker={dataCentreTracker} visible={!isGlobe3DOpen} />
-              {isWeatherOverlayVisible ? (
-                <WeatherMapLayer
-                  records={weatherRecords}
-                  options={weatherOptions}
-                  selectedRecordId={selectedTransformer?.id ?? null}
-                  onSelectRecord={handleWeatherRecordSelect}
-                />
-              ) : null}
-              {geoSearchSelection?.position ? (
-                <Marker position={geoSearchSelection.position} icon={geoSearchIcon}>
-                  <Popup className="geo-search-popup">
-                    <div className="min-w-[190px] space-y-1 px-3 py-2">
-                      <p className="text-sm font-semibold text-[var(--foreground)]">
-                        {geoSearchSelection.title}
-                      </p>
-                      {geoSearchSelection.subtitle ? (
-                        <p className="text-xs text-[var(--muted)]">
-                          {geoSearchSelection.subtitle}
-                        </p>
-                      ) : null}
-                    </div>
-                  </Popup>
-                </Marker>
-              ) : null}
-              {markerClusterEnabled ? (
-                <MarkerClusterGroup
-                  chunkedLoading
-                  disableClusteringAtZoom={MARKER_CLUSTER_DISABLE_AT_ZOOM}
-                  showCoverageOnHover={false}
-                  spiderfyOnMaxZoom
-                  removeOutsideVisibleBounds
-                >
-                  {transformerMarkerNodes}
-                </MarkerClusterGroup>
-              ) : (
-                transformerMarkerNodes
-              )}
-            </MapContainer>
+            <MapView
+              mapCenter={mapCenter}
+              mapZoom={mapZoom}
+              mapBaseLayer={mapBaseLayer}
+              leafletMapRef={leafletMapRef}
+              isSidebarInteracting={isSidebarInteracting}
+              isLSTOverlayVisible={isLSTOverlayVisible}
+              lstDate={lstDate}
+              lstCompareDate={lstCompareDate}
+              lstSourceId={lstSourceId}
+              lstCompareEnabled={lstCompareEnabled}
+              lstOpacity={lstOpacity}
+              lstCompareSplit={lstCompareSplit}
+              lstRefreshKey={lstRefreshKey}
+              lstArcgisServiceUrl={lstArcgisServiceUrl}
+              lstArcgisToken={lstArcgisToken}
+              lstArcgisRasterFunction={lstArcgisRasterFunction}
+              lstArcgisWindowDays={lstArcgisWindowDays}
+              companyBoundaries={companyBoundaries}
+              showCompanyBoundaries={showCompanyBoundaries}
+              selectedCompanyBoundaryId={selectedCompanyBoundaryId}
+              companyBoundaryDraft={companyBoundaryDraft}
+              floorPlans={floorPlans}
+              showFloorPlans={showFloorPlans}
+              selectedFloorPlanId={selectedFloorPlanId}
+              floorPlanDraft={floorPlanDraft}
+              transformers={filteredTransformers}
+              markerColors={transformerMarkerColors}
+              selectedTransformerId={selectedTransformer?.id ?? null}
+              markersDraggable={isDraggable && canEditAssets}
+              canEditAssets={canEditAssets}
+              powerGridLayers={powerGridLayers}
+              onPowerGridStatus={handlePowerGridStatus}
+              dataCentreTracker={dataCentreTracker}
+              isGlobe3DOpen={isGlobe3DOpen}
+              isWeatherOverlayVisible={isWeatherOverlayVisible}
+              weatherRecords={weatherRecords}
+              weatherOptions={weatherOptions}
+              geoSearchSelection={geoSearchSelection}
+              handlers={mapHandlers}
+            />
           </div>
 
           {mapContextMenu ? (
@@ -5057,85 +3930,6 @@ function MapMetric({ icon: Icon, label, value }) {
       </CardContent>
     </Card>
   );
-}
-
-function MapUpdater({ center, zoom }) {
-  const map = useMap();
-
-  useEffect(() => {
-    map.setView(center, zoom, { animate: true, duration: 0.75 });
-  }, [center, zoom, map]);
-
-  return null;
-}
-
-function MapRefCapture({ mapRef }) {
-  const map = useMap();
-  useEffect(() => { mapRef.current = map; }, [map, mapRef]);
-  return null;
-}
-
-function MapClickHandler({ onMapClick, onMapContextMenu }) {
-  useMapEvents({
-    click: (event) => {
-      onMapClick(event);
-    },
-    contextmenu: (event) => {
-      onMapContextMenu?.(event);
-    },
-  });
-
-  return null;
-}
-
-function MapInteractionController({ sidebarActive }) {
-  const map = useMap();
-  const isHoveringRef = useRef(false);
-  const sidebarActiveRef = useRef(sidebarActive);
-
-  // Keep ref in sync with latest prop value so event handlers always read fresh state
-  useEffect(() => {
-    sidebarActiveRef.current = sidebarActive;
-  });
-
-  // Register mouse enter/leave listeners once — handlers read refs to avoid stale closures
-  useEffect(() => {
-    const container = map.getContainer();
-
-    map.scrollWheelZoom.disable();
-
-    const handleMouseEnter = () => {
-      isHoveringRef.current = true;
-      if (!sidebarActiveRef.current) {
-        map.scrollWheelZoom.enable();
-      }
-    };
-
-    const handleMouseLeave = () => {
-      isHoveringRef.current = false;
-      map.scrollWheelZoom.disable();
-    };
-
-    container.addEventListener('mouseenter', handleMouseEnter);
-    container.addEventListener('mouseleave', handleMouseLeave);
-
-    return () => {
-      container.removeEventListener('mouseenter', handleMouseEnter);
-      container.removeEventListener('mouseleave', handleMouseLeave);
-    };
-  }, [map]);
-
-  // When sidebarActive changes, sync scroll wheel zoom state immediately
-  useEffect(() => {
-    if (sidebarActive) {
-      map.scrollWheelZoom.disable();
-    } else if (isHoveringRef.current) {
-      // Mouse is already inside the map — re-enable without requiring a mouse-out/in
-      map.scrollWheelZoom.enable();
-    }
-  }, [sidebarActive, map]);
-
-  return null;
 }
 
 export default App;

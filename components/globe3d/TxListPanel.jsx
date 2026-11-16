@@ -15,14 +15,15 @@ import {
 import { STATUS_META, STATUS_ORDER, formatDate, hasValidPosition } from '../../lib/globe3d/assetSummary';
 import { buildHierarchy, filterHierarchy } from '../../lib/assetHierarchy';
 import { cn } from '../../lib/utils';
+import { Combobox } from '../ui/combobox';
 
 const EXPANDED_STORAGE_KEY = 'g3d-txlist-expanded-v1';
 const VIEW_STORAGE_KEY = 'g3d-txlist-view-v1';
 
 const SORT_OPTIONS = [
-  { id: 'severity', label: 'Severity' },
-  { id: 'name', label: 'Name' },
-  { id: 'sample', label: 'Latest sample' },
+  { value: 'severity', label: 'Severity' },
+  { value: 'name', label: 'Name' },
+  { value: 'sample', label: 'Latest sample' },
 ];
 
 const stateKey = (state) => `s:${state}`;
@@ -430,20 +431,15 @@ export default function TxListPanel({
         </div>
 
         <div className="g3d-txlist-toolbar">
-          <label className="g3d-txlist-sort">
-            <span>Sort</span>
-            <select
+          <div className="g3d-txlist-sort">
+            <span aria-hidden="true">Sort</span>
+            <Combobox
+              className="g3d-txlist-sort-control"
               value={view.sort}
-              onChange={(event) => setView((current) => ({ ...current, sort: event.target.value }))}
-              aria-label="Sort transformers"
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={SORT_OPTIONS}
+              onValueChange={(sort) => setView((current) => ({ ...current, sort }))}
+            />
+          </div>
 
           <div className="g3d-segmented" role="group" aria-label="List layout">
             <button
