@@ -7,6 +7,7 @@ import {
   Lock,
   MapPin,
   Minus,
+  Moon,
   Plus,
   Rotate3d,
   Search,
@@ -15,6 +16,8 @@ import {
 } from 'lucide-react';
 import { MAP_SOURCES } from '../../lib/globe3d/mapSources';
 import { VISUAL_PRESETS } from '../../lib/globe3d/visualPresets';
+import { NIGHT_MODES } from '../../lib/globe3d/nightModes';
+import LightPollutionLegend from './LightPollutionLegend';
 import { hasValidPosition } from '../../lib/globe3d/assetSummary';
 import { cn } from '../../lib/utils';
 
@@ -191,6 +194,7 @@ export default function BottomDock({
   transformers,
   mapSource,
   visualPreset,
+  nightMode = 'lights',
   availableKeys,
   placeSearchEnabled = true,
   onSelectAsset,
@@ -198,6 +202,7 @@ export default function BottomDock({
   onCamera,
   onMapSourceChange,
   onVisualPresetChange,
+  onNightModeChange = () => {},
   onOpenKeys,
 }) {
   const [presetsOpen, setPresetsOpen] = useState(false);
@@ -233,8 +238,12 @@ export default function BottomDock({
     { id: 'zoomIn', label: 'Zoom in', icon: Plus },
   ];
 
+  const showFloatingLegend =
+    !presetsOpen && visualPreset === 'night' && (nightMode === 'pollution' || nightMode === 'pollutionCity');
+
   return (
     <div className="g3d-dock">
+      {showFloatingLegend ? <LightPollutionLegend compact className="g3d-dock-legend" /> : null}
       <LocationSearch
         transformers={transformers}
         placeSearchEnabled={placeSearchEnabled}
@@ -289,6 +298,33 @@ export default function BottomDock({
                 </button>
               ))}
             </div>
+
+            {visualPreset === 'night' ? (
+              <>
+                <p className="g3d-popover-label">
+                  <Moon aria-hidden="true" /> Night mode
+                </p>
+                <div className="g3d-night-modes" role="group" aria-label="Night mode">
+                  {NIGHT_MODES.map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      className={cn('g3d-night-mode', nightMode === mode.id && 'is-active')}
+                      aria-pressed={nightMode === mode.id}
+                      title={mode.hint}
+                      onClick={() => onNightModeChange(mode.id)}
+                    >
+                      <span className={cn('g3d-night-swatch', `g3d-night-swatch--${mode.id}`)} aria-hidden="true" />
+                      <strong>{mode.label}</strong>
+                      <small>{mode.hint}</small>
+                    </button>
+                  ))}
+                </div>
+                {nightMode === 'pollution' || nightMode === 'pollutionCity' ? (
+                  <LightPollutionLegend className="g3d-night-legend" />
+                ) : null}
+              </>
+            ) : null}
 
             <p className="g3d-popover-label">
               <Layers3 aria-hidden="true" /> Map source

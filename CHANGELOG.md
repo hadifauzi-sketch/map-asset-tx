@@ -1,5 +1,35 @@
 # Changelog
 
+## 5.3 - Earth at Night & Playable Rain Radar
+
+Version 5.3 adds two new ways to read the 3D globe: the Earth at night, with an
+estimated light-pollution view, and a rain radar you can play back over the
+past two hours.
+
+### Added
+
+- **Night visual preset** (replaces *Teal*) on the 3D globe's bottom dock, built from NASA VIIRS Black Marble city lights (GIBS WMTS, public, no key). It drapes imagery layers over the globe rather than using a shader, and offers four modes (`lib/globe3d/nightModes.js`):
+  - **Night** — city lights only.
+  - **Night + city** — lights glowing over the dimmed base map, with Esri roads and labels.
+  - **Light pollution** — estimated artificial sky glow, coloured like a light-pollution atlas (Pristine → Rural → Suburban → Urban).
+  - **Pollution + city** — the same glow over the base map with roads and labels; dark skies stay see-through.
+- The light-pollution view is computed in the browser from the Black Marble radiance: each light source is spread with two Gaussian kernels (~6 km and ~25 km) to approximate how sky glow travels. It is a visual estimate, not a modelled sky-brightness (mag/arcsec²) product. Tiles are built in a Web Worker (`components/globe3d/nightTiles.worker.js`, `lib/globe3d/nightTilePipeline.js`) with a main-thread fallback, and decoded source tiles are cached because GIBS sends no-cache headers.
+- **Light-pollution legend** (`components/globe3d/LightPollutionLegend.jsx`) in the preset popover, plus a compact floating copy above the dock while a pollution mode is on.
+- **Rain radar tab** on the 3D globe's right rail (`components/globe3d/RainRadarPanel.jsx`). The Rain radar layer now loads RainViewer's full ~2 hour frame list instead of the latest frame only:
+  - Time scrubber with play / pause, step back / forward and a *Live* button; playback loops and keeps running while the tab is collapsed.
+  - Opacity, smoothing, playback speed (Slow / Normal / Fast) and auto-refresh every 5 minutes. A failed background refresh keeps the frames already on screen.
+  - Radar intensity scale from light rain to extreme.
+  - Settings are saved with the other globe settings (`lib/globe3d/rainRadar.js`).
+
+### Changed
+
+- The *Active style* readout names the night mode when the Night preset is on.
+- The *Open tracker & filters* button was removed from the Data layers panel's Digital group; switching the Data centres layer on still opens the tracker.
+
+### Tests
+
+- `tests/nightModes.test.mjs` and `tests/rainRadar.test.mjs` cover the night-mode recipes and glow colour scale, and radar frame parsing, settings normalisation and frame indexing (176 tests pass).
+
 ## 5.2 - Faster Map & Floating Glass Sidebar
 
 Version 5.2 makes the 2D map faster to work with and gives the sidebar a

@@ -22,7 +22,6 @@ export default function DataLayersPanel({
   onToggleLayer,
   onBuildingStyleChange,
   onOpenKeys,
-  onOpenDataCentres,
 }) {
   const activeStyle = getBuildingStyle(buildingStyle);
   const buildingsUsable = Boolean(layers.buildings);
@@ -68,10 +67,6 @@ export default function DataLayersPanel({
               </div>
             );
           })}
-
-          {group.id === 'digital' ? <button type="button" className="g3d-wide-button" onClick={onOpenDataCentres}>
-            Open tracker &amp; filters
-          </button> : null}
 
           {group.id === 'world' ? (
             <div className={cn('g3d-style-block', !buildingsUsable && 'is-disabled')}>

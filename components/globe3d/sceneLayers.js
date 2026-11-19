@@ -8,8 +8,16 @@ import * as Cesium from 'cesium';
 import {
   fetchEarthquakes,
   fetchPowerPlants,
-  fetchRainRadarFrame,
+  fetchRainRadarFrames,
 } from '../../lib/globe3d/liveFeeds';
+import {
+  DEFAULT_RAIN_RADAR_SETTINGS,
+  RAIN_RADAR_MAX_LEVEL,
+  RAIN_RADAR_REFRESH_MS,
+  formatRainRadarTime,
+  rainRadarTileUrl,
+  resolveRainRadarIndex,
+} from '../../lib/globe3d/rainRadar';
 import { createGridLayers } from './gridLayers';
 import { countPlantsByFuel, describePowerPlant, fuelColor, fuelEntry, plantRadius } from '../../lib/powerPlants';
 import { createGlobePowerPlantLabels } from './powerPlantLabels';
@@ -48,12 +56,61 @@ function describeError(error) {
 // `isVisible(item)` (optional) decides each entity's `show`; call
 // updateVisibility() after the rule changes. `summarize(items)` adds extra
 // fields to the layer status (e.g. per-fuel counts).
-function createFeedLayer({ viewer, report, id, load, toEntity, describe, pollMs, onData, isVisible, summarize }) {
+function createFeedLayer({
+  viewer,
+  report,
+  id,
+  load,
+  toEntity,
+  describe,
+  pollMs,
+  onData,
+  isVisible,
+  summarize,
+  cullBeyondHorizon = false,
+}) {
   let dataSource = null;
-  const itemByEntity = new Map();
+  // entity -> { item, position }. Tracked whenever a layer filters or culls.
+  const entryByEntity = new Map();
+  const tracksEntities = Boolean(isVisible || cullBeyondHorizon);
   let controller = null;
   let timer = null;
   let active = false;
+  let removeHorizonListener = null;
+  const lastCameraPosition = new Cesium.Cartesian3();
+
+  // Worldwide feeds draw with depth testing disabled (so terrain never hides
+  // them); without this check, points on the far side of the Earth would show
+  // through the globe. Hide anything below the horizon instead.
+  function applyVisibility() {
+    if (!dataSource || !entryByEntity.size) {
+      return false;
+    }
+    const occluder = cullBeyondHorizon
+      ? new Cesium.EllipsoidalOccluder(viewer.scene.globe.ellipsoid, viewer.camera.positionWC)
+      : null;
+    let changed = false;
+    entryByEntity.forEach(({ item, position }, entity) => {
+      const show =
+        (!isVisible || isVisible(item)) && (!occluder || !position || occluder.isPointVisible(position));
+      if (entity.show !== show) {
+        entity.show = show;
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  function onPostRender() {
+    const cameraPosition = viewer.camera.positionWC;
+    if (Cesium.Cartesian3.equalsEpsilon(cameraPosition, lastCameraPosition, 0, 1)) {
+      return;
+    }
+    Cesium.Cartesian3.clone(cameraPosition, lastCameraPosition);
+    if (applyVisibility()) {
+      viewer.scene.requestRender();
+    }
+  }
 
   async function refresh(context) {
     controller?.abort();
@@ -67,6 +124,7 @@ function createFeedLayer({ viewer, report, id, load, toEntity, describe, pollMs,
       }
       if (result?.skip) {
         dataSource.entities.removeAll();
+        entryByEntity.clear();
         report(id, { state: 'hint', text: result.skip });
         viewer.scene.requestRender();
         return;
@@ -74,14 +132,15 @@ function createFeedLayer({ viewer, report, id, load, toEntity, describe, pollMs,
 
       dataSource.entities.suspendEvents();
       dataSource.entities.removeAll();
-      itemByEntity.clear();
+      entryByEntity.clear();
       result.forEach((item) => {
-        const entity = dataSource.entities.add(toEntity(item));
-        if (isVisible) {
-          entity.show = isVisible(item);
-          itemByEntity.set(entity, item);
+        const definition = toEntity(item);
+        const entity = dataSource.entities.add(definition);
+        if (tracksEntities) {
+          entryByEntity.set(entity, { item, position: definition.position });
         }
       });
+      applyVisibility();
       dataSource.entities.resumeEvents();
       onData?.(result);
       report(id, { state: 'ok', text: describe(result), count: result.length, ...summarize?.(result) });
@@ -99,6 +158,10 @@ function createFeedLayer({ viewer, report, id, load, toEntity, describe, pollMs,
       active = true;
       dataSource = new Cesium.CustomDataSource(`ref-${id}`);
       viewer.dataSources.add(dataSource);
+      if (cullBeyondHorizon) {
+        Cesium.Cartesian3.clone(Cesium.Cartesian3.ZERO, lastCameraPosition);
+        removeHorizonListener = viewer.scene.postRender.addEventListener(onPostRender);
+      }
       report(id, { state: 'loading', text: 'Loading…' });
       refresh(context);
       if (pollMs) {
@@ -112,11 +175,13 @@ function createFeedLayer({ viewer, report, id, load, toEntity, describe, pollMs,
         window.clearInterval(timer);
         timer = null;
       }
+      removeHorizonListener?.();
+      removeHorizonListener = null;
       if (dataSource) {
         viewer.dataSources.remove(dataSource, true);
         dataSource = null;
       }
-      itemByEntity.clear();
+      entryByEntity.clear();
       report(id, null);
       viewer.scene.requestRender();
     },
@@ -124,9 +189,7 @@ function createFeedLayer({ viewer, report, id, load, toEntity, describe, pollMs,
       if (!isVisible || !dataSource) {
         return;
       }
-      itemByEntity.forEach((item, entity) => {
-        entity.show = isVisible(item);
-      });
+      applyVisibility();
       viewer.scene.requestRender();
     },
     refresh,
@@ -197,6 +260,7 @@ export function createReferenceLayers(viewer, report, onPlantSelect) {
     viewer,
     report,
     id: 'earthquakes',
+    cullBeyondHorizon: true,
     load: (signal) => fetchEarthquakes(signal),
     describe: (items) => `${items.length} events`,
     toEntity: (quake) => {
@@ -225,50 +289,144 @@ export function createReferenceLayers(viewer, report, onPlantSelect) {
     },
   });
 
-  // Rain radar is an imagery overlay rather than a set of entities.
-  let radarLayer = null;
-  let radarController = null;
-  const rainRadar = {
-    async enable() {
-      // Keep this call's own signal: a quick off/on replaces radarController.
-      const { signal } = (radarController = new AbortController());
-      report('rainRadar', { state: 'loading', text: 'Loading…' });
-      try {
-        const frame = await fetchRainRadarFrame(signal);
-        if (signal.aborted) {
-          return;
-        }
-        radarLayer = viewer.imageryLayers.addImageryProvider(
-          new Cesium.UrlTemplateImageryProvider({
-            url: frame.url,
-            maximumLevel: 7,
-            credit: 'Radar © RainViewer',
-          })
-        );
-        radarLayer.alpha = 0.65;
-        report('rainRadar', {
-          state: 'ok',
-          text: frame.time
-            ? `Frame ${new Date(frame.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
-            : 'Latest frame',
-        });
-        viewer.scene.requestRender();
-      } catch (error) {
-        if (!signal.aborted) {
-          report('rainRadar', { state: 'error', text: describeError(error) });
-        }
+  const rainRadar = createRainRadarLayer(viewer, report);
+
+  return { powerPlants, ...createGridLayers(viewer, report), earthquakes, rainRadar };
+}
+
+/**
+ * Rain radar: an imagery overlay rather than entities. Each visited frame gets
+ * its own Cesium layer, kept but hidden when another frame is shown, so
+ * scrubbing and looped playback reuse tiles that are already loaded.
+ *
+ * Options come from the right-rail "Rain radar" tab via setOptions():
+ *   frameIndex (null = live), opacity, smooth, autoRefresh, refreshToken.
+ * Status reports carry the frame list so the tab can draw its time scrubber;
+ * they are sent only when the list changes, not on every played frame.
+ */
+function createRainRadarLayer(viewer, report) {
+  let options = { ...DEFAULT_RAIN_RADAR_SETTINGS, frameIndex: null, refreshToken: 0 };
+  let host = '';
+  let frames = [];
+  const layerByKey = new Map();
+  let controller = null;
+  let refreshTimer = null;
+  let active = false;
+
+  const keyFor = (frame) => `${frame.path}|${options.smooth ? 1 : 0}`;
+
+  function removeLayers(keepKeys) {
+    layerByKey.forEach((layer, key) => {
+      if (keepKeys?.has(key)) {
+        return;
       }
+      viewer.imageryLayers.remove(layer, true);
+      layerByKey.delete(key);
+    });
+  }
+
+  function apply() {
+    if (!active || !frames.length || viewer.isDestroyed()) {
+      return;
+    }
+    const frame = frames[resolveRainRadarIndex(frames, options.frameIndex)];
+    const key = keyFor(frame);
+    let layer = layerByKey.get(key);
+    if (!layer) {
+      layer = viewer.imageryLayers.addImageryProvider(
+        new Cesium.UrlTemplateImageryProvider({
+          url: rainRadarTileUrl(host, frame.path, options),
+          maximumLevel: RAIN_RADAR_MAX_LEVEL,
+          credit: 'Radar © RainViewer',
+        })
+      );
+      layerByKey.set(key, layer);
+    }
+    layerByKey.forEach((candidate) => {
+      candidate.show = candidate === layer;
+    });
+    layer.alpha = options.opacity;
+    viewer.scene.requestRender();
+  }
+
+  function reportFrames() {
+    const latest = frames[resolveRainRadarIndex(frames, null)];
+    report('rainRadar', {
+      state: 'ok',
+      text: `${frames.length} frames · latest ${formatRainRadarTime(latest?.time)}`,
+      count: frames.length,
+      frames: frames.map(({ time, nowcast }) => ({ time, nowcast })),
+      fetchedAt: Date.now(),
+    });
+  }
+
+  async function load() {
+    controller?.abort();
+    const { signal } = (controller = new AbortController());
+    try {
+      const result = await fetchRainRadarFrames(signal);
+      if (!active || signal.aborted) {
+        return;
+      }
+      host = result.host;
+      frames = result.frames;
+      // Frames that rolled out of RainViewer's ~2 h window are dropped.
+      removeLayers(new Set(frames.map(keyFor)));
+      reportFrames();
+      apply();
+    } catch (error) {
+      if (!active || signal.aborted) {
+        return;
+      }
+      if (frames.length) {
+        // A failed background refresh keeps the frames already on screen.
+        console.warn('Rain radar refresh failed:', error);
+        return;
+      }
+      report('rainRadar', { state: 'error', text: describeError(error) });
+    }
+  }
+
+  function syncRefreshTimer() {
+    const wanted = active && options.autoRefresh;
+    if (wanted && !refreshTimer) {
+      refreshTimer = window.setInterval(load, RAIN_RADAR_REFRESH_MS);
+    } else if (!wanted && refreshTimer) {
+      window.clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+  }
+
+  return {
+    enable() {
+      active = true;
+      report('rainRadar', { state: 'loading', text: 'Loading…' });
+      syncRefreshTimer();
+      load();
     },
     disable() {
-      radarController?.abort();
-      if (radarLayer) {
-        viewer.imageryLayers.remove(radarLayer, true);
-        radarLayer = null;
-      }
+      active = false;
+      controller?.abort();
+      syncRefreshTimer();
+      removeLayers();
+      frames = [];
       report('rainRadar', null);
       viewer.scene.requestRender();
     },
+    setOptions(next = {}) {
+      const smoothChanged = next.smooth !== undefined && next.smooth !== options.smooth;
+      const refreshRequested = next.refreshToken !== undefined && next.refreshToken !== options.refreshToken;
+      options = { ...options, ...next };
+      if (smoothChanged) {
+        // Different tiles: drop the cached layers and rebuild on demand.
+        removeLayers();
+      }
+      syncRefreshTimer();
+      if (refreshRequested && active) {
+        load();
+      } else {
+        apply();
+      }
+    },
   };
-
-  return { powerPlants, ...createGridLayers(viewer, report), earthquakes, rainRadar };
 }

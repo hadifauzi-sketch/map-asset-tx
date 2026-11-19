@@ -5,6 +5,14 @@ import { STATUS_META, STATUS_ORDER, hasValidPosition } from '../../lib/globe3d/a
 import { getBuildingStyle } from '../../lib/globe3d/buildingStyles';
 import { getMapSource } from '../../lib/globe3d/mapSources';
 import { getVisualPreset } from '../../lib/globe3d/visualPresets';
+import {
+  BLACK_MARBLE_CREDIT,
+  BLACK_MARBLE_MAX_LEVEL,
+  BLACK_MARBLE_TILE_URL,
+  CITY_OVERLAYS,
+  nightModeRecipe,
+} from '../../lib/globe3d/nightModes';
+import { NightGlowImageryProvider } from './nightGlowProvider';
 import { CLUSTER_SIZE, PIN_SIZE, getClusterImage, getPinImage } from './sceneGraphics';
 import { createReferenceLayers } from './sceneLayers';
 import { describePowerPlant } from '../../lib/powerPlants';
@@ -32,6 +40,17 @@ function buildImageryProvider(definition) {
     maximumLevel: definition.maximumLevel,
     credit: definition.credit,
   });
+}
+
+/** One black pixel stretched over the globe; its layer alpha dims the base map. */
+function createDimmerProvider() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#000';
+  context.fillRect(0, 0, 1, 1);
+  return new Cesium.SingleTileImageryProvider({ url: canvas.toDataURL(), tileWidth: 1, tileHeight: 1 });
 }
 
 /** Circle of [lon, lat] pairs around a point, radius in metres. */
@@ -105,8 +124,10 @@ const CesiumScene = forwardRef(function CesiumScene(
     dataCentreTracker,
     layers,
     hiddenFuels,
+    rainRadarOptions,
     mapSource,
     visualPreset,
+    nightMode,
     buildingStyle,
     ionToken,
     googleKey,
@@ -606,29 +627,64 @@ const CesiumScene = forwardRef(function CesiumScene(
     viewer.scene.requestRender();
   }, [viewer, layers.lighting]);
 
-  // ── Visual preset (post-process) ────────────────────────────────────────
+  // ── Visual preset (post-process shader and/or imagery layer) ────────────
   useEffect(() => {
     if (!viewer) {
       return undefined;
     }
     const preset = getVisualPreset(visualPreset);
-    if (!preset.shader) {
-      viewer.scene.requestRender();
-      return undefined;
+
+    // The Night preset drapes imagery layers over the base map, bottom to top:
+    // optional dimmer, the night layer for the chosen mode, roads, labels.
+    // Added on top of the stack; the base-map effect inserts at index 0/1, so a
+    // later base-map switch keeps these layers above it.
+    // (ImageryLayerCollection.add() returns undefined, so keep our own refs.)
+    const imageryLayers = [];
+    const addLayer = (layer, alpha = 1) => {
+      layer.alpha = alpha;
+      viewer.imageryLayers.add(layer);
+      imageryLayers.push(layer);
+    };
+    if (preset.night) {
+      const recipe = nightModeRecipe(nightMode);
+      if (recipe.dim > 0) {
+        addLayer(new Cesium.ImageryLayer(createDimmerProvider()), recipe.dim);
+      }
+      addLayer(
+        new Cesium.ImageryLayer(
+          recipe.kind === 'lights'
+            ? buildImageryProvider({
+                url: BLACK_MARBLE_TILE_URL,
+                maximumLevel: BLACK_MARBLE_MAX_LEVEL,
+                credit: BLACK_MARBLE_CREDIT,
+              })
+            : new NightGlowImageryProvider({ kind: recipe.kind })
+        ),
+        recipe.alpha
+      );
+      CITY_OVERLAYS.forEach((overlay) => {
+        const alpha = overlay.id === 'roads' ? recipe.roadsAlpha : recipe.labels ? 1 : 0;
+        if (alpha > 0) {
+          addLayer(new Cesium.ImageryLayer(buildImageryProvider(overlay)), alpha);
+        }
+      });
     }
 
-    const stage = viewer.scene.postProcessStages.add(
-      new Cesium.PostProcessStage({ name: `tx-preset-${preset.id}-${Date.now()}`, fragmentShader: preset.shader })
-    );
+    const stage = preset.shader
+      ? viewer.scene.postProcessStages.add(
+          new Cesium.PostProcessStage({ name: `tx-preset-${preset.id}-${Date.now()}`, fragmentShader: preset.shader })
+        )
+      : null;
     viewer.scene.requestRender();
 
     return () => {
       if (!viewer.isDestroyed()) {
-        viewer.scene.postProcessStages.remove(stage);
+        if (stage) viewer.scene.postProcessStages.remove(stage);
+        imageryLayers.forEach((layer) => viewer.imageryLayers.remove(layer, true));
         viewer.scene.requestRender();
       }
     };
-  }, [viewer, visualPreset]);
+  }, [viewer, visualPreset, nightMode]);
 
   // ── Transformer pins ────────────────────────────────────────────────────
   useEffect(() => {
@@ -903,6 +959,11 @@ const CesiumScene = forwardRef(function CesiumScene(
   useEffect(() => {
     referenceRef.current?.powerPlants?.setHiddenFuels(hiddenFuels || []);
   }, [viewer, hiddenFuels]);
+
+  // Rain radar tab: frame, opacity, smoothing, auto-refresh.
+  useEffect(() => {
+    referenceRef.current?.rainRadar?.setOptions(rainRadarOptions || {});
+  }, [viewer, rainRadarOptions]);
 
   return (
     <>

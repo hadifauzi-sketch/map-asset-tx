@@ -4,6 +4,13 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 5.3 - Earth at Night & Playable Rain Radar
+
+- **Night preset on the 3D globe** (replaces Teal), from NASA VIIRS Black Marble city lights, with four modes: *Night*, *Night + city* (roads and labels), *Light pollution* (estimated sky glow, atlas-style colours with a legend) and *Pollution + city*. Glow tiles are built in a Web Worker.
+- **Rain radar tab:** plays back the past ~2 hours of RainViewer radar with a time scrubber, play / pause and *Live*, plus opacity, smoothing, speed and 5-minute auto-refresh.
+
+---
+
 ## Version 5.2 - Faster Map & Floating Glass Sidebar
 
 - **Faster 2D map:** the Leaflet map lives in a memoised `components/MapView.jsx`, so opening dialogs, notices, tool panels or the sidebar no longer redraws every marker. `App()` is split into feature hooks: `useLstTool`, `useWeatherTool`, `useDraggablePanel`, `useCompanyBoundaries` and `useFloorPlans` (all in `lib/`). `App.jsx` went from 4,576 to 3,610 lines.
@@ -33,7 +40,7 @@ Until now the map answered *where is this transformer*. Version 5.0 shows what s
 - **3D button** beside Map / Satellite / Hybrid opens the fleet on a CesiumJS globe. It receives the same filtered transformers and DGA status colours as the 2D map, so owner filters, access rules and the gas limit standard all carry over. See `GLOBE_3D_GUIDE.md`.
 - **Tx list** on the left is a compact State → Company → Area → Transformer tree with status counts on every branch. **DGA & oil result** on the right shows the latest gases against their limits, trend sparklines, the Duval fault and IEC 60422 oil quality. *Open full details* opens the usual asset record.
 - **3D buildings for Malaysia.** About 1.58 million OpenStreetMap buildings stream from the app itself, so no Cesium ion token is needed. They can be coloured by height, type, industrial use, or distance from the selected transformer.
-- **Bottom dock** with place, Tx and coordinate search, camera controls, visual presets (Normal, Teal, NVG, FLIR, CRT, Noir) and map source (Esri, OSM, offline, Bing, Google Photorealistic 3D).
+- **Bottom dock** with place, Tx and coordinate search, camera controls, visual presets (Normal, Night, NVG, FLIR, CRT, Noir) and map source (Esri, OSM, offline, Bing, Google Photorealistic 3D).
 - **API keys** dialog for the Cesium ion token and Google Maps key, stored only in your browser.
 
 ### Power grid and power plants
@@ -700,8 +707,8 @@ MIT License - Personal Use
 
 ---
 
-**Version**: 5.2 (Supabase Edition)
-**Last Updated**: September 2026
+**Version**: 5.3 (Supabase Edition)
+**Last Updated**: November 2026
 **Database**: PostgreSQL via Supabase  
 **Storage**: Supabase Storage  
 **Status**: Personal Project

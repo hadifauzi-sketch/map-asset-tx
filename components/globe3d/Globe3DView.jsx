@@ -1,5 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
+  CloudRain,
   Globe2,
   KeyRound,
   Layers,
@@ -18,6 +19,8 @@ import { STATUS_META, STATUS_ORDER, hasValidPosition } from '../../lib/globe3d/a
 import { getMapSource } from '../../lib/globe3d/mapSources';
 import { loadSettings, resolveApiKey, saveSettings } from '../../lib/globe3d/settingsStore';
 import { getVisualPreset } from '../../lib/globe3d/visualPresets';
+import { getNightMode } from '../../lib/globe3d/nightModes';
+import { DEFAULT_RAIN_RADAR_SETTINGS, resolveRainRadarIndex } from '../../lib/globe3d/rainRadar';
 import { cn } from '../../lib/utils';
 import PowerPlantLegend from '../PowerPlantLegend';
 import { useHiddenFuels } from '../../lib/hiddenFuelsStore';
@@ -28,6 +31,7 @@ import ApiKeysDialog from './ApiKeysDialog';
 import BottomDock from './BottomDock';
 import CesiumScene from './CesiumScene';
 import DataLayersPanel from './DataLayersPanel';
+import RainRadarPanel from './RainRadarPanel';
 import ResultPanel from './ResultPanel';
 import TxListPanel from './TxListPanel';
 import './globe3d.css';
@@ -136,8 +140,13 @@ export default function Globe3DView({
   const isWide = typeof window === 'undefined' || window.innerWidth >= 1100;
   const [leftOpen, setLeftOpen] = useState(isWide);
   const [rightOpen, setRightOpen] = useState(isWide);
-  // Right panel tab when the data centre tracker isn't showing: 'result' | 'plants'.
+  // Right panel tab when the data centre tracker isn't showing: 'result' | 'plants' | 'radar'.
   const [rightTab, setRightTab] = useState('result');
+  // Rain radar playback: frame index (null = live) and play state. Kept here,
+  // not in the tab, so the animation keeps running while the tab is collapsed.
+  const [radarFrameIndex, setRadarFrameIndex] = useState(null);
+  const [radarPlaying, setRadarPlaying] = useState(false);
+  const [radarRefreshToken, setRadarRefreshToken] = useState(0);
   // Fuel filter shared with the 2D map legend.
   const [hiddenFuels, setHiddenFuels] = useHiddenFuels();
   const [keysOpen, setKeysOpen] = useState(false);
@@ -189,6 +198,40 @@ export default function Globe3DView({
   };
   const showPlantsPanel = rightOpen && !showDataCentrePanel && rightTab === 'plants';
   const showResultPanel = rightOpen && !showDataCentrePanel && rightTab === 'result';
+  const showRadarPanel = rightOpen && !showDataCentrePanel && rightTab === 'radar';
+
+  // ── Rain radar ──────────────────────────────────────────────────────────
+  const radarOn = Boolean(settings.layers?.rainRadar);
+  const radarSettings = settings.rainRadar || DEFAULT_RAIN_RADAR_SETTINGS;
+  const radarFrames = layerStatus.rainRadar?.frames;
+  const rainRadarOptions = useMemo(
+    () => ({ ...radarSettings, frameIndex: radarFrameIndex, refreshToken: radarRefreshToken }),
+    [radarSettings, radarFrameIndex, radarRefreshToken]
+  );
+  const patchRadarSettings = (patch) =>
+    setSettings((current) => ({
+      ...current,
+      rainRadar: { ...(current.rainRadar || DEFAULT_RAIN_RADAR_SETTINGS), ...patch },
+    }));
+
+  // Switching the layer off stops playback and returns to live.
+  useEffect(() => {
+    if (!radarOn) {
+      setRadarPlaying(false);
+      setRadarFrameIndex(null);
+    }
+  }, [radarOn]);
+
+  // Looped playback through the frame list.
+  useEffect(() => {
+    if (!radarPlaying || !radarOn || !radarFrames || radarFrames.length < 2) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      setRadarFrameIndex((current) => (resolveRainRadarIndex(radarFrames, current) + 1) % radarFrames.length);
+    }, radarSettings.speedMs);
+    return () => window.clearInterval(timer);
+  }, [radarPlaying, radarOn, radarFrames, radarSettings.speedMs]);
 
   const safeStatusById = useMemo(() => statusById || new Map(), [statusById]);
   const selectedTransformer = useMemo(
@@ -282,6 +325,8 @@ export default function Globe3DView({
 
   const activeSource = getMapSource(settings.mapSource);
   const activePreset = getVisualPreset(settings.visualPreset);
+  const nightMode = getNightMode(settings.nightMode);
+  const activePresetLabel = activePreset.night ? nightMode.label : activePreset.label;
   const sourceError = layerStatus.mapSource?.state === 'error' ? layerStatus.mapSource.text : '';
 
   return (
@@ -305,8 +350,10 @@ export default function Globe3DView({
         floorPlans={floorPlans}
         layers={settings.layers}
         hiddenFuels={hiddenFuels}
+        rainRadarOptions={rainRadarOptions}
         mapSource={settings.mapSource}
         visualPreset={settings.visualPreset}
+        nightMode={nightMode.id}
         buildingStyle={settings.buildingStyle}
         ionToken={ionToken}
         googleKey={googleKey}
@@ -347,7 +394,7 @@ export default function Globe3DView({
         <div className="g3d-top-actions">
           <span className="g3d-style-readout" aria-hidden="true">
             <small>Active style</small>
-            {activePreset.label} · {activeSource.label}
+            {activePresetLabel} · {activeSource.label}
           </span>
           <button type="button" className="g3d-icon-button" onClick={() => setKeysOpen(true)} aria-label="API keys" title="API keys">
             <KeyRound aria-hidden="true" />
@@ -434,7 +481,6 @@ export default function Globe3DView({
                     if (next) openDataCentres();
                   } else setSettings((current) => ({ ...current, layers: { ...current.layers, [layerId]: next } }));
                 }}
-                onOpenDataCentres={openDataCentres}
                 onBuildingStyleChange={(buildingStyle) => patchSettings({ buildingStyle })}
                 onOpenKeys={() => setKeysOpen(true)}
               />
@@ -444,7 +490,7 @@ export default function Globe3DView({
       </aside>
 
       {/* ── Right: DGA + oil result ─────────────────────────────────────── */}
-      <aside className={cn('g3d-side g3d-side-right', !rightOpen && 'is-collapsed')} aria-label={showDataCentrePanel ? 'Data centre tracker' : rightTab === 'plants' ? 'Power plants' : 'DGA and oil result'}>
+      <aside className={cn('g3d-side g3d-side-right', !rightOpen && 'is-collapsed')} aria-label={showDataCentrePanel ? 'Data centre tracker' : rightTab === 'plants' ? 'Power plants' : rightTab === 'radar' ? 'Rain radar' : 'DGA and oil result'}>
         {rightOpen && showDataCentrePanel ? <div className="g3d-panel g3d-dc-panel">
           <DataCentreTrackerPanel tracker={dataCentreTracker}
             onClose={() => dataCentreTracker.setSettings((current) => ({ ...current, panelOpen: false }))}
@@ -499,6 +545,21 @@ export default function Globe3DView({
             </div>
           </div>
         ) : null}
+        {showRadarPanel ? (
+          <RainRadarPanel
+            enabled={radarOn}
+            status={layerStatus.rainRadar}
+            frameIndex={radarFrameIndex}
+            playing={radarPlaying}
+            settings={radarSettings}
+            onEnable={() => setSettings((current) => ({ ...current, layers: { ...current.layers, rainRadar: true } }))}
+            onFrameChange={setRadarFrameIndex}
+            onPlayingChange={setRadarPlaying}
+            onSettingsChange={patchRadarSettings}
+            onRefresh={() => setRadarRefreshToken((token) => token + 1)}
+            onClose={() => setRightOpen(false)}
+          />
+        ) : null}
         {showResultPanel ? (
           <div className="g3d-panel">
             <div className="g3d-panel-header">
@@ -550,6 +611,16 @@ export default function Globe3DView({
             onClick={() => toggleRightTab('plants')}
           >
             <Factory aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={cn('g3d-rail-button', showRadarPanel && 'is-active', radarPlaying && 'is-busy')}
+            aria-pressed={showRadarPanel}
+            aria-label="Rain radar time and settings"
+            title={radarPlaying ? 'Rain radar (playing)' : 'Rain radar'}
+            onClick={() => toggleRightTab('radar')}
+          >
+            <CloudRain aria-hidden="true" />
           </button>
         </nav>
       </aside>
@@ -610,6 +681,8 @@ export default function Globe3DView({
         onCamera={handleCameraCommand}
         onMapSourceChange={(mapSource) => patchSettings({ mapSource })}
         onVisualPresetChange={(visualPreset) => patchSettings({ visualPreset })}
+        nightMode={nightMode.id}
+        onNightModeChange={(id) => patchSettings({ nightMode: id })}
         onOpenKeys={() => setKeysOpen(true)}
       />
 
