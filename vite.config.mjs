@@ -10,10 +10,14 @@ import obfuscator from 'vite-plugin-javascript-obfuscator';
 const CESIUM_SOURCE = 'node_modules/cesium/Build/Cesium';
 const CESIUM_BASE_URL = 'cesium';
 
-// Anti-copy hardening is ON for production builds by default. Disable with
-// OBFUSCATE=0 (e.g. to debug a minified-but-readable build, or if a browser
-// smoke-test ever surfaces a runtime regression).
-const OBFUSCATE = process.env.OBFUSCATE !== '0';
+// JS obfuscation is OPT-IN (OBFUSCATE=1), not on by default. The obfuscator
+// runs per-build with random string-array shuffling and can non-deterministically
+// mangle dynamic import() specifiers, which breaks Vite code-splitting (lazy
+// chunks 404 at runtime — seen on the v5.4 deploy). Terser minification, console
+// stripping, no source maps and the copyright banner below stay on always and
+// are safe. Only enable obfuscation after a `vite preview` smoke-test confirms
+// lazy-loaded views (3D globe, transformer modals) still load.
+const OBFUSCATE = process.env.OBFUSCATE === '1';
 
 // Short copyright banner prepended to every emitted JS chunk. A visible claim
 // of ownership — it does not stop copying, but it removes any "I didn't know"
