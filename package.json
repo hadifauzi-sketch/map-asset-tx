@@ -1,8 +1,10 @@
 {
   "name": "transformer-asset-map",
-  "version": "5.3.0",
+  "version": "5.4.0",
   "description": "Transformer asset management with Supabase PostgreSQL backend and cloud storage",
   "private": true,
+  "license": "UNLICENSED",
+  "author": "ChM. Ts. Hadi Fauzi",
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -31,7 +33,9 @@
     "@tailwindcss/vite": "^4.2.2",
     "@vitejs/plugin-react": "^4.2.1",
     "tailwindcss": "^4.2.2",
-    "vite": "^5.0.0"
+    "terser": "^5.51.4",
+    "vite": "^5.0.0",
+    "vite-plugin-javascript-obfuscator": "^3.1.0"
   },
   "scripts": {
     "dev": "vite",
@@ -51,7 +55,10 @@
     "data:centres:malaysia": "node scripts/build-malaysia-data-centres.mjs",
     "globe:grid": "node scripts/build-power-grid.mjs",
     "grid:download": "node scripts/download-power-equipment.mjs && node scripts/build-power-grid.mjs",
-    "globe:buildings": "python scripts/buildings3d/extract_buildings.py data/osm/malaysia.osm.pbf data/osm/buildings-extract.npz && python scripts/buildings3d/build_tileset.py data/osm/buildings-extract.npz public/data/buildings3d",
+    "globe:buildings": "python scripts/buildings3d/extract_buildings.py data/osm/malaysia.osm.pbf data/osm/buildings-extract.npz && python scripts/buildings3d/build_tileset.py data/osm/buildings-extract.npz public/data/buildings3d --dem data/dem",
+    "globe:buildings:tiles": "python scripts/buildings3d/build_tileset.py data/osm/buildings-extract.npz public/data/buildings3d --dem data/dem",
+    "globe:terrain": "python scripts/terrain/build_terrain.py data/dem public/data/terrain",
+    "globe:terrain-dem": "python scripts/terrain/build_terrain_dem.py data/dem public/data/terrain-dem",
     "ext:sync": "node scripts/sync-firefox-extension.mjs",
     "ext:check": "node scripts/sync-firefox-extension.mjs --check",
     "ext:xpi": "node scripts/pack-firefox-xpi.mjs"

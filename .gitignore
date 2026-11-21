@@ -58,6 +58,10 @@ supabase/.temp
 data/osm/
 data/3d data/
 public/data/buildings3d/
+# Copernicus GLO-30 source tiles + offline terrain (rebuild with `npm run globe:terrain`)
+data/dem/
+public/data/terrain/
+public/data/terrain-dem/
 
 # Secrets kept on disk only
 transformer_asset_map_api_key.txt
@@ -71,3 +75,4 @@ graphify-out/
 public/data/Southeast_Asia_Power_Map/
 public/data/Southeast_Asia_Power_Map_All_Countries.zip
 public/data/AGI_HQ.kmz
+__pycache__/

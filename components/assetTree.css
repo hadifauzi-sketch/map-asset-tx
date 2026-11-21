@@ -5,6 +5,7 @@
 
 .atree-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
@@ -13,6 +14,41 @@
 .atree-head-text {
   min-width: 0;
   flex: 1;
+}
+
+/* Sort row lives inside the header card, on its own full-width line. */
+.atree-sort {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+.atree-sort-label {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.atree-sort-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.atree-sort-control [role='combobox'] {
+  height: 30px;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.atree-sort-control [role='combobox'] svg {
+  width: 14px;
+  height: 14px;
 }
 
 .atree-title {

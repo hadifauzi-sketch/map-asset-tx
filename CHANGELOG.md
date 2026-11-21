@@ -1,5 +1,40 @@
 # Changelog
 
+## 5.4 - Secure Sign-in & Locked-down Database
+
+Version 5.4 closes a security gap: the database used to accept reads and writes
+from anyone holding the public Supabase key, so the sign-in screen did not
+actually protect the data. Sign-in now runs on Supabase Auth and the database
+itself enforces who can see and change what. Users keep their usernames and
+passwords.
+
+### Security
+
+- **Sign-in moved to Supabase Auth** (`components/Authentic/sign-in.jsx`, `lib/supabaseClient.js`), behind the `VITE_USE_SUPABASE_AUTH` flag. Every request now carries the signed-in user's JWT.
+- **Automatic account move, no new passwords.** On a user's first sign-in, `migrate_legacy_login` checks the password against the legacy account and, if it matches, creates the Supabase Auth login with the same password (bcrypt). With the flag off, the legacy login pre-creates it in the background.
+- **User management stays in sync:** `admin_create_user` creates the login, `admin_set_password` updates it, `admin_set_active` bans / unbans it and `admin_delete_user` removes it.
+- **Row-level security replaces the open policies.** Every `USING (true)` / dashboard "for all users" policy on `transformers`, `oil_tests`, `documents`, `floor_plans`, `asset_interventions`, `company_boundaries` and `weather_observations` was dropped. New policies key off `auth.uid()` and `user_asset_permissions`: admins see everything, users see and edit only granted transformers, viewers are read-only. The anonymous role has no table access.
+- **Admin RPCs no longer trust a client-supplied admin id.** `_is_admin()` now checks the signed-in user, which secures every `admin_*` function at once.
+- Migrations: `20261121000001_supabase_auth_link`, `20261121000002_supabase_auth_auto_provision`, `20261121000003_supabase_auth_lockdown` (apply last). Emergency rollback: `supabase/rollback/20261121_restore_legacy_login.sql`. Runbook: `MIGRATION_SUPABASE_AUTH.md`.
+
+### Code protection
+
+- Production builds use terser with `console` / `debugger` stripped, no source maps, and conservative `javascript-obfuscator` (string-array encoding, mangled names) on app code only — React, Cesium, Supabase and Leaflet are untouched. Set `OBFUSCATE=0` to build without it.
+- Copyright banner on every JS chunk, proprietary `LICENSE`, `"license": "UNLICENSED"` in `package.json`.
+
+### Added
+
+- **Asset hierarchy sort** in the hierarchy header card: *Severity*, *Name* or *Latest sample*, applied at every level (state, company, area, transformer) and remembered in the browser (`sortHierarchy` in `lib/assetHierarchy.js`).
+- **Offline terrain** switch on the 3D globe: Copernicus GLO-30 terrain (`npm run globe:terrain`, `scripts/terrain/`) with the local OSM 3D buildings, used automatically when no Cesium ion token is set.
+
+### Fixed
+
+- 3D buildings no longer float above the ground when terrain is turned off.
+
+### Tests
+
+- `tests/assetHierarchy.test.mjs` covers hierarchy sorting.
+
 ## 5.3 - Earth at Night & Playable Rain Radar
 
 Version 5.3 adds two new ways to read the 3D globe: the Earth at night, with an

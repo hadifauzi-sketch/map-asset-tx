@@ -413,6 +413,16 @@ body {
     background: var(--glass-fill-hover);
   }
 
+  .app-frame .sidebar-shell .atree-sort-control [role='combobox'] {
+    border-color: var(--glass-border);
+    background: var(--glass-fill);
+    box-shadow: none;
+  }
+
+  .app-frame .sidebar-shell .atree-sort-control [role='combobox']:hover {
+    background: var(--glass-fill-hover);
+  }
+
   /* Each state group (state row + everything expanded under it) is one glass
      card, so expanded companies / areas / transformers never sit on the bare
      map. */

@@ -4,6 +4,15 @@ A comprehensive cloud-based transformer substation asset management application 
 
 ---
 
+## Version 5.4 - Secure Sign-in & Locked-down Database
+
+- **Supabase Auth sign-in:** users keep their usernames and passwords and are moved to Supabase Auth automatically on first sign-in. *Add user*, *Reset password*, *Disable* and *Delete* keep the login in sync.
+- **Database-enforced access:** row-level security keyed to the signed-in user replaces the old open policies. Each user sees only the transformers granted to them, viewers are read-only, and admin actions verify the real signed-in user. Rollout and rollback steps are in `MIGRATION_SUPABASE_AUTH.md`.
+- **Code protection:** obfuscated production bundle, no `console` output or source maps, copyright banner and a proprietary `LICENSE`.
+- **Asset hierarchy sort** (Severity / Name / Latest sample) and an **Offline terrain** switch on the 3D globe (Copernicus GLO-30 + local OSM buildings for Malaysia).
+
+---
+
 ## Version 5.3 - Earth at Night & Playable Rain Radar
 
 - **Night preset on the 3D globe** (replaces Teal), from NASA VIIRS Black Marble city lights, with four modes: *Night*, *Night + city* (roads and labels), *Light pollution* (estimated sky glow, atlas-style colours with a legend) and *Pollution + city*. Glow tiles are built in a Web Worker.

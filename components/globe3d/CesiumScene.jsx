@@ -53,6 +53,16 @@ function createDimmerProvider() {
   return new Cesium.SingleTileImageryProvider({ url: canvas.toDataURL(), tileWidth: 1, tileHeight: 1 });
 }
 
+// Offline terrain built by `npm run globe:terrain` (Copernicus GLO-30, Malaysia).
+const LOCAL_TERRAIN_URL = `${import.meta.env.BASE_URL}data/terrain`;
+
+/** 'ion' → Cesium World Terrain; 'local' → the offline Copernicus terrain. */
+function createTerrainProvider(source) {
+  return source === 'ion'
+    ? Cesium.createWorldTerrainAsync()
+    : Cesium.CesiumTerrainProvider.fromUrl(LOCAL_TERRAIN_URL);
+}
+
 /** Circle of [lon, lat] pairs around a point, radius in metres. */
 function circlePositions(position, radiusM, steps = 72) {
   const latitude = Number(position[0]);
@@ -496,27 +506,42 @@ const CesiumScene = forwardRef(function CesiumScene(
   }, [viewer, mapSource, ionToken, googleKey]);
 
   // ── Terrain ─────────────────────────────────────────────────────────────
+  // With a Cesium ion token: Cesium World Terrain. Without one: the offline
+  // Copernicus GLO-30 terrain in public/data/terrain (npm run globe:terrain).
+  // The "Offline terrain" switch forces the local pair even with a token.
+  // Each pairs with the 3D buildings source built for it (see below).
+  const useOfflineSources = !ionToken || Boolean(layers.offlineTerrain);
+  const terrainSource = useOfflineSources ? 'local' : 'ion';
   useEffect(() => {
     if (!viewer) {
       return undefined;
     }
 
     let cancelled = false;
-    if (layers.terrain && ionToken) {
+    if (layers.terrain) {
       report('terrain', { state: 'loading', text: 'Loading…' });
-      Cesium.createWorldTerrainAsync()
+      createTerrainProvider(terrainSource)
         .then((provider) => {
           if (cancelled || viewer.isDestroyed()) {
             return;
           }
           viewer.terrainProvider = provider;
-          report('terrain', { state: 'ok', text: 'Active' });
+          report('terrain', {
+            state: 'ok',
+            text: terrainSource === 'ion' ? 'Cesium World Terrain · active' : 'Offline · Copernicus GLO-30',
+          });
           viewer.scene.requestRender();
         })
         .catch((error) => {
-          console.error('World terrain failed to load:', error);
+          console.error('Terrain failed to load:', error);
           if (!cancelled) {
-            report('terrain', { state: 'error', text: 'Failed — check the Cesium ion token' });
+            report('terrain', {
+              state: 'error',
+              text:
+                terrainSource === 'ion'
+                  ? 'Failed — check the Cesium ion token'
+                  : 'Offline terrain missing — run npm run globe:terrain',
+            });
           }
         });
     } else {
@@ -529,15 +554,16 @@ const CesiumScene = forwardRef(function CesiumScene(
         viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
       }
     };
-  }, [viewer, layers.terrain, ionToken]);
+  }, [viewer, layers.terrain, terrainSource]);
 
   // ── 3D buildings ────────────────────────────────────────────────────────
   // With a Cesium ion token: Cesium OSM Buildings (worldwide, terrain-aware).
-  // Without one: the local Malaysia tileset in public/data/buildings3d, built
-  // from OpenStreetMap by scripts/buildings3d (sits on the ellipsoid, which is
-  // what the globe uses when there is no ion terrain).
+  // Without one, or with "Offline terrain" on: the local Malaysia tileset in
+  // public/data/buildings3d, built
+  // from OpenStreetMap by scripts/buildings3d. Built with --dem it sits on the
+  // offline Copernicus terrain; otherwise on the bare ellipsoid (0 m).
   const buildingsEnabled = Boolean(layers.buildings && getMapSource(mapSource).kind !== 'google3d');
-  const buildingsSource = ionToken ? 'ion' : 'local';
+  const buildingsSource = useOfflineSources ? 'local' : 'ion';
   useEffect(() => {
     if (!viewer || !buildingsEnabled) {
       report('buildings', null);
@@ -574,7 +600,9 @@ const CesiumScene = forwardRef(function CesiumScene(
           text:
             buildingsSource === 'ion'
               ? 'Cesium OSM Buildings · click a building'
-              : 'Local OSM tiles · zoom in under ~7 km',
+              : tileset.properties?.ground === 'copernicus-glo30'
+                ? 'Local OSM tiles on offline terrain · zoom in under ~7 km'
+                : 'Local OSM tiles · zoom in under ~7 km',
         });
         viewer.scene.requestRender();
       })
@@ -601,6 +629,91 @@ const CesiumScene = forwardRef(function CesiumScene(
       }
     };
   }, [viewer, buildingsEnabled, buildingsSource]);
+
+  // ── Keep 3D buildings on the ground when terrain is off ─────────────────
+  // Both building sources carry absolute heights measured on their terrain:
+  // Cesium OSM Buildings on Cesium World Terrain, the local tileset on the
+  // offline Copernicus terrain (when built with --dem). With terrain off the
+  // globe is the bare WGS84 ellipsoid (0 m), so the buildings would float by
+  // the ground height under them. Shift the tileset down by the terrain height
+  // at the view centre, re-sampled after each camera move. Within the few km
+  // of a street-level view the ground offset is near-constant, so buildings
+  // sit on the flat globe. With terrain on, nothing is shifted.
+  const localBuildingsGrounded = buildingsTileset?.properties?.ground === 'copernicus-glo30';
+  const groundOffsetSource =
+    buildingsTileset && !layers.terrain && (buildingsSource === 'ion' || localBuildingsGrounded)
+      ? buildingsSource
+      : null;
+  useEffect(() => {
+    if (!viewer || !groundOffsetSource || !buildingsTileset) {
+      return undefined;
+    }
+
+    const tileset = buildingsTileset;
+    const scene = viewer.scene;
+    let cancelled = false;
+    let provider = null;
+    let requestId = 0;
+    let lastKey = '';
+
+    const groundUnderViewCentre = () => {
+      const canvas = scene.canvas;
+      const centre = new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
+      const hit = viewer.camera.pickEllipsoid(centre, scene.globe.ellipsoid);
+      // Looking at the horizon: fall back to the ground below the camera.
+      const cartographic = hit
+        ? Cesium.Cartographic.fromCartesian(hit)
+        : Cesium.Cartographic.clone(viewer.camera.positionCartographic);
+      if (cartographic) cartographic.height = 0;
+      return cartographic;
+    };
+
+    const update = async () => {
+      if (cancelled || !provider || tileset.isDestroyed()) return;
+      const cartographic = groundUnderViewCentre();
+      if (!cartographic) return;
+      // ~60 m grid: skip re-sampling for tiny camera nudges.
+      const key = `${cartographic.latitude.toFixed(5)},${cartographic.longitude.toFixed(5)}`;
+      if (key === lastKey) return;
+      lastKey = key;
+
+      const id = ++requestId;
+      let groundHeight;
+      try {
+        const [sample] = await Cesium.sampleTerrainMostDetailed(provider, [cartographic]);
+        groundHeight = sample?.height;
+      } catch (error) {
+        console.warn('Could not sample terrain height to ground 3D buildings:', error);
+        return;
+      }
+      if (cancelled || id !== requestId || tileset.isDestroyed() || !Number.isFinite(groundHeight)) return;
+
+      const offset = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormalCartographic(cartographic, new Cesium.Cartesian3());
+      Cesium.Cartesian3.multiplyByScalar(offset, -groundHeight, offset);
+      tileset.modelMatrix = Cesium.Matrix4.fromTranslation(offset);
+      scene.requestRender();
+    };
+
+    // Sampling-only provider: it is never attached to the globe.
+    createTerrainProvider(groundOffsetSource)
+      .then((created) => {
+        if (cancelled) return;
+        provider = created;
+        update();
+      })
+      .catch((error) => console.warn('Terrain unavailable for grounding 3D buildings:', error));
+
+    const removeMoveEnd = viewer.camera.moveEnd.addEventListener(update);
+
+    return () => {
+      cancelled = true;
+      removeMoveEnd();
+      if (!tileset.isDestroyed()) {
+        tileset.modelMatrix = Cesium.Matrix4.clone(Cesium.Matrix4.IDENTITY);
+      }
+      if (!viewer.isDestroyed()) scene.requestRender();
+    };
+  }, [viewer, buildingsTileset, groundOffsetSource]);
 
   // 3D Tiles feature styling.
   const selectedPosition = hasValidPosition(selectedTransformer) ? selectedTransformer.position : null;

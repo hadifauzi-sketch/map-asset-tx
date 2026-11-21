@@ -28,6 +28,7 @@ import { Badge } from './ui/badge';
 import { AppTooltip } from './ui/app-tooltip';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { Combobox } from './ui/combobox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
 import MountWhenOpened from './MountWhenOpened';
@@ -49,6 +50,7 @@ import {
   matchesTransformer,
   normalizeText,
   sortTransformers,
+  sortHierarchy,
 } from '../lib/assetHierarchy';
 
 // Opened on demand from the sidebar; split out of the main bundle.
@@ -58,6 +60,12 @@ const CompareTX = lazy(() => import('./compareTX'));
 const EXPANDED_STATES_STORAGE_KEY = 'transformer-asset-map-expanded-states';
 const EXPANDED_COMPANIES_STORAGE_KEY = 'transformer-asset-map-expanded-companies';
 const EXPANDED_AREAS_STORAGE_KEY = 'transformer-asset-map-expanded-areas';
+const HIERARCHY_SORT_STORAGE_KEY = 'transformer-asset-map-hierarchy-sort';
+const HIERARCHY_SORT_OPTIONS = [
+  { value: 'severity', label: 'Severity' },
+  { value: 'name', label: 'Name' },
+  { value: 'sample', label: 'Latest sample' },
+];
 
 function readStoredExpansionMap(storageKey) {
   if (typeof window === 'undefined') {
@@ -219,6 +227,21 @@ function TransformerSidebar({
   searchFocusRequest = 0,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [hierarchySort, setHierarchySort] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(HIERARCHY_SORT_STORAGE_KEY);
+      return HIERARCHY_SORT_OPTIONS.some((option) => option.value === saved) ? saved : 'severity';
+    } catch {
+      return 'severity';
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HIERARCHY_SORT_STORAGE_KEY, hierarchySort);
+    } catch {
+      // Sorting remains available when browser storage is disabled.
+    }
+  }, [hierarchySort]);
   const [expandedStates, setExpandedStates] = useState(() => readStoredExpansionMap(EXPANDED_STATES_STORAGE_KEY));
   const [expandedCompanies, setExpandedCompanies] = useState(() =>
     readStoredExpansionMap(EXPANDED_COMPANIES_STORAGE_KEY)
@@ -243,7 +266,10 @@ function TransformerSidebar({
     () => buildHierarchy(transformers, floorPlans, companyBoundaries),
     [companyBoundaries, floorPlans, transformers]
   );
-  const filteredHierarchy = useMemo(() => filterHierarchy(hierarchy, searchTerm), [hierarchy, searchTerm]);
+  const filteredHierarchy = useMemo(
+    () => sortHierarchy(filterHierarchy(hierarchy, searchTerm), hierarchySort, statusById),
+    [hierarchy, searchTerm, hierarchySort, statusById]
+  );
   const sortedAreas = useMemo(
     () =>
       [...floorPlans].sort((left, right) => {
@@ -1110,6 +1136,15 @@ function TransformerSidebar({
               </AppTooltip>
             </div>
           ) : null}
+          <div className="atree-sort" role="group" aria-label="Sort asset hierarchy">
+            <span className="atree-sort-label">Sort</span>
+            <Combobox
+              className="atree-sort-control"
+              value={hierarchySort}
+              options={HIERARCHY_SORT_OPTIONS}
+              onValueChange={setHierarchySort}
+            />
+          </div>
         </div>
 
         {filteredHierarchy.length === 0 ? (

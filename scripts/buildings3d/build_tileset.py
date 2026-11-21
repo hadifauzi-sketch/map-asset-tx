@@ -13,6 +13,8 @@ ever holds the buildings near the view.
 
 Geometry: each footprint (outer ring) is extruded from min_height to its top:
 `height`, else `building:levels` x 3.2 m, else a default by building type.
+With `--dem data/dem` each building is lifted onto the offline Copernicus
+terrain (lowest ground under its footprint); without it, it sits at 0 m.
 Walls get flat normals; roofs are flat. Positions are quantised to 16 bits per
 tile (KHR_mesh_quantization, ~4 cm), normals to 8 bits.
 
@@ -34,6 +36,9 @@ from multiprocessing import Pool
 
 import mapbox_earcut as earcut
 import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "terrain"))
+from dem import TerrainSampler  # noqa: E402
 
 LEAF_DEG = 0.02
 BLOCK_DEG = 0.1
@@ -274,7 +279,8 @@ def region(lon_min, lat_min, lon_max, lat_max, h_min, h_max):
 DATA = {}
 
 
-def init_worker(extract_path):
+def init_worker(extract_path, dem_dir=None, terrain_max_level=13):
+    DATA["terrain"] = TerrainSampler(dem_dir, max_level=terrain_max_level, cache_size=2) if dem_dir else None
     data = np.load(extract_path)
     DATA["coords"] = data["coords"]
     DATA["offsets"] = data["offsets"]
@@ -308,8 +314,15 @@ def build_cell(job):
         lon = coords[vertex_index * 2].astype(np.float64) / 1e7
         lat = coords[vertex_index * 2 + 1].astype(np.float64) / 1e7
         ring_offsets = np.concatenate([[0], np.cumsum(lengths)])
+        height_above_ground = DATA["top"][members]
         base = DATA["base"][members]
-        top = DATA["top"][members]
+        top = height_above_ground
+        if DATA["terrain"] is not None:
+            # Sit each building on the offline terrain: the lowest ground under
+            # its footprint, so no corner floats on a slope.
+            ground = np.minimum.reduceat(DATA["terrain"].ground(lon, lat), ring_offsets[:-1])
+            base = base + ground
+            top = top + ground
         positions, normals, batch_ids, indices = build_tile_mesh(lon, lat, ring_offsets, base, top)
         if len(indices) == 0:
             continue
@@ -325,7 +338,7 @@ def build_cell(job):
         }
         levels = DATA["levels"][members]
         numeric = {
-            "cesium#estimatedHeight": top,
+            "cesium#estimatedHeight": height_above_ground,
             "building:levels": np.where(np.isfinite(levels), levels, 0.0),
             "cesium#longitude": centroid_lon,
             "cesium#latitude": centroid_lat,
@@ -387,10 +400,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("extract")
     parser.add_argument("out_dir")
-    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    # Each worker holds the whole extract (+ DEM tiles with --dem): keep the
+    # default small so many-core machines do not run out of memory.
+    parser.add_argument("--workers", type=int, default=max(1, min(6, (os.cpu_count() or 2) - 1)))
     parser.add_argument("--bbox", help="lon_min,lat_min,lon_max,lat_max (optional subset)")
+    parser.add_argument("--dem", help="Copernicus GLO-30 folder (npm run globe:terrain): ground each building on it")
+    parser.add_argument("--terrain-max-level", type=int, default=13, help="finest level of the offline terrain")
     args = parser.parse_args()
     started = time.time()
+    dem_dir = args.dem if args.dem and os.path.isdir(args.dem) and any(
+        name.endswith(".tif") for name in os.listdir(args.dem)) else None
+    if args.dem and not dem_dir:
+        print(f"No GLO-30 tiles in {args.dem}: buildings stay on the ellipsoid (run npm run globe:terrain first)",
+              flush=True)
 
     data = np.load(args.extract)
     coords, offsets = data["coords"], data["offsets"]
@@ -419,7 +441,8 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
     cells = []
-    with Pool(args.workers, initializer=init_worker, initargs=(args.extract,)) as pool:
+    with Pool(args.workers, initializer=init_worker,
+              initargs=(args.extract, dem_dir, args.terrain_max_level)) as pool:
         for done, result in enumerate(pool.imap_unordered(build_cell, jobs), start=1):
             if result:
                 cells.append(result)
@@ -430,7 +453,13 @@ def main():
     regions = np.array([cell["region"] for cell in cells])
     root = {
         "asset": {"version": "1.0", "gltfUpAxis": "Z", "tilesetVersion": "osm-buildings-my"},
-        "properties": {"source": "© OpenStreetMap contributors (ODbL)", "buildings": int(sum(c["count"] for c in cells))},
+        "properties": {
+            "source": "© OpenStreetMap contributors (ODbL)",
+            "buildings": int(sum(c["count"] for c in cells)),
+            # The 3D view reads this: grounded tiles need the matching offline
+            # terrain (or a downward shift when terrain is off).
+            "ground": "copernicus-glo30" if dem_dir else "ellipsoid",
+        },
         "geometricError": ROOT_ERROR,
         "root": {
             "boundingVolume": {"region": [float(regions[:, 0].min()), float(regions[:, 1].min()), float(regions[:, 2].max()),

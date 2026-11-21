@@ -39,7 +39,9 @@ export default function DataLayersPanel({
             const Icon = layer.icon;
             const locked = Boolean(layer.requires && !availableKeys[layer.requires]);
             const status = layerStatus[layer.id];
-            const isOn = Boolean(layers[layer.id]) && !locked;
+            // Without a Cesium ion key the offline terrain is the only source.
+            const forcedOn = layer.id === 'offlineTerrain' && !availableKeys.cesiumIon;
+            const isOn = forcedOn || (Boolean(layers[layer.id]) && !locked);
 
             return (
               <div key={layer.id} className={cn('g3d-layer-row', isOn && 'is-on')}>
@@ -49,7 +51,11 @@ export default function DataLayersPanel({
                 <span className="g3d-layer-text">
                   <span className="g3d-layer-label">{layer.label}</span>
                   <span className={cn('g3d-layer-source', status?.state === 'error' && 'is-error')}>
-                    {locked ? `Needs ${keyLabel(layer.requires)}` : (isOn && status?.text) || layer.source}
+                    {locked
+                      ? `Needs ${keyLabel(layer.requires)}`
+                      : forcedOn
+                        ? 'Always on · no Cesium ion key'
+                        : (isOn && status?.text) || layer.source}
                   </span>
                 </span>
                 {locked ? (
@@ -60,6 +66,7 @@ export default function DataLayersPanel({
                 ) : (
                   <Switch
                     checked={isOn}
+                    disabled={forcedOn}
                     onCheckedChange={(next) => onToggleLayer(layer.id, next)}
                     aria-label={`${layer.label} layer`}
                   />

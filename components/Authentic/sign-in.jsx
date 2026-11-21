@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Lock, User, Loader2, AlertTriangle, Eye, EyeOff, FileText } from 'lucide-react';
 import AppInfoDialog from '../AppInfoDialog';
 import { AppTooltip } from '../ui/app-tooltip';
-import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
+import { supabase, isSupabaseConfigured, USE_SUPABASE_AUTH, usernameToEmail } from '../../lib/supabaseClient';
 
 /**
  * Username / password sign-in — all credential work runs server-side
@@ -86,6 +86,44 @@ export async function authenticate(username, password) {
     throw new Error('Supabase is not configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
   }
 
+  // New path: Supabase Auth. Signing in attaches a real user JWT to every
+  // subsequent request, which is what the hardened RLS authorizes against.
+  // The profile (role, full_name, app-user id) comes from the me() RPC.
+  if (USE_SUPABASE_AUTH) {
+    const credentials = { email: usernameToEmail(username), password };
+    let { error: signInError } = await supabase.auth.signInWithPassword(credentials);
+
+    if (signInError) {
+      // First sign-in since the move to Supabase Auth: check the password
+      // against the legacy account and, if it matches, the database creates
+      // the Supabase login with that same password. Then sign in again.
+      const { data: migrated, error: migrateError } = await supabase.rpc('migrate_legacy_login', {
+        p_username: username,
+        p_password: password,
+      });
+      if (!migrateError && migrated === true) {
+        ({ error: signInError } = await supabase.auth.signInWithPassword(credentials));
+      }
+    }
+    if (signInError) {
+      // Normalise Supabase's "Invalid login credentials" to the app's wording.
+      throw new Error('Invalid username or password.');
+    }
+
+    const { data: profile, error: meError } = await supabase.rpc('me');
+    if (meError) {
+      await supabase.auth.signOut();
+      throw meError;
+    }
+    const me = Array.isArray(profile) ? profile[0] : profile;
+    if (!me || me.is_active === false) {
+      await supabase.auth.signOut();
+      throw new Error('Invalid username or password.');
+    }
+    return me;
+  }
+
+  // Legacy path (flag off): server-side verify_app_user over the anon key.
   const { data, error } = await supabase.rpc('verify_app_user', {
     p_username: username,
     p_password: password,
@@ -94,6 +132,14 @@ export async function authenticate(username, password) {
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('Invalid username or password.');
+
+  // Quietly pre-create this user's Supabase Auth login (same password) so the
+  // later switch to VITE_USE_SUPABASE_AUTH=1 is seamless. Fire-and-forget:
+  // never blocks or fails the legacy sign-in (e.g. before migration 000002).
+  supabase
+    .rpc('migrate_legacy_login', { p_username: username, p_password: password })
+    .then(() => {}, () => {});
+
   return row;
 }
 
@@ -159,6 +205,15 @@ export function clearSession() {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
   } catch {
     /* ignore */
+  }
+  // Under Supabase Auth, also drop the real session so the JWT is revoked
+  // locally and the next request is anonymous (and thus denied by RLS).
+  if (USE_SUPABASE_AUTH) {
+    try {
+      supabase.auth.signOut();
+    } catch {
+      /* ignore */
+    }
   }
 }
 

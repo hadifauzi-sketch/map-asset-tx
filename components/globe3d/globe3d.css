@@ -678,6 +678,7 @@
 
 .g3d-txlist-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
@@ -687,7 +688,8 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex: 1;
+  /* Keep sorting on its own row so the trigger and portalled menu stay readable. */
+  flex: 1 0 100%;
   font-family: var(--g3d-mono);
   font-size: 10px;
   letter-spacing: 0.12em;
@@ -747,6 +749,7 @@
 .g3d-txlist-fold {
   display: inline-flex;
   gap: 2px;
+  margin-left: auto;
 }
 
 .g3d-txlist-fold button {
